@@ -50,6 +50,15 @@ local function SafeText(value, fallback)
   return fallback or "—"
 end
 
+function addon:CanManagePugRemoval()
+  if UnitIsGroupLeader and UnitIsGroupLeader("player") then return true end
+  if IsInRaid and IsInRaid() then
+    if UnitIsGroupAssistant and UnitIsGroupAssistant("player") then return true end
+    if UnitIsRaidOfficer and UnitIsRaidOfficer("player") then return true end
+  end
+  return false
+end
+
 local function PugRoleText(unit)
   local role = "NONE"
   if UnitGroupRolesAssigned then
@@ -174,12 +183,55 @@ local function CreateRow(parent, index)
 
   row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   row.name:SetPoint("LEFT", row.num, "RIGHT", 4, 0)
-  row.name:SetWidth(160)
+  row.name:SetWidth(145)
   row.name:SetJustifyH("LEFT")
 
+  row.kick = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+  row.kick:SetSize(18, 18)
+  row.kick:SetPoint("LEFT", row.name, "RIGHT", 2, 0)
+  row.kick:SetScript("OnEnter", function(btn)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(addon:Tr("PUG_KICK"), 1, 0.82, 0.36)
+    GameTooltip:AddLine(addon:Tr("PUG_KICK_TOOLTIP"), 0.86, 0.82, 0.72, true)
+    if not addon:CanManagePugRemoval() then
+      GameTooltip:AddLine(addon:Tr("NO_REMOVE_PERMISSION"), 1, 0.25, 0.2, true)
+    end
+    GameTooltip:Show()
+  end)
+  row.kick:SetScript("OnLeave", function()
+    if GameTooltip then GameTooltip:Hide() end
+  end)
+  row.kick:SetScript("OnClick", function(btn)
+    local data = btn:GetParent() and btn:GetParent().pugData
+    if not data then return end
+
+    if not addon:CanManagePugRemoval() then
+      print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("NO_REMOVE_PERMISSION"))
+      return
+    end
+
+    local display = data.fullName or data.name or "?"
+    if addon.UpdateBanner then
+      addon:UpdateBanner(addon:Tr("PUG_KICKING_FMT", display), "", false, "ACTION", "")
+    end
+
+    if addon.KickNamesSequential then
+      addon:KickNamesSequential({ { unit = data.unit, name = data.name, fullName = data.fullName } }, 0.15)
+    elseif UninviteUnit then
+      pcall(UninviteUnit, data.unit or data.fullName or data.name)
+    end
+
+    btn:Disable()
+    if C_Timer then
+      C_Timer.After(0.35, function() if addon.PugWindow and addon.PugWindow:IsShown() then addon:RefreshPugWindow() end end)
+      C_Timer.After(1.10, function() if addon.PugWindow and addon.PugWindow:IsShown() then addon:RefreshPugWindow() end end)
+    end
+  end)
+
   row.class = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  row.class:SetPoint("LEFT", row.name, "RIGHT", 8, 0)
-  row.class:SetWidth(92)
+  row.class:SetPoint("LEFT", row.kick, "RIGHT", 8, 0)
+  row.class:SetWidth(84)
   row.class:SetJustifyH("LEFT")
 
   row.role = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
@@ -194,7 +246,7 @@ local function CreateRow(parent, index)
 
   row.group = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
   row.group:SetPoint("LEFT", row.guild, "RIGHT", 8, 0)
-  row.group:SetWidth(40)
+  row.group:SetWidth(32)
   row.group:SetJustifyH("LEFT")
 
   return row
@@ -242,11 +294,11 @@ function addon:CreatePugWindow()
   f.header = header
 
   CreateHeaderText(header, "#", 28, "LEFT", header, "LEFT", 8, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), 160, "LEFT", header, "LEFT", 40, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), 92, "LEFT", header, "LEFT", 208, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), 48, "LEFT", header, "LEFT", 308, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), 154, "LEFT", header, "LEFT", 364, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), 40, "LEFT", header, "LEFT", 526, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), 145, "LEFT", header, "LEFT", 40, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), 84, "LEFT", header, "LEFT", 214, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), 48, "LEFT", header, "LEFT", 306, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), 154, "LEFT", header, "LEFT", 362, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), 32, "LEFT", header, "LEFT", 526, 0)
 
   local line = header:CreateTexture(nil, "BORDER")
   line:SetColorTexture(1, 0.82, 0.36, 0.16)
@@ -330,6 +382,8 @@ function addon:RefreshPugWindow()
     end
 
     local classColor = ClassColor(pug.classFile)
+    local canKick = self:CanManagePugRemoval()
+    row.pugData = pug
     row.num:SetText(tostring(i))
     row.name:SetText(pug.fullName or pug.name or "?")
     row.name:SetTextColor(classColor.r or 1, classColor.g or 0.82, classColor.b or 0.36)
@@ -338,6 +392,11 @@ function addon:RefreshPugWindow()
     row.guild:SetText(pug.guildName or "—")
     row.group:SetText(pug.subgroup and tostring(pug.subgroup) or "—")
     row:SetAlpha(pug.online and 1 or 0.48)
+    if row.kick then
+      row.kick:Show()
+      row.kick:SetEnabled(canKick and pug.online)
+      row.kick:SetAlpha((canKick and pug.online) and 1 or 0.35)
+    end
     row:Show()
   end
 end
