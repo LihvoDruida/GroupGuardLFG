@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussions
+    url: https://github.com/LihvoDruida/GroupGuardLFG/discussions
+    about: Please ask usage questions here before opening an issue.
+  - name: CurseForge project page
+    url: https://www.curseforge.com/wow/addons/group-guard-lfg
+    about: Download releases and check public addon information.

@@ -1,0 +1,24 @@
+title: "[Q&A]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask a question about using GroupGuard LFG. For bugs, please use the Bug Report issue template.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you need help with?
+      placeholder: "How do I set up rules for LFG applicant highlighting?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Add screenshots, settings, or /ggstate output if useful.
+    validations:
+      required: false

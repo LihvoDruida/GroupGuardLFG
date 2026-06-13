@@ -1,0 +1,51 @@
+[changelog]
+header = """
+# Changelog
+
+All notable changes to GroupGuard LFG are documented here.
+"""
+
+body = """
+{% if version -%}
+## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## Unreleased
+{% endif -%}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | upper_first | trim }}
+{% endfor %}
+{% endfor %}
+"""
+
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v?[0-9].*"
+ignore_tags = "alpha|beta|rc"
+topo_order = false
+sort_commits = "newest"
+
+commit_preprocessors = [
+  { pattern = '\((\w+\s)?#([0-9]+)\)', replace = " #${2}" },
+  { pattern = " +$", replace = "" },
+]
+
+commit_parsers = [
+  { message = "^feat", group = "new features" },
+  { message = "^fix", group = "bug fixes" },
+  { message = "^perf", group = "performance" },
+  { message = "^refactor", group = "refactoring" },
+  { message = "^docs?", group = "documentation" },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore", group = "maintenance" },
+  { message = "^revert", group = "reverts" },
+  { message = ".*", group = "other changes" },
+]

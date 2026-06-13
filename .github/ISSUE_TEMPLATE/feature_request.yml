@@ -1,0 +1,48 @@
+name: 💡 Feature Request
+description: Suggest an improvement for GroupGuard LFG.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to improve?
+      placeholder: "I want a clearer way to see why an LFG applicant was marked."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe what you would like to see.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - LFG applications
+        - LFG search results
+        - Party/Raid scan
+        - Party/Raid removal
+        - Raid Assist
+        - Frame markers
+        - Notifications
+        - Settings
+        - Compatibility
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Any alternative approach you considered?
+    validations:
+      required: false
