@@ -248,6 +248,7 @@ local function OnEvent(self, event, arg1, ...)
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() end
     addon:RequestGroupRefresh(0)
     addon:RequestLFGRefresh(0, true, true)
+    if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
 
   elseif event == "PLAYER_REGEN_ENABLED" then
@@ -258,6 +259,7 @@ local function OnEvent(self, event, arg1, ...)
     end
     addon:RequestGroupRefresh(0)
     addon:RequestLFGRefresh(0, true, true)
+    if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
 
   elseif event == "LFG_LIST_APPLICANT_LIST_UPDATED"
       or event == "LFG_LIST_APPLICANT_UPDATED"
@@ -288,6 +290,7 @@ local function OnEvent(self, event, arg1, ...)
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {} end
     addon:RequestGroupRefresh(0)
     addon:RequestLFGRefresh(0, true, true)
+    if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
   end
 end

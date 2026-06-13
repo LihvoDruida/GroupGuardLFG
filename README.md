@@ -16,6 +16,7 @@ The addon does not identify nationality, ethnicity, origin, religion, or any per
 * Compact notification banner with action button.
 * WARN sound and optional screen flash.
 * Automatic Raid Assist assignment for selected guild ranks or manually listed characters.
+* Raid PUG detector: lists raid members who are not guild members and not direct friends.
 * Friend and guild-member handling for trusted/social LFG entries.
 * Safe compatibility with Premade Groups Filter.
 * Interface language selector:
@@ -59,6 +60,7 @@ GroupGuardLFG/
     GroupActions.lua
     LFG.lua
     RaidAssist.lua
+    PugDetector.lua
 
   UI/
     Notify.lua
@@ -126,6 +128,14 @@ Force a group, LFG, and frame-marker rescan.
 ```
 
 Try to remove currently marked players from party/raid.
+
+```text
+/ggpugs
+/raidpugs
+/groupguard pugs
+```
+
+Open the Raid PUG detector window. PUGs are raid members who are not in your guild and not direct character/Battle.net friends. Friends-of-friends cannot be verified reliably through the public WoW addon API.
 
 ```text
 /ggstate

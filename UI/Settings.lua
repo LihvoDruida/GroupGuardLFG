@@ -1018,7 +1018,11 @@ SLASH_GROUPGUARDLFG3 = "/gguard"
 SLASH_GROUPGUARDLFG4 = "/guardlfg"
 
 local function HandleSlash(msg)
-  msg = (msg or ""):lower()
+  msg = tostring(msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  if msg == "pugs" or msg == "pug" or msg == "raidpugs" or msg == "пуги" then
+    if addon.TogglePugWindow then addon:TogglePugWindow() end
+    return
+  end
   if not addon.settingsRoot then addon:InitSettingsPages() end
   if Settings and addon.settingsRoot then
     Settings.OpenToCategory(addon.settingsRoot.ID)
