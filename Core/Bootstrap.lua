@@ -1,8 +1,25 @@
 local addonName, addon = ...
-addon.version = "4.0.4"
-addon.codename = "Release Candidate"
-addon.displayName = "GroupGuard LFG"
-addon.author = "LihvoDruida"
+
+local function GetAddonMetadataValue(field, fallback)
+  local value = nil
+
+  if C_AddOns and C_AddOns.GetAddOnMetadata then
+    local ok, result = pcall(C_AddOns.GetAddOnMetadata, addonName, field)
+    if ok and result and result ~= "" then value = result end
+  end
+
+  if not value and GetAddOnMetadata then
+    local ok, result = pcall(GetAddOnMetadata, addonName, field)
+    if ok and result and result ~= "" then value = result end
+  end
+
+  return value or fallback
+end
+
+addon.version = GetAddonMetadataValue("Version", "dev")
+addon.codename = GetAddonMetadataValue("X-Codename", "Release Candidate")
+addon.displayName = GetAddonMetadataValue("Title", "GroupGuard LFG")
+addon.author = GetAddonMetadataValue("Author", "LihvoDruida")
 addon.printPrefix = "|cffd33b2fGroupGuard LFG|r:"
 addon.debug = false
 
