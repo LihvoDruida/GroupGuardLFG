@@ -40,6 +40,8 @@ local function CleanupRuntimeState()
   if addon.ClearFrameMarkers then addon:ClearFrameMarkers() end
   if addon and addon.ClearAlert then addon:ClearAlert() end
   if addon.kickButton then addon.kickButton:Hide() end
+  if addon.leaveButton then addon.leaveButton:Hide() end
+  if addon.LayoutBannerActionButtons then addon:LayoutBannerActionButtons() end
   if addon.lfgButton then addon.lfgButton:Hide() end
   addon._groupOffenders = {}
   addon._groupOffenderKeys = {}

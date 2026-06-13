@@ -29,8 +29,8 @@ local SETTINGS_UK = {
   ["Show “Remove from group” button in the banner"] = "Показувати кнопку «Прибрати з групи» у банері",
   ["Automatically leave the group after detection"] = "Автоматично виходити з групи після виявлення",
   ["Confirm leaving with a popup"] = "Підтверджувати вихід спливаючим вікном",
-  ["The banner button only removes players from party/raid. LFG applications are handled by the separate button on the Premade Groups page."] =
-    "Кнопка в банері прибирає тільки з party/raid. LFG-заявки обробляє окрема кнопка на сторінці Premade Groups.",
+  ["The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page."] =
+    "У банері можуть з'являтися кнопки як для видалення позначених гравців, так і для виходу з поточної групи/рейду. LFG-заявки обробляє окрема кнопка на сторінці Premade Groups.",
 
   ["LFG applications"] = "LFG-заявки",
   ["2. LFG applications"] = "2. LFG-заявки",
@@ -680,7 +680,7 @@ function addon:InitSettingsPages()
   local g7 = AddCheck(generalChild, g6, "Confirm leaving with a popup", "confirm_leave", function() SyncAll("confirm_leave") end)
 
   local generalWarn = AddNote(generalChild, g7,
-    "The banner button only removes players from party/raid. LFG applications are handled by the separate button on the Premade Groups page.")
+    "The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page.")
 
   --------------------------------------------------
   -- 2. LFG заявки

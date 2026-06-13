@@ -107,6 +107,9 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
     self.Banner.status:SetText(date and date("%H:%M:%S") or "")
   end
 
+  if self.UpdateBannerGroupButtons then self:UpdateBannerGroupButtons() end
+  if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
+
   self.Banner:Show()
   if UIFrameFadeIn then
     UIFrameFadeIn(self.Banner, 0.10, 0.20, 1)
@@ -132,16 +135,48 @@ end
 function addon:UpdateBanner(primaryText, secondaryText, unusedOverlayText, kind, detailText)
   if self:IsDisabledNow() then return end
   if not self.Banner then return end
+  if self.UpdateBannerGroupButtons then self:UpdateBannerGroupButtons() end
   self:ShowBanner(primaryText, secondaryText, false, kind, detailText)
 end
 
+function addon:LayoutBannerActionButtons()
+  if not self.Banner then return end
+
+  local actionBar = self.Banner.actionBar or self.Banner
+  local ordered = {}
+
+  local function prepare(btn)
+    if not btn then return end
+    btn:SetParent(self.Banner)
+    btn:SetFrameStrata(self.Banner:GetFrameStrata() or "DIALOG")
+    btn:SetFrameLevel((self.Banner:GetFrameLevel() or 260) + 12)
+    btn:ClearAllPoints()
+    if btn:IsShown() then
+      ordered[#ordered + 1] = btn
+    end
+  end
+
+  prepare(self.leaveButton)
+  prepare(self.kickButton)
+
+  local prev
+  for i = #ordered, 1, -1 do
+    local btn = ordered[i]
+    if not prev then
+      btn:SetPoint("RIGHT", actionBar, "RIGHT", 0, 0)
+    else
+      btn:SetPoint("RIGHT", prev, "LEFT", -8, 0)
+    end
+    prev = btn
+  end
+
+  if self.Banner.actionDivider then
+    self.Banner.actionDivider:SetShown(#ordered > 0)
+  end
+end
+
 function addon:LayoutBannerActionButton()
-  if not (self.Banner and self.kickButton) then return end
-  self.kickButton:SetParent(self.Banner)
-  self.kickButton:ClearAllPoints()
-  self.kickButton:SetPoint("BOTTOM", self.Banner, "BOTTOM", 0, 12)
-  self.kickButton:SetFrameStrata(self.Banner:GetFrameStrata() or "DIALOG")
-  self.kickButton:SetFrameLevel((self.Banner:GetFrameLevel() or 260) + 12)
+  self:LayoutBannerActionButtons()
 end
 
 function addon:NotifyLFGAutoDeclined(count, details)
@@ -184,18 +219,36 @@ function addon:TestAlert()
   self:ShowBanner(self:Tr("TEST_ALERT_TITLE"), "GroupGuard LFG", false, "TEST", self:Tr("TEST_ALERT_DETAIL"))
 end
 
+function addon:GetLeaveActionLabel()
+  if IsInRaid and IsInRaid() then return self:Tr("LEAVE_RAID_BUTTON") end
+  if IsInGroup and IsInGroup() then return self:Tr("LEAVE_PARTY_BUTTON") end
+  return self:Tr("LEAVE_GROUP_BUTTON")
+end
+
+function addon:GetLeaveConfirmText()
+  if IsInRaid and IsInRaid() then return self:Tr("CONFIRM_LEAVE_RAID") end
+  if IsInGroup and IsInGroup() then return self:Tr("CONFIRM_LEAVE_PARTY") end
+  return self:Tr("CONFIRM_LEAVE")
+end
+
 function addon:ConfirmAndLeave()
   if self:IsDisabledNow() then return end
+  if not (C_PartyInfo and C_PartyInfo.LeaveParty) then return end
+
+  local function leaveNow()
+    C_PartyInfo.LeaveParty()
+  end
+
   if self.db and self.db.confirm_leave then
     StaticPopupDialogs["GROUP_GUARD_LFG_LEAVE"] = {
-      text = self:Tr("CONFIRM_LEAVE"),
+      text = self:GetLeaveConfirmText(),
       button1 = YES, button2 = NO,
       timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-      OnAccept = function() C_PartyInfo.LeaveParty() end,
+      OnAccept = leaveNow,
     }
     StaticPopup_Show("GROUP_GUARD_LFG_LEAVE")
   else
-    C_PartyInfo.LeaveParty()
+    leaveNow()
   end
 end
 

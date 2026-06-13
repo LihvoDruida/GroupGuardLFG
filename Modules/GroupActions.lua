@@ -288,6 +288,57 @@ function addon:ProcessKickQueue()
   self:KickNamesSequential(q, 0.15)
 end
 
+local function CountGroupOffenders()
+  local count = 0
+  for _ in pairs(addon._groupOffenders or {}) do count = count + 1 end
+  return count
+end
+
+function addon:CreateLeaveButton()
+  if self.leaveButton then
+    return
+  end
+
+  local parent = self.Banner or UIParent
+  local btn = CreateFrame("Button", "GroupGuardLFGLeaveBtn", parent, "UIPanelButtonTemplate")
+  btn:SetSize(140, 24)
+  btn:SetFrameStrata("DIALOG")
+  btn:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 260) + 12)
+  btn:SetText(self.GetLeaveActionLabel and self:GetLeaveActionLabel() or self:Tr("LEAVE_GROUP_BUTTON"))
+  btn:Hide()
+  btn:SetScript("OnClick", function()
+    if addon.UpdateBanner then
+      addon:UpdateBanner(addon:GetLeaveActionLabel(), "", false, "ACTION", addon:Tr("LEAVING_GROUP"))
+    end
+    addon:ConfirmAndLeave()
+  end)
+
+  self.leaveButton = btn
+  if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
+end
+
+function addon:UpdateBannerGroupButtons()
+  if not self.Banner then return end
+  if not self.kickButton then self:CreateKickButton() end
+  if not self.leaveButton then self:CreateLeaveButton() end
+
+  local inGroup = (IsInGroup and IsInGroup()) or (IsInRaid and IsInRaid())
+  local offenderCount = CountGroupOffenders()
+  local showLeave = inGroup and (offenderCount > 0 or self._alertActive or self._needsRecheck)
+  local showKick = offenderCount > 0 and self.db and self.db.kick_button_enabled and PlayerCanManageGroup()
+
+  if self.leaveButton then
+    self.leaveButton:SetText(self:GetLeaveActionLabel())
+    if showLeave then self.leaveButton:Show() else self.leaveButton:Hide() end
+  end
+
+  if self.kickButton then
+    self.kickButton:SetText(offenderCount > 0 and addon:Tr("KICK_BUTTON_FMT", offenderCount) or addon:Tr("KICK_BUTTON"))
+    if showKick then self.kickButton:Show() else self.kickButton:Hide() end
+  end
+
+  if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
+end
 
 -- Kick button + group scan
 --------------------------------------------------
@@ -299,7 +350,7 @@ function addon:CreateKickButton()
   end
   local parent = self.Banner or UIParent
   local btn = CreateFrame("Button", "GroupGuardLFGKickBtn", parent, "UIPanelButtonTemplate")
-  btn:SetSize(190, 24)
+  btn:SetSize(168, 24)
   btn:SetFrameStrata("DIALOG")
   btn:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 260) + 12)
   btn:SetText(addon:Tr("KICK_BUTTON"))
@@ -334,7 +385,7 @@ function addon:CreateKickButton()
     addon:KickNamesSequential(toKick, 0.15)
   end)
   self.kickButton = btn
-  if self.LayoutBannerActionButton then self:LayoutBannerActionButton() end
+  if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
 end
 
 function addon:ScanGroupOffenders()
@@ -344,6 +395,8 @@ function addon:ScanGroupOffenders()
     self._groupSocialKeys = {}
     self._groupOffenderTargets = {}
     if self.kickButton then self.kickButton:Hide() end
+    if self.leaveButton then self.leaveButton:Hide() end
+    if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
     if self.UpdateFrameMarkers then self:UpdateFrameMarkers() end
     return
   end
@@ -353,6 +406,8 @@ function addon:ScanGroupOffenders()
     self._groupSocialKeys = {}
     self._groupOffenderTargets = {}
     if self.kickButton then self.kickButton:Hide() end
+    if self.leaveButton then self.leaveButton:Hide() end
+    if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
     if self.UpdateFrameMarkers then self:UpdateFrameMarkers() end
     return
   end
@@ -362,6 +417,8 @@ function addon:ScanGroupOffenders()
     self._groupSocialKeys = {}
     self._groupOffenderTargets = {}
     if self.kickButton then self.kickButton:Hide() end
+    if self.leaveButton then self.leaveButton:Hide() end
+    if self.LayoutBannerActionButtons then self:LayoutBannerActionButtons() end
     if self.UpdateFrameMarkers then self:UpdateFrameMarkers() end
     return
   end
@@ -443,15 +500,7 @@ function addon:ScanGroupOffenders()
     self._needsRecheck = false
   end
 
-  if count > 0 and self.db and self.db.kick_button_enabled and PlayerCanManageGroup() then
-    if self.kickButton then
-      self.kickButton:SetText(addon:Tr("KICK_BUTTON_FMT", count))
-      if self.LayoutBannerActionButton then self:LayoutBannerActionButton() end
-      self.kickButton:Show()
-    end
-  else
-    if self.kickButton then self.kickButton:Hide() end
-  end
+  self:UpdateBannerGroupButtons()
 end
 
 function addon:ScheduleGroupRescan(delay)
