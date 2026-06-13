@@ -40,8 +40,10 @@ local SETTINGS_UK = {
   ["Automatically decline marked LFG applications when you have permission"] =
     "Автоматично відхиляти позначені LFG-заявки, якщо є права",
   ["Notify about auto-declines"] = "Сповіщати про авто-відхилення",
-  ["Show the manual “Decline LFG applications” button when auto mode is off"] =
-    "Показувати ручну кнопку «Відхилити LFG-заявки», коли авто-режим вимкнений",
+  ["Show the manual “Decline LFG applications” fallback button"] =
+    "Показувати ручну fallback-кнопку «Відхилити LFG-заявки»",
+  ["Auto-decline runs only for marked applications and only while you can manage the active listing. The manual button remains available for applicants that Blizzard does not allow to decline automatically."] =
+    "Авто-відхилення працює лише для позначених заявок і тільки коли ти можеш керувати активним оголошенням. Ручна кнопка залишається fallback-дією для заявок, які Blizzard не дозволяє відхилити автоматично.",
   ["Auto-decline limit per pass:"] = "Ліміт авто-відхилень за один прохід:",
   ["Delay between auto-declines (sec):"] = "Затримка між авто-відхиленнями (сек):",
   ["Manual LFG button text:"] = "Текст ручної LFG-кнопки:",
@@ -696,10 +698,12 @@ function addon:InitSettingsPages()
   local secDecline = AddSection(lfgChild, lfgNote, "Application decline")
   local l1 = AddCheck(lfgChild, secDecline, "Automatically decline marked LFG applications when you have permission", "lfg_auto_decline", function() SyncAll("lfg_auto_decline") end)
   local l2 = AddCheck(lfgChild, l1, "Notify about auto-declines", "lfg_auto_decline_notify", function() SyncAll("lfg_auto_decline_notify") end)
-  local l3 = AddCheck(lfgChild, l2, "Show the manual “Decline LFG applications” button when auto mode is off", "lfg_show_button", function() SyncAll("lfg_show_button") end)
+  local l3 = AddCheck(lfgChild, l2, "Show the manual “Decline LFG applications” fallback button", "lfg_show_button", function() SyncAll("lfg_show_button") end)
+  local lfgAutoNote = AddNote(lfgChild, l3,
+    "Auto-decline runs only for marked applications and only while you can manage the active listing. The manual button remains available for applicants that Blizzard does not allow to decline automatically.")
 
   local limitRow = AddEdit(
-    lfgChild, l3, "Auto-decline limit per pass:",
+    lfgChild, lfgAutoNote, "Auto-decline limit per pass:",
     function() return addon.db.lfg_auto_decline_batch_limit or 5 end,
     function(txt)
       local v = tonumber(txt) or 5

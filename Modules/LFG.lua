@@ -46,9 +46,15 @@ end
 function addon:LFG_CanManageApplicants()
   if self.IsDisabledNow and self:IsDisabledNow() then return false end
   if not self:LFG_HasActiveListing() then return false end
-  local inGroup = IsInGroup() or IsInRaid()
+
+  local inGroup = (IsInGroup and IsInGroup()) or (IsInRaid and IsInRaid())
   if not inGroup then return true end
-  return UnitIsGroupLeader and UnitIsGroupLeader("player") and true or false
+  if UnitIsGroupLeader and UnitIsGroupLeader("player") then return true end
+  if IsInRaid and IsInRaid() then
+    if UnitIsGroupAssistant and UnitIsGroupAssistant("player") then return true end
+    if UnitIsRaidOfficer and UnitIsRaidOfficer("player") then return true end
+  end
+  return false
 end
 
 local function EnumerateScrollBoxFrames(sb)
@@ -970,6 +976,7 @@ function addon:LFG_DeclineApplicants(appIDs, source)
   local sourceCache = (source == "auto") and self._lfgAutoDeclined or self._lfgManualDeclined
   local maxCount = #appIDs
   if source == "auto" then
+    if self._lfgAutoDeclineRunning then return 0 end
     maxCount = math.max(1, tonumber(self.db and self.db.lfg_auto_decline_batch_limit) or 5)
     if maxCount > #appIDs then maxCount = #appIDs end
   end
@@ -993,6 +1000,11 @@ function addon:LFG_DeclineApplicants(appIDs, source)
     sourceCache[id] = true
     self._lfgDeclineInFlight[id] = kind or source
     if self._lfgFlagged then self._lfgFlagged[id] = nil end
+  end
+
+  local function unmarkLocal(id)
+    sourceCache[id] = nil
+    if self._lfgDeclineInFlight then self._lfgDeclineInFlight[id] = nil end
   end
 
   if source == "manual" then
@@ -1029,7 +1041,8 @@ function addon:LFG_DeclineApplicants(appIDs, source)
     return declined
   end
 
-  if source == "auto" and self.BeginActionSequence then
+  self._lfgAutoDeclineRunning = true
+  if self.BeginActionSequence then
     self:BeginActionSequence("lfg_auto_decline", delayStep * maxCount + 0.8)
   end
 
@@ -1039,12 +1052,21 @@ function addon:LFG_DeclineApplicants(appIDs, source)
       markLocal(id, "auto")
       declined = declined + 1
       noteReason(id)
+
       C_Timer.After(delayStep * (declined - 1), function()
-        if C_LFGList and C_LFGList.DeclineApplicant then
-          local ok = pcall(C_LFGList.DeclineApplicant, id)
-          if not ok then
-            addon._lfgAutoDeclined[id] = nil
-          end
+        if not addon or not C_LFGList or not C_LFGList.DeclineApplicant then return end
+        if not (addon.db and addon.db.lfg_auto_decline) then
+          unmarkLocal(id)
+          return
+        end
+        if addon.LFG_CanManageApplicants and not addon:LFG_CanManageApplicants() then
+          unmarkLocal(id)
+          return
+        end
+
+        local ok = pcall(C_LFGList.DeclineApplicant, id)
+        if not ok then
+          unmarkLocal(id)
         end
       end)
     end
@@ -1054,13 +1076,20 @@ function addon:LFG_DeclineApplicants(appIDs, source)
     if self.LFG_UpdateButton then self:LFG_UpdateButton() end
     if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(0) end
     C_Timer.After(delayStep * declined + 0.18, function()
-      if addon then addon._lfgDeclineInFlight = {} end
+      if addon then
+        addon._lfgDeclineInFlight = {}
+        addon._lfgAutoDeclineRunning = false
+      end
       if addon and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
       if addon and addon.EndActionSequence then addon:EndActionSequence("lfg_auto_decline") end
     end)
+
     local detailText = table.concat(details, " • ")
     if detailText == "" then detailText = addon:Tr("LFG_MARKED_RULES") end
     if self.NotifyLFGAutoDeclined then self:NotifyLFGAutoDeclined(declined, detailText) end
+  else
+    self._lfgAutoDeclineRunning = false
+    if self.EndActionSequence then self:EndActionSequence("lfg_auto_decline") end
   end
   return declined
 end
@@ -1097,7 +1126,10 @@ function addon:LFG_AutoDeclineFlagged(flagged)
 end
 
 function addon:LFG_UpdateButton()
-  if not self.db or not self.db.lfg_show_button or self.db.lfg_auto_decline then
+  -- Do not hide the manual button just because auto-decline is enabled.
+  -- Auto-decline can be blocked by Blizzard protected UI rules or by changing LFG rights;
+  -- the button is the safe fallback for any marked applicants that remain.
+  if not self.db or not self.db.lfg_show_button then
     if self.lfgButton then self.lfgButton:Hide() end
     return
   end
@@ -1135,6 +1167,7 @@ function addon:LFG_ScanApplicants()
   if not C_LFGList or not C_LFGList.GetApplicants then
     self._lfgFlagged = {}
     self._lfgFlagCache = {}
+    self._lfgFlagReasons = {}
     self._lfgSocialCache = {}
     self._lfgSocialReasons = {}
     self._lfgAutoDeclined = {}
@@ -1149,6 +1182,7 @@ function addon:LFG_ScanApplicants()
   if not active then
     self._lfgFlagged = {}
     self._lfgFlagCache = {}
+    self._lfgFlagReasons = {}
     self._lfgSocialCache = {}
     self._lfgSocialReasons = {}
     self._lfgAutoDeclined = {}
@@ -1160,6 +1194,7 @@ function addon:LFG_ScanApplicants()
   end
 
   self._lfgFlagCache = {}
+  self._lfgFlagReasons = {}
   self._lfgSocialCache = {}
   self._lfgSocialReasons = {}
 

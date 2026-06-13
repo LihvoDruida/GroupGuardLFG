@@ -1,0 +1,383 @@
+-- GroupGuard LFG — Modules / Raid PUG Detector
+local addonName, addon = ...
+
+local C_Timer = C_Timer
+
+local function CanReadValue(value)
+  if value == nil then return false end
+  if type(canaccessvalue) == "function" then
+    local ok, allowed = pcall(canaccessvalue, value)
+    if not ok or not allowed then return false end
+  end
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if not ok or secret then return false end
+  end
+  return true
+end
+
+local function ShortName(name)
+  if type(name) ~= "string" then return "" end
+  return name:match("^([^-]+)") or name
+end
+
+local function FullNameFromUnit(unit)
+  local name, realm
+  if UnitFullName then
+    local ok, n, r = pcall(UnitFullName, unit)
+    if ok then name, realm = n, r end
+  end
+  if not name and UnitName then
+    local ok, n, r = pcall(UnitName, unit)
+    if ok then name, realm = n, r end
+  end
+  if not CanReadValue(name) or type(name) ~= "string" or name == "" then return nil end
+  if CanReadValue(realm) and type(realm) == "string" and realm ~= "" then
+    return name .. "-" .. realm, name, realm
+  end
+  return name, name, realm
+end
+
+local function ClassColor(classFile)
+  if classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] then
+    return RAID_CLASS_COLORS[classFile]
+  end
+  return { r = 1, g = 0.82, b = 0.36 }
+end
+
+local function SafeText(value, fallback)
+  if CanReadValue(value) and value ~= nil and value ~= "" then return tostring(value) end
+  return fallback or "—"
+end
+
+local function PugRoleText(unit)
+  local role = "NONE"
+  if UnitGroupRolesAssigned then
+    local ok, r = pcall(UnitGroupRolesAssigned, unit)
+    if ok and type(r) == "string" and r ~= "" then role = r end
+  end
+  if role == "TANK" then return "Tank" end
+  if role == "HEALER" then return "Heal" end
+  if role == "DAMAGER" then return "DPS" end
+  return "—"
+end
+
+local function WipeRows(rows)
+  if not rows then return end
+  for _, row in ipairs(rows) do row:Hide() end
+end
+
+function addon:ScanRaidPugs()
+  local result = {}
+  local total = 0
+
+  if not (IsInRaid and IsInRaid()) then
+    return result, { inRaid = false, total = 0 }
+  end
+
+  if self.RebuildFriendCache then self:RebuildFriendCache(true) end
+  if self.RebuildGuildCache then self:RebuildGuildCache(true) end
+
+  local num = GetNumGroupMembers and (GetNumGroupMembers() or 0) or 0
+  total = num
+
+  for i = 1, num do
+    local unit = "raid" .. i
+    if UnitExists and UnitExists(unit) then
+      local fullName, shortName, realm = FullNameFromUnit(unit)
+      if fullName and not (UnitIsUnit and UnitIsUnit(unit, "player")) then
+        local guildName
+        if GetGuildInfo then
+          local okGuild, g = pcall(GetGuildInfo, unit)
+          if okGuild and CanReadValue(g) then guildName = g end
+        end
+
+        local isGuild = false
+        if self.IsGuildUnit then isGuild = self:IsGuildUnit(unit, guildName) and true or false end
+        if not isGuild and self.IsGuildMemberName then isGuild = self:IsGuildMemberName(fullName) and true or false end
+
+        local isFriend = false
+        if self.IsFriendName then isFriend = self:IsFriendName(fullName) and true or false end
+
+        if not isGuild and not isFriend then
+          local className, classFile
+          if UnitClass then
+            local okClass, cn, cf = pcall(UnitClass, unit)
+            if okClass then className, classFile = cn, cf end
+          end
+
+          local online = true
+          if UnitIsConnected then
+            local okOnline, value = pcall(UnitIsConnected, unit)
+            if okOnline then online = value and true or false end
+          end
+
+          local subgroup = nil
+          if GetRaidRosterInfo then
+            local okRoster, _, _, sg = pcall(GetRaidRosterInfo, i)
+            if okRoster then subgroup = tonumber(sg) end
+          end
+
+          result[#result + 1] = {
+            unit = unit,
+            index = i,
+            name = shortName or fullName,
+            fullName = fullName,
+            realm = realm,
+            className = SafeText(className, "—"),
+            classFile = classFile,
+            guildName = SafeText(guildName, "—"),
+            role = PugRoleText(unit),
+            subgroup = subgroup,
+            online = online,
+          }
+        end
+      end
+    end
+  end
+
+  table.sort(result, function(a, b)
+    local ag = tonumber(a.subgroup or 99) or 99
+    local bg = tonumber(b.subgroup or 99) or 99
+    if ag ~= bg then return ag < bg end
+    return tostring(a.name or "") < tostring(b.name or "")
+  end)
+
+  return result, { inRaid = true, total = total }
+end
+
+local function CreateHeaderText(parent, text, width, point, rel, relPoint, x, y)
+  local fs = parent:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  fs:SetText(text or "")
+  fs:SetWidth(width or 80)
+  fs:SetJustifyH("LEFT")
+  fs:SetPoint(point, rel, relPoint, x or 0, y or 0)
+  return fs
+end
+
+local function CreateRow(parent, index)
+  local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+  row:SetSize(560, 24)
+  row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -((index - 1) * 26))
+  row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+  if index % 2 == 0 then
+    row:SetBackdropColor(1, 0.82, 0.36, 0.035)
+  else
+    row:SetBackdropColor(0, 0, 0, 0.08)
+  end
+  row:Hide()
+
+  row.num = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  row.num:SetPoint("LEFT", row, "LEFT", 8, 0)
+  row.num:SetWidth(28)
+  row.num:SetJustifyH("LEFT")
+
+  row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  row.name:SetPoint("LEFT", row.num, "RIGHT", 4, 0)
+  row.name:SetWidth(160)
+  row.name:SetJustifyH("LEFT")
+
+  row.class = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  row.class:SetPoint("LEFT", row.name, "RIGHT", 8, 0)
+  row.class:SetWidth(92)
+  row.class:SetJustifyH("LEFT")
+
+  row.role = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  row.role:SetPoint("LEFT", row.class, "RIGHT", 8, 0)
+  row.role:SetWidth(48)
+  row.role:SetJustifyH("LEFT")
+
+  row.guild = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  row.guild:SetPoint("LEFT", row.role, "RIGHT", 8, 0)
+  row.guild:SetWidth(154)
+  row.guild:SetJustifyH("LEFT")
+
+  row.group = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  row.group:SetPoint("LEFT", row.guild, "RIGHT", 8, 0)
+  row.group:SetWidth(40)
+  row.group:SetJustifyH("LEFT")
+
+  return row
+end
+
+function addon:CreatePugWindow()
+  if self.PugWindow then return self.PugWindow end
+
+  local f = CreateFrame("Frame", "GroupGuardLFG_PugWindow", UIParent, "BasicFrameTemplateWithInset")
+  f:SetSize(640, 430)
+  f:SetPoint("CENTER")
+  f:SetFrameStrata("DIALOG")
+  f:SetFrameLevel(270)
+  f:EnableMouse(true)
+  f:SetMovable(true)
+  f:RegisterForDrag("LeftButton")
+  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetClampedToScreen(true)
+  f:Hide()
+
+  if f.TitleText then f.TitleText:SetText(self:Tr("PUG_WINDOW_TITLE")) end
+
+  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("TOPLEFT", f, "TOPLEFT", 22, -34)
+  title:SetText(self:Tr("PUG_WINDOW_TITLE"))
+  title:SetTextColor(1, 0.82, 0.36)
+  f.title = title
+
+  local count = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  count:SetPoint("TOPRIGHT", f, "TOPRIGHT", -32, -38)
+  count:SetText("")
+  f.count = count
+
+  local note = f:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+  note:SetPoint("RIGHT", f, "RIGHT", -28, 0)
+  note:SetJustifyH("LEFT")
+  note:SetText(self:Tr("PUG_WINDOW_NOTE"))
+  f.note = note
+
+  local header = CreateFrame("Frame", nil, f)
+  header:SetSize(560, 22)
+  header:SetPoint("TOPLEFT", f, "TOPLEFT", 36, -88)
+  f.header = header
+
+  CreateHeaderText(header, "#", 28, "LEFT", header, "LEFT", 8, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), 160, "LEFT", header, "LEFT", 40, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), 92, "LEFT", header, "LEFT", 208, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), 48, "LEFT", header, "LEFT", 308, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), 154, "LEFT", header, "LEFT", 364, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), 40, "LEFT", header, "LEFT", 526, 0)
+
+  local line = header:CreateTexture(nil, "BORDER")
+  line:SetColorTexture(1, 0.82, 0.36, 0.16)
+  line:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, -2)
+  line:SetSize(560, 1)
+
+  local scroll = CreateFrame("ScrollFrame", "GroupGuardLFG_PugScroll", f, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
+  scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -46, 62)
+
+  local child = CreateFrame("Frame", nil, scroll)
+  child:SetSize(560, 260)
+  scroll:SetScrollChild(child)
+  f.scroll = scroll
+  f.child = child
+  f.rows = {}
+
+  local empty = f:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  empty:SetPoint("CENTER", scroll, "CENTER", 0, 6)
+  empty:SetWidth(520)
+  empty:SetJustifyH("CENTER")
+  empty:SetText("")
+  empty:Hide()
+  f.empty = empty
+
+  local refresh = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  refresh:SetSize(110, 24)
+  refresh:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -142, 22)
+  refresh:SetText(self:Tr("PUG_REFRESH"))
+  refresh:SetScript("OnClick", function() addon:RefreshPugWindow() end)
+  f.refresh = refresh
+
+  local printBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  printBtn:SetSize(110, 24)
+  printBtn:SetPoint("RIGHT", refresh, "LEFT", -8, 0)
+  printBtn:SetText(self:Tr("PUG_PRINT"))
+  printBtn:SetScript("OnClick", function() addon:PrintRaidPugs() end)
+  f.printBtn = printBtn
+
+  local close = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  close:SetSize(96, 24)
+  close:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -34, 22)
+  close:SetText(CLOSE or "Close")
+  close:SetScript("OnClick", function() f:Hide() end)
+  f.close = close
+
+  self.PugWindow = f
+  return f
+end
+
+function addon:RefreshPugWindow()
+  local f = self.PugWindow or self:CreatePugWindow()
+  local pugs, meta = self:ScanRaidPugs()
+  WipeRows(f.rows)
+
+  if not meta or not meta.inRaid then
+    f.count:SetText(self:Tr("PUG_COUNT_FMT", 0, 0))
+    f.empty:SetText(self:Tr("PUG_RAID_ONLY"))
+    f.empty:Show()
+    f.child:SetHeight(260)
+    return
+  end
+
+  f.count:SetText(self:Tr("PUG_COUNT_FMT", #pugs, meta.total or 0))
+
+  if #pugs == 0 then
+    f.empty:SetText(self:Tr("PUG_EMPTY"))
+    f.empty:Show()
+    f.child:SetHeight(260)
+    return
+  end
+
+  f.empty:Hide()
+  f.child:SetHeight(math.max(260, #pugs * 26))
+
+  for i, pug in ipairs(pugs) do
+    local row = f.rows[i]
+    if not row then
+      row = CreateRow(f.child, i)
+      f.rows[i] = row
+    end
+
+    local classColor = ClassColor(pug.classFile)
+    row.num:SetText(tostring(i))
+    row.name:SetText(pug.fullName or pug.name or "?")
+    row.name:SetTextColor(classColor.r or 1, classColor.g or 0.82, classColor.b or 0.36)
+    row.class:SetText(pug.className or "—")
+    row.role:SetText(pug.role or "—")
+    row.guild:SetText(pug.guildName or "—")
+    row.group:SetText(pug.subgroup and tostring(pug.subgroup) or "—")
+    row:SetAlpha(pug.online and 1 or 0.48)
+    row:Show()
+  end
+end
+
+function addon:ShowPugWindow()
+  local f = self.PugWindow or self:CreatePugWindow()
+  self:RefreshPugWindow()
+  f:Show()
+end
+
+function addon:TogglePugWindow()
+  local f = self.PugWindow or self:CreatePugWindow()
+  if f:IsShown() then
+    f:Hide()
+  else
+    self:ShowPugWindow()
+  end
+end
+
+function addon:PrintRaidPugs()
+  local pugs, meta = self:ScanRaidPugs()
+  if not meta or not meta.inRaid then
+    print((self.printPrefix or "GroupGuard LFG:"), self:Tr("PUG_RAID_ONLY"))
+    return
+  end
+
+  print((self.printPrefix or "GroupGuard LFG:"), self:Tr("PUG_COUNT_FMT", #pugs, meta.total or 0))
+  if #pugs == 0 then
+    print((self.printPrefix or "GroupGuard LFG:"), self:Tr("PUG_EMPTY"))
+    return
+  end
+
+  for i, pug in ipairs(pugs) do
+    print(string.format("%d. %s • %s • %s • %s", i, pug.fullName or pug.name or "?", pug.className or "—", pug.role or "—", pug.guildName or "—"))
+  end
+end
+
+SLASH_GROUPGUARDLFGPUGS1 = "/ggpugs"
+SLASH_GROUPGUARDLFGPUGS2 = "/raidpugs"
+SlashCmdList.GROUPGUARDLFGPUGS = function()
+  if not addon.db and addon.EnsureDB then addon:EnsureDB() end
+  addon:TogglePugWindow()
+end
