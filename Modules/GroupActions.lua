@@ -3,6 +3,24 @@ local addonName, addon = ...
 
 local C_Timer = C_Timer
 
+local function SafeIsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+
+local function SafeIsInGroup()
+  if not IsInGroup then return false end
+  local ok, value = pcall(IsInGroup)
+  return ok and value and true or false
+end
+
+local function SafeGroupCount()
+  if addon and addon.GetGroupMemberCount then return addon:GetGroupMemberCount() end
+  if not GetNumGroupMembers then return 0 end
+  local ok, value = pcall(GetNumGroupMembers)
+  return ok and tonumber(value) or 0
+end
 
 local function CanReadValue(value)
   if value == nil then return false end
@@ -116,14 +134,14 @@ local function FindGroupMemberTarget(target)
     return nil
   end
 
-  local num = GetNumGroupMembers and (GetNumGroupMembers() or 0) or 0
+  local num = SafeGroupCount()
 
-  if IsInRaid and IsInRaid() then
+  if SafeIsInRaid() then
     for i = 1, num do
       local found = checkUnit("raid" .. i)
       if found then return found end
     end
-  elseif IsInGroup and IsInGroup() then
+  elseif SafeIsInGroup() then
     for i = 1, math.min(num, 4) do
       local found = checkUnit("party" .. i)
       if found then return found end
@@ -138,23 +156,39 @@ local function IsTargetInGroup(target)
 end
 
 local function PlayerCanManageGroup()
-  if UnitIsGroupLeader and UnitIsGroupLeader("player") then return true end
-  if IsInRaid and IsInRaid() then
-    if UnitIsGroupAssistant and UnitIsGroupAssistant("player") then return true end
-    if UnitInRaid and UnitInRaid("player") and UnitIsRaidOfficer and UnitIsRaidOfficer("player") then return true end
+  if addon and addon.PlayerCanManageGroup then
+    return addon:PlayerCanManageGroup()
+  end
+  if UnitIsGroupLeader then
+    local ok, leader = pcall(UnitIsGroupLeader, "player")
+    if ok and leader then return true end
+  end
+  if IsInRaid then
+    local okRaid, inRaid = pcall(IsInRaid)
+    if okRaid and inRaid and UnitIsGroupAssistant then
+      local ok, assistant = pcall(UnitIsGroupAssistant, "player")
+      if ok and assistant then return true end
+    end
   end
   return false
 end
 
 local function TryDemoteIfNeeded(target)
   if not (target and target.unit) then return end
-  if not (UnitIsGroupLeader and UnitIsGroupLeader("player")) then return end
-  if UnitIsGroupAssistant and UnitIsGroupAssistant(target.unit) and DemoteAssistant then
-    pcall(DemoteAssistant, target.unit)
+  local isLeader = false
+  if UnitIsGroupLeader then
+    local ok, leader = pcall(UnitIsGroupLeader, "player")
+    isLeader = ok and leader and true or false
+  end
+  if not isLeader then return end
+  if UnitIsGroupAssistant and DemoteAssistant then
+    local okAssist, assistant = pcall(UnitIsGroupAssistant, target.unit)
+    if okAssist and assistant then pcall(DemoteAssistant, target.unit) end
   end
 end
 
 local function TryUninviteTarget(target)
+  if not UninviteUnit then return false, "missing_uninvite_api", nil end
   local resolved = FindGroupMemberTarget(target)
   if not resolved then return false, "not_found", nil end
 
@@ -236,7 +270,7 @@ function addon:KickNamesSequential(targets, delayStep)
   end
 
   local verifyDelay = 0.75
-  C_Timer.After(verifyDelay, function()
+  local function verifyRemoval()
     local removed, failed = 0, initialFailed
 
     for _, resolved in ipairs(attemptedTargets) do
@@ -270,12 +304,17 @@ function addon:KickNamesSequential(targets, delayStep)
     elseif removed > 0 then
       print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("GROUP_REMOVE_DONE"))
     end
-  end)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(verifyDelay, verifyRemoval)
+  else
+    verifyRemoval()
+  end
 end
 
 function addon:ProcessKickQueue()
   if not self._kickQueue or #self._kickQueue == 0 then return end
-  if UnitAffectingCombat("player") then return end
+  if UnitAffectingCombat and UnitAffectingCombat("player") then return end
 
   if not PlayerCanManageGroup() then
     print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("NO_QUEUE_RIGHTS"))
@@ -322,7 +361,7 @@ function addon:UpdateBannerGroupButtons()
   if not self.kickButton then self:CreateKickButton() end
   if not self.leaveButton then self:CreateLeaveButton() end
 
-  local inGroup = (IsInGroup and IsInGroup()) or (IsInRaid and IsInRaid())
+  local inGroup = SafeIsInGroup() or SafeIsInRaid()
   local offenderCount = CountGroupOffenders()
   local showLeave = inGroup and (offenderCount > 0 or self._alertActive or self._needsRecheck)
   local showKick = offenderCount > 0 and self.db and self.db.kick_button_enabled and PlayerCanManageGroup()
@@ -365,7 +404,7 @@ function addon:CreateKickButton()
     end
     if #toKick == 0 then return end
 
-    if UnitAffectingCombat("player") then
+    if UnitAffectingCombat and UnitAffectingCombat("player") then
       addon._kickQueue = addon._kickQueue or {}
       for _, n in ipairs(toKick) do table.insert(addon._kickQueue, n) end
       print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_COMBAT"))
@@ -411,7 +450,7 @@ function addon:ScanGroupOffenders()
     if self.UpdateFrameMarkers then self:UpdateFrameMarkers() end
     return
   end
-  if not (IsInGroup() or IsInRaid()) then
+  if not (SafeIsInGroup() or SafeIsInRaid()) then
     self._groupOffenders = {}
     self._groupOffenderKeys = {}
     self._groupSocialKeys = {}
@@ -423,8 +462,8 @@ function addon:ScanGroupOffenders()
     return
   end
 
-  local unitPrefix = IsInRaid() and "raid" or "party"
-  local num = GetNumGroupMembers() or 0
+  local unitPrefix = SafeIsInRaid() and "raid" or "party"
+  local num = SafeGroupCount()
   local offenders = {}
   local offenderKeys = {}
   local offenderTargets = {}
@@ -507,10 +546,11 @@ function addon:ScheduleGroupRescan(delay)
   delay = tonumber(delay) or 0.15
   if self._groupRescanTimer then return end
   self._groupRescanTimer = true
-  C_Timer.After(delay, function()
+  local function run()
     addon._groupRescanTimer = nil
     if addon and addon.ScanGroupOffenders then addon:ScanGroupOffenders() end
-  end)
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 
 
@@ -522,12 +562,18 @@ function addon:ScheduleNeedsRecheck(maxAttempts, interval)
   maxAttempts = tonumber(maxAttempts) or 10
   interval = tonumber(interval) or 0.45
 
+  if not (C_Timer and C_Timer.NewTicker) then
+    self._needsRecheck = false
+    self._needsRecheckTimer = nil
+    return
+  end
+
   local attempts = 0
   self._needsRecheckTimer = C_Timer.NewTicker(interval, function(t)
     attempts = attempts + 1
 
     -- stop conditions
-    if not addon._needsRecheck or addon:IsInRestrictedInstance() or not (IsInGroup() or IsInRaid()) then
+    if not addon._needsRecheck or addon:IsInRestrictedInstance() or not (SafeIsInGroup() or SafeIsInRaid()) then
       t:Cancel()
       addon._needsRecheckTimer = nil
       addon._needsRecheck = false

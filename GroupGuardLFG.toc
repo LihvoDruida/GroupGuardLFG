@@ -2,7 +2,7 @@
 ## Title: GroupGuard LFG
 ## Notes: LFG guard release build: modular runtime, raid removal, LFG guard, language UI, diagnostics
 ## Author: LihvoDruida
-## Version: 0.1
+## Version: 4.0.6
 ## X-Codename: Release Candidate
 ## OptionalDeps: PremadeGroupsFilter, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
@@ -23,6 +23,7 @@ Modules\FrameMarkers.lua
 Modules\LFG.lua
 Modules\GroupActions.lua
 Modules\RaidAssist.lua
+Modules\PugDetector.lua
 Modules\EventBus.lua
 
 UI\Settings.lua

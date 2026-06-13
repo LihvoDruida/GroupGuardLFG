@@ -3,6 +3,19 @@ local addonName, addon = ...
 
 local C_Timer = C_Timer
 
+local function SafeIsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+
+local function SafeGroupCount()
+  if addon and addon.GetGroupMemberCount then return addon:GetGroupMemberCount() end
+  if not GetNumGroupMembers then return 0 end
+  local ok, value = pcall(GetNumGroupMembers)
+  return ok and tonumber(value) or 0
+end
+
 local function CanReadValue(value)
   if value == nil then return false end
   if type(canaccessvalue) == "function" then
@@ -51,11 +64,7 @@ local function SafeText(value, fallback)
 end
 
 function addon:CanManagePugRemoval()
-  if UnitIsGroupLeader and UnitIsGroupLeader("player") then return true end
-  if IsInRaid and IsInRaid() then
-    if UnitIsGroupAssistant and UnitIsGroupAssistant("player") then return true end
-    if UnitIsRaidOfficer and UnitIsRaidOfficer("player") then return true end
-  end
+  if self.PlayerCanManageGroup then return self:PlayerCanManageGroup() end
   return false
 end
 
@@ -80,14 +89,14 @@ function addon:ScanRaidPugs()
   local result = {}
   local total = 0
 
-  if not (IsInRaid and IsInRaid()) then
+  if not SafeIsInRaid() then
     return result, { inRaid = false, total = 0 }
   end
 
-  if self.RebuildFriendCache then self:RebuildFriendCache(true) end
-  if self.RebuildGuildCache then self:RebuildGuildCache(true) end
+  if self.RebuildFriendCache then self:RebuildFriendCache(not self._friendCache) end
+  if self.RebuildGuildCache then self:RebuildGuildCache(not self._guildCache) end
 
-  local num = GetNumGroupMembers and (GetNumGroupMembers() or 0) or 0
+  local num = SafeGroupCount()
   total = num
 
   for i = 1, num do
@@ -223,9 +232,14 @@ local function CreateRow(parent, index)
     end
 
     btn:Disable()
-    if C_Timer then
-      C_Timer.After(0.35, function() if addon.PugWindow and addon.PugWindow:IsShown() then addon:RefreshPugWindow() end end)
-      C_Timer.After(1.10, function() if addon.PugWindow and addon.PugWindow:IsShown() then addon:RefreshPugWindow() end end)
+    local function refreshOpen()
+      if addon.PugWindow and addon.PugWindow:IsShown() then addon:RefreshPugWindow() end
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0.35, refreshOpen)
+      C_Timer.After(1.10, refreshOpen)
+    else
+      refreshOpen()
     end
   end)
 

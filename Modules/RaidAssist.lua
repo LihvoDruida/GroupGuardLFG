@@ -26,9 +26,15 @@ local function UnitIsAssistantOrLeader(unit)
   return false
 end
 
+local function SafeIsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+
 function addon:CanAutoRaidAssist()
   if not (self.db and self.db.raid_assist_enabled) then return false end
-  if not IsInRaid or not IsInRaid() then return false end
+  if not SafeIsInRaid() then return false end
   if UnitIsGroupLeader then
     local ok, leader = pcall(UnitIsGroupLeader, "player")
     if not ok or not leader then return false end
@@ -41,15 +47,20 @@ end
 function addon:ApplyRaidAssistNow(reason)
   if not self:CanAutoRaidAssist() then return 0 end
 
-  if UnitAffectingCombat and UnitAffectingCombat("player") then
-    self._raidAssistQueued = true
-    return 0
+  if UnitAffectingCombat then
+    local okCombat, inCombat = pcall(UnitAffectingCombat, "player")
+    if okCombat and inCombat then
+      self._raidAssistQueued = true
+      return 0
+    end
   end
 
-  if IsInGuild and IsInGuild() and GuildRoster then pcall(GuildRoster) end
+  local inGuild = false
+  if IsInGuild then local okGuild, value = pcall(IsInGuild); inGuild = okGuild and value and true or false end
+  if inGuild and GuildRoster then pcall(GuildRoster) end
   if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
-  local num = GetNumGroupMembers and (GetNumGroupMembers() or 0) or 0
+  local num = self.GetGroupMemberCount and self:GetGroupMemberCount() or (GetNumGroupMembers and (GetNumGroupMembers() or 0) or 0)
   local promoted = 0
   local promotedNames = {}
   self._raidAssistLastPromoted = self._raidAssistLastPromoted or {}
@@ -101,6 +112,6 @@ function addon:ScheduleRaidAssist(delay, reason)
     addon._raidAssistPending = false
     if addon.ApplyRaidAssistNow then addon:ApplyRaidAssistNow(reason or "schedule") end
   end
-  if delay <= 0.01 then run() else C_Timer.After(delay, run) end
+  if delay <= 0.01 then run() elseif C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 

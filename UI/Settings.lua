@@ -180,7 +180,7 @@ local function showSavedHint(parent, anchorTo)
   hint:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 2, -4)
   hint:SetAlpha(1)
   parent._savedHint = hint
-  C_Timer.After(1.2, function() if hint then hint:Hide() end end)
+  if C_Timer and C_Timer.After then C_Timer.After(1.2, function() if hint then hint:Hide() end end) end
 end
 
 local function AddCheck(parent, anchor, label, key, onToggle)
@@ -487,7 +487,7 @@ local function CreateLanguageDropdown(parent, anchor)
         -- Full WoW UI reload is required because Blizzard Settings category
         -- labels and already-created controls do not rebuild reliably in-place.
         if ReloadUI then
-          C_Timer.After(0.05, function() ReloadUI() end)
+          if C_Timer and C_Timer.After then C_Timer.After(0.05, function() ReloadUI() end) else ReloadUI() end
         end
       end
       UIDropDownMenu_AddButton(info, level)
@@ -1024,12 +1024,13 @@ local function HandleSlash(msg)
     return
   end
   if not addon.settingsRoot then addon:InitSettingsPages() end
-  if Settings and addon.settingsRoot then
-    Settings.OpenToCategory(addon.settingsRoot.ID)
-  else
-    if not addon.configFrame then addon.configFrame = addon:CreateFallbackPanel() end
-    addon.configFrame:Show()
+  if Settings and addon.settingsRoot and Settings.OpenToCategory then
+    local id = addon.settingsRoot.ID or (addon.settingsRoot.GetID and addon.settingsRoot:GetID()) or addon.settingsRoot
+    local ok = pcall(Settings.OpenToCategory, id)
+    if ok then return end
   end
+  if not addon.configFrame then addon.configFrame = addon:CreateFallbackPanel() end
+  addon.configFrame:Show()
 end
 SlashCmdList.GROUPGUARDLFG = HandleSlash
 
@@ -1054,7 +1055,7 @@ SlashCmdList.GROUPGUARDLFGLANG = function(msg)
 
   if addon.SetUILanguage then addon:SetUILanguage(lang) end
   print((addon.printPrefix or "GroupGuard LFG:"), "Language set to:", lang, "Reloading UI...")
-  if ReloadUI then C_Timer.After(0.05, function() ReloadUI() end) end
+  if ReloadUI then if C_Timer and C_Timer.After then C_Timer.After(0.05, function() ReloadUI() end) else ReloadUI() end end
 end
 
 
@@ -1177,10 +1178,12 @@ SlashCmdList.GROUPGUARDLFGDEBUG = function()
   end
 
   if C_LFGList and C_LFGList.GetApplicants then
-    local apps = C_LFGList.GetApplicants() or {}
+    local okApps, apps = pcall(C_LFGList.GetApplicants)
+    apps = okApps and apps or {}
     print("C_LFGList.GetApplicants():", #apps)
-    if apps[1] then
-      local info = C_LFGList.GetApplicantInfo(apps[1])
+    if apps[1] and C_LFGList.GetApplicantInfo then
+      local okInfo, info = pcall(C_LFGList.GetApplicantInfo, apps[1])
+      info = okInfo and info or nil
       print("First applicantID:", apps[1], "numMembers:", info and info.numMembers)
     end
   end

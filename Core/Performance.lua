@@ -13,6 +13,11 @@ function addon:RunDebounced(key, delay, callback)
     old:Cancel()
   end
 
+  if not (C_Timer and C_Timer.NewTimer) then
+    callback()
+    return
+  end
+
   self._debounceTimers[key] = C_Timer.NewTimer(delay, function()
     addon._debounceTimers[key] = nil
     callback()
@@ -45,7 +50,7 @@ function addon:EnterStartupQuiet(seconds, reason)
 
   -- After quiet mode ends, run a visible refresh.
   -- This prevents alerts from being permanently swallowed after /reload.
-  if C_Timer then
+  if C_Timer and C_Timer.After then
     local token = (self._startupQuietToken or 0) + 1
     self._startupQuietToken = token
     C_Timer.After(seconds + 0.08, function()

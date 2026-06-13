@@ -269,9 +269,10 @@ function addon:ScheduleFrameMarkerUpdate(delay)
   end
   if self._frameMarkerUpdatePending then return end
   self._frameMarkerUpdatePending = true
-  C_Timer.After(delay, function()
+  local function run()
     addon._frameMarkerUpdatePending = nil
     if addon.UpdateFrameMarkers then addon:UpdateFrameMarkers() end
-  end)
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 

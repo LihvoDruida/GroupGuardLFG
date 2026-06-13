@@ -47,13 +47,12 @@ function addon:LFG_CanManageApplicants()
   if self.IsDisabledNow and self:IsDisabledNow() then return false end
   if not self:LFG_HasActiveListing() then return false end
 
-  local inGroup = (IsInGroup and IsInGroup()) or (IsInRaid and IsInRaid())
+  local inGroup = false
+  if IsInGroup then local ok, v = pcall(IsInGroup); inGroup = ok and v and true or false end
+  if not inGroup and IsInRaid then local ok, v = pcall(IsInRaid); inGroup = ok and v and true or false end
   if not inGroup then return true end
-  if UnitIsGroupLeader and UnitIsGroupLeader("player") then return true end
-  if IsInRaid and IsInRaid() then
-    if UnitIsGroupAssistant and UnitIsGroupAssistant("player") then return true end
-    if UnitIsRaidOfficer and UnitIsRaidOfficer("player") then return true end
-  end
+
+  if self.PlayerCanManageGroup then return self:PlayerCanManageGroup() end
   return false
 end
 
@@ -384,10 +383,11 @@ function addon:LFG_DebouncedHighlight(delay)
 
   if addon._lfgDebounceTimer then return end
   addon._lfgDebounceTimer = true
-  C_Timer.After(delay, function()
+  local function run()
     addon._lfgDebounceTimer = nil
     addon:LFG_HighlightRows()
-  end)
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 
 function addon:LFG_HighlightRows()
@@ -442,10 +442,11 @@ function addon:LFG_DebouncedHighlightResults(delay)
 
   if addon._lfgResultDebounce then return end
   addon._lfgResultDebounce = true
-  C_Timer.After(delay, function()
+  local function run()
     addon._lfgResultDebounce = nil
     addon:LFG_RetryHighlightSearchResults()
-  end)
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 
 function addon:EvaluateSearchResultFlag(resultID)
@@ -782,6 +783,11 @@ function addon:LFG_RetryHighlightSearchResults(force)
   self._lfgResultSocialReasons = {}
 
   local delays = { 0.03, 0.18, 0.55, 1.10 }
+  if not (C_Timer and C_Timer.After) then
+    addon:LFG_HighlightSearchResults()
+    addon._lfgResultRetryScheduled = false
+    return
+  end
   for index, delay in ipairs(delays) do
     C_Timer.After(delay, function()
       if addon._lfgResultRetryToken ~= token then return end
@@ -985,9 +991,10 @@ function addon:LFG_DeclineApplicants(appIDs, source)
   if delayStep < 0.03 then delayStep = 0.03 end
   if delayStep > 1.0 then delayStep = 1.0 end
 
+  local scheduled = 0
   local declined = 0
-  local details = {}
   local failed = 0
+  local details = {}
 
   local function noteReason(id)
     local reasons = self._lfgFlagReasons and self._lfgFlagReasons[id]
@@ -999,6 +1006,9 @@ function addon:LFG_DeclineApplicants(appIDs, source)
   local function markLocal(id, kind)
     sourceCache[id] = true
     self._lfgDeclineInFlight[id] = kind or source
+  end
+
+  local function clearFlagged(id)
     if self._lfgFlagged then self._lfgFlagged[id] = nil end
   end
 
@@ -1008,8 +1018,7 @@ function addon:LFG_DeclineApplicants(appIDs, source)
   end
 
   if source == "manual" then
-    -- Manual decline must run directly from the hardware click.
-    -- Doing it inside C_Timer can cause Blizzard "Interface action failed because of an AddOn".
+    -- Manual decline must run directly from the user's click.
     for i = 1, maxCount do
       local id = appIDs[i]
       if id and not sourceCache[id] and not self._lfgDeclineInFlight[id] then
@@ -1018,6 +1027,7 @@ function addon:LFG_DeclineApplicants(appIDs, source)
         if ok then
           declined = declined + 1
           markLocal(id, "manual")
+          clearFlagged(id)
         else
           failed = failed + 1
         end
@@ -1027,9 +1037,10 @@ function addon:LFG_DeclineApplicants(appIDs, source)
     self._lfgDeclineInFlight = {}
     if self.LFG_UpdateButton then self:LFG_UpdateButton() end
     if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(0) end
-    C_Timer.After(0.05, function()
+    local function rescan()
       if addon and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
-    end)
+    end
+    if C_Timer and C_Timer.After then C_Timer.After(0.05, rescan) else rescan() end
 
     if declined > 0 or failed > 0 then
       if failed > 0 then
@@ -1046,52 +1057,55 @@ function addon:LFG_DeclineApplicants(appIDs, source)
     self:BeginActionSequence("lfg_auto_decline", delayStep * maxCount + 0.8)
   end
 
-  for i = 1, maxCount do
-    local id = appIDs[i]
-    if id and not sourceCache[id] and not self._lfgDeclineInFlight[id] then
-      markLocal(id, "auto")
-      declined = declined + 1
-      noteReason(id)
+  local function finishAuto()
+    if addon then
+      addon._lfgDeclineInFlight = {}
+      addon._lfgAutoDeclineRunning = false
+    end
+    if addon and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
+    if addon and addon.EndActionSequence then addon:EndActionSequence("lfg_auto_decline") end
 
-      C_Timer.After(delayStep * (declined - 1), function()
-        if not addon or not C_LFGList or not C_LFGList.DeclineApplicant then return end
-        if not (addon.db and addon.db.lfg_auto_decline) then
-          unmarkLocal(id)
-          return
-        end
-        if addon.LFG_CanManageApplicants and not addon:LFG_CanManageApplicants() then
-          unmarkLocal(id)
-          return
-        end
-
-        local ok = pcall(C_LFGList.DeclineApplicant, id)
-        if not ok then
-          unmarkLocal(id)
-        end
-      end)
+    if declined > 0 then
+      local detailText = table.concat(details, " • ")
+      if detailText == "" then detailText = addon:Tr("LFG_MARKED_RULES") end
+      if addon.NotifyLFGAutoDeclined then addon:NotifyLFGAutoDeclined(declined, detailText) end
+    elseif failed > 0 then
+      print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("LFG_DECLINE_SUMMARY", 0, failed))
     end
   end
 
-  if declined > 0 then
+  for i = 1, maxCount do
+    local id = appIDs[i]
+    if id and not sourceCache[id] and not self._lfgDeclineInFlight[id] then
+      scheduled = scheduled + 1
+      markLocal(id, "auto")
+      noteReason(id)
+      local function attempt()
+        if not addon or not C_LFGList or not C_LFGList.DeclineApplicant then unmarkLocal(id); failed = failed + 1; return end
+        if not (addon.db and addon.db.lfg_auto_decline) then unmarkLocal(id); return end
+        if addon.LFG_CanManageApplicants and not addon:LFG_CanManageApplicants() then unmarkLocal(id); failed = failed + 1; return end
+        local ok = pcall(C_LFGList.DeclineApplicant, id)
+        if ok then
+          declined = declined + 1
+          clearFlagged(id)
+        else
+          failed = failed + 1
+          unmarkLocal(id)
+        end
+      end
+      if C_Timer and C_Timer.After then C_Timer.After(delayStep * (scheduled - 1), attempt) else attempt() end
+    end
+  end
+
+  if scheduled > 0 then
     if self.LFG_UpdateButton then self:LFG_UpdateButton() end
     if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(0) end
-    C_Timer.After(delayStep * declined + 0.18, function()
-      if addon then
-        addon._lfgDeclineInFlight = {}
-        addon._lfgAutoDeclineRunning = false
-      end
-      if addon and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
-      if addon and addon.EndActionSequence then addon:EndActionSequence("lfg_auto_decline") end
-    end)
-
-    local detailText = table.concat(details, " • ")
-    if detailText == "" then detailText = addon:Tr("LFG_MARKED_RULES") end
-    if self.NotifyLFGAutoDeclined then self:NotifyLFGAutoDeclined(declined, detailText) end
+    if C_Timer and C_Timer.After then C_Timer.After(delayStep * scheduled + 0.18, finishAuto) else finishAuto() end
   else
     self._lfgAutoDeclineRunning = false
     if self.EndActionSequence then self:EndActionSequence("lfg_auto_decline") end
   end
-  return declined
+  return scheduled
 end
 
 function addon:LFG_DeclineFlagged(source)

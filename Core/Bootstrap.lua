@@ -33,6 +33,57 @@ local IsInInstance = IsInInstance
 local MEDIA_DIR = "Interface\\AddOns\\GroupGuardLFG\\Media\\"
 local WARN_SOUND = MEDIA_DIR .. "warn.ogg"
 
+function addon:SafeGetTime()
+  return (GetTime and GetTime()) or 0
+end
+
+function addon:CanAccessValue(value)
+  if value == nil then return false end
+  if type(canaccessvalue) == "function" then
+    local ok, allowed = pcall(canaccessvalue, value)
+    if not ok or not allowed then return false end
+  end
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if ok and secret then return false end
+  end
+  return true
+end
+
+function addon:CallAPI(fn, ...)
+  if type(fn) ~= "function" then return false end
+  return pcall(fn, ...)
+end
+
+function addon:PlayerCanManageGroup()
+  if UnitIsGroupLeader then
+    local ok, leader = pcall(UnitIsGroupLeader, "player")
+    if ok and leader then return true end
+  end
+
+  if IsInRaid then
+    local okRaid, inRaid = pcall(IsInRaid)
+    if okRaid and inRaid then
+      if UnitIsGroupAssistant then
+        local ok, assistant = pcall(UnitIsGroupAssistant, "player")
+        if ok and assistant then return true end
+      end
+      if UnitIsRaidOfficer then
+        local ok, officer = pcall(UnitIsRaidOfficer, "player")
+        if ok and officer then return true end
+      end
+    end
+  end
+
+  return false
+end
+
+function addon:GetGroupMemberCount()
+  if not GetNumGroupMembers then return 0 end
+  local ok, count = pcall(GetNumGroupMembers)
+  return ok and tonumber(count) or 0
+end
+
 function addon:IsExemptUnit(name, realm, guild_name)
   return false
 end

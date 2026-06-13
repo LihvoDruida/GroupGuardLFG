@@ -89,7 +89,9 @@ function addon:RebuildGuildCache(force)
   local rankNameCache = {}
   local rankNameByIndex = {}
 
-  if IsInGuild and IsInGuild() and GuildRoster then
+  local inGuild = false
+  if IsInGuild then local okGuild, value = pcall(IsInGuild); inGuild = okGuild and value and true or false end
+  if inGuild and GuildRoster then
     pcall(GuildRoster)
   end
 
@@ -178,7 +180,9 @@ function addon:SetRaidAssistRankSelected(rankIndex, selected)
 end
 
 function addon:GetGuildRankOptions()
-  if IsInGuild and IsInGuild() and GuildRoster then pcall(GuildRoster) end
+  local inGuild = false
+  if IsInGuild then local okGuild, value = pcall(IsInGuild); inGuild = okGuild and value and true or false end
+  if inGuild and GuildRoster then pcall(GuildRoster) end
   if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
   local byIndex = {}

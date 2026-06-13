@@ -10,11 +10,13 @@ addon._instanceLockoutUntil = 0
 
 function addon:EnterInstanceLockout(seconds)
   seconds = tonumber(seconds) or 1.5
-  self._instanceLockoutUntil = GetTime() + seconds
+  local now = self.SafeGetTime and self:SafeGetTime() or ((GetTime and GetTime()) or 0)
+  self._instanceLockoutUntil = now + seconds
 end
 
 function addon:IsInInstanceLockout()
-  return (self._instanceLockoutUntil or 0) > (GetTime() or 0)
+  local now = self.SafeGetTime and self:SafeGetTime() or ((GetTime and GetTime()) or 0)
+  return (self._instanceLockoutUntil or 0) > now
 end
 
 function addon:IsDisabledNow()
@@ -23,7 +25,11 @@ function addon:IsDisabledNow()
 end
 
 function addon:DetectInstanceFlags()
-  local inInst, instType = IsInInstance()
+  local inInst, instType = false, nil
+  if IsInInstance then
+    local ok, inside, kind = pcall(IsInInstance)
+    if ok then inInst, instType = inside and true or false, kind end
+  end
 
   local isBG, isArena = false, false
 
@@ -32,9 +38,13 @@ function addon:DetectInstanceFlags()
   if instType == "arena" then isArena = true end
 
   -- Secondary: GetInstanceInfo
-  local _, instanceType = GetInstanceInfo()
-  if instanceType == "pvp" then isBG = true end
-  if instanceType == "arena" then isArena = true end
+  if GetInstanceInfo then
+    local okInfo, _, instanceType = pcall(GetInstanceInfo)
+    if okInfo then
+      if instanceType == "pvp" then isBG = true end
+      if instanceType == "arena" then isArena = true end
+    end
+  end
 
   -- Bonus: C_PvP
   if C_PvP then

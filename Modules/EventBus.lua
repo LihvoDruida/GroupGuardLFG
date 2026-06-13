@@ -5,32 +5,54 @@ local eventFrame = CreateFrame("Frame")
 local wasInGroup = false
 local C_Timer = C_Timer
 
-eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-eventFrame:RegisterEvent("GROUP_JOINED")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-eventFrame:RegisterEvent("LFG_LIST_APPLICANT_LIST_UPDATED")
-eventFrame:RegisterEvent("LFG_LIST_APPLICANT_UPDATED")
-eventFrame:RegisterEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE")
-eventFrame:RegisterEvent("UNIT_NAME_UPDATE")
-eventFrame:RegisterEvent("UNIT_CONNECTION")
-eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
-pcall(eventFrame.RegisterEvent, eventFrame, "GUILD_RANKS_UPDATE")
-pcall(eventFrame.RegisterEvent, eventFrame, "FRIENDLIST_UPDATE")
-pcall(eventFrame.RegisterEvent, eventFrame, "BN_FRIEND_ACCOUNT_ONLINE")
-pcall(eventFrame.RegisterEvent, eventFrame, "BN_FRIEND_ACCOUNT_OFFLINE")
-pcall(eventFrame.RegisterEvent, eventFrame, "BN_FRIEND_INFO_CHANGED")
-pcall(eventFrame.RegisterEvent, eventFrame, "BN_CONNECTED")
-pcall(eventFrame.RegisterEvent, eventFrame, "PLAYER_GUILD_UPDATE")
-pcall(eventFrame.RegisterEvent, eventFrame, "RAID_ROSTER_UPDATE")
-pcall(eventFrame.RegisterEvent, eventFrame, "PARTY_LEADER_CHANGED")
-pcall(eventFrame.RegisterEvent, eventFrame, "PLAYER_FLAGS_CHANGED")
-pcall(eventFrame.RegisterEvent, eventFrame, "LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS")
-pcall(eventFrame.RegisterEvent, eventFrame, "LFG_LIST_ENTRY_EXPIRED_TIMEOUT")
-pcall(eventFrame.RegisterEvent, eventFrame, "LFG_LIST_SEARCH_RESULTS_RECEIVED")
-pcall(eventFrame.RegisterEvent, eventFrame, "LFG_LIST_SEARCH_RESULT_UPDATED")
+local function SafeRegisterEvent(event)
+  if eventFrame and eventFrame.RegisterEvent then
+    pcall(eventFrame.RegisterEvent, eventFrame, event)
+  end
+end
+
+local function SafeIsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+
+local function SafeIsInGroup()
+  if not IsInGroup then return false end
+  local ok, value = pcall(IsInGroup)
+  return ok and value and true or false
+end
+
+local function SafeInGroupOrRaid()
+  return SafeIsInGroup() or SafeIsInRaid()
+end
+
+SafeRegisterEvent("ADDON_LOADED")
+SafeRegisterEvent("GROUP_ROSTER_UPDATE")
+SafeRegisterEvent("GROUP_JOINED")
+SafeRegisterEvent("PLAYER_ENTERING_WORLD")
+SafeRegisterEvent("PLAYER_REGEN_ENABLED")
+SafeRegisterEvent("LFG_LIST_APPLICANT_LIST_UPDATED")
+SafeRegisterEvent("LFG_LIST_APPLICANT_UPDATED")
+SafeRegisterEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE")
+SafeRegisterEvent("UNIT_NAME_UPDATE")
+SafeRegisterEvent("UNIT_CONNECTION")
+SafeRegisterEvent("ZONE_CHANGED_NEW_AREA")
+SafeRegisterEvent("GUILD_ROSTER_UPDATE")
+SafeRegisterEvent("GUILD_RANKS_UPDATE")
+SafeRegisterEvent("FRIENDLIST_UPDATE")
+SafeRegisterEvent("BN_FRIEND_ACCOUNT_ONLINE")
+SafeRegisterEvent("BN_FRIEND_ACCOUNT_OFFLINE")
+SafeRegisterEvent("BN_FRIEND_INFO_CHANGED")
+SafeRegisterEvent("BN_CONNECTED")
+SafeRegisterEvent("PLAYER_GUILD_UPDATE")
+SafeRegisterEvent("RAID_ROSTER_UPDATE")
+SafeRegisterEvent("PARTY_LEADER_CHANGED")
+SafeRegisterEvent("PLAYER_FLAGS_CHANGED")
+SafeRegisterEvent("LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS")
+SafeRegisterEvent("LFG_LIST_ENTRY_EXPIRED_TIMEOUT")
+SafeRegisterEvent("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+SafeRegisterEvent("LFG_LIST_SEARCH_RESULT_UPDATED")
 
 
 -- Group state evaluation / event scheduler
@@ -59,7 +81,7 @@ local function EvaluateGroupState()
     return
   end
 
-  if not (IsInGroup() or IsInRaid()) then
+  if not SafeInGroupOrRaid() then
     CleanupRuntimeState()
     if addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
     return
@@ -105,7 +127,7 @@ function addon:RequestGroupRefresh(delay)
   if self.RunDebounced then
     return self:RunDebounced("group_refresh", delay, run)
   end
-  C_Timer.After(delay, run)
+  if C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 
 function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
@@ -157,7 +179,7 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
   if self.RunDebounced then
     return self:RunDebounced("lfg_refresh", delay, run)
   end
-  C_Timer.After(delay, run)
+  if C_Timer and C_Timer.After then C_Timer.After(delay, run) else run() end
 end
 
 
@@ -196,7 +218,7 @@ local function OnEvent(self, event, arg1, ...)
       if not addon.configFrame then addon:InitSettingsPages() end
       if Settings and addon.settingsRoot then addon.settingsCategory = addon.settingsRoot end
       addon:CreateKickButton()
-      wasInGroup = IsInGroup() or IsInRaid()
+      wasInGroup = SafeInGroupOrRaid()
       addon:RequestGroupRefresh(0)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
       addon:RequestLFGRefresh(0, true, true)
@@ -216,18 +238,19 @@ local function OnEvent(self, event, arg1, ...)
     if addon.EnterInstanceLockout then addon:EnterInstanceLockout(1.5) end
     if addon.EnterStartupQuiet then addon:EnterStartupQuiet(addon.db and addon.db.startup_silent_seconds or 3.0, event) end
     addon:RebuildCaches()
-    wasInGroup = IsInGroup() or IsInRaid()
+    wasInGroup = SafeInGroupOrRaid()
     -- Immediate UI refresh, plus a delayed pass after Blizzard finishes rebuilding frames.
     addon:RequestGroupRefresh(0)
     if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
     addon:RequestLFGRefresh(0, true, true)
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, event) end
-    C_Timer.After(1.75, function()
+    local function delayedWorldRefresh()
       addon:RequestGroupRefresh(0)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
       addon:RequestLFGRefresh(0, false, true)
       if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0, "delayed_world") end
-    end)
+    end
+    if C_Timer and C_Timer.After then C_Timer.After(1.75, delayedWorldRefresh) else delayedWorldRefresh() end
     return
   end
 
@@ -237,7 +260,7 @@ local function OnEvent(self, event, arg1, ...)
   end
 
   if event == "GROUP_ROSTER_UPDATE" or event == "GROUP_JOINED" or event == "RAID_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" or event == "PLAYER_FLAGS_CHANGED" then
-    local inGroup = IsInGroup() or IsInRaid()
+    local inGroup = SafeInGroupOrRaid()
     if wasInGroup and not inGroup then
       CleanupRuntimeState()
       addon._alertedNames = {}

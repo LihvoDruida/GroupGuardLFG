@@ -27,15 +27,17 @@ function addon:PlayAlertSound()
 
   local played = false
   if self.db.sound_kit == "FILE" and self.db.sound_file and self.db.sound_file ~= "" then
-    local ok, willPlay = pcall(PlaySoundFile, self.db.sound_file, "Master")
-    played = ok and willPlay and true or false
+    if PlaySoundFile then
+      local ok, willPlay = pcall(PlaySoundFile, self.db.sound_file, "Master")
+      played = ok and willPlay and true or false
+    end
   end
 
   if not played then
     if SOUNDKIT and SOUNDKIT.RAID_WARNING then
-      PlaySound(SOUNDKIT.RAID_WARNING, "Master")
+      if PlaySound then PlaySound(SOUNDKIT.RAID_WARNING, "Master") end
     else
-      PlaySound(8959, "Master")
+      if PlaySound then PlaySound(8959, "Master") end
     end
   end
 end
@@ -118,18 +120,25 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
   end
 
   local hold = tonumber(self.db.banner_hold_time) or 10
-  if self.Banner.timer then self.Banner.timer:Cancel() end
-  self.Banner.timer = C_Timer.NewTimer(hold, function()
+  if self.Banner.timer and self.Banner.timer.Cancel then self.Banner.timer:Cancel() end
+  local function hideBanner()
     if addon.Banner then
       if UIFrameFadeOut then
         UIFrameFadeOut(addon.Banner, 0.16, addon.Banner:GetAlpha() or 1, 0)
-        C_Timer.After(0.18, function() if addon.Banner then addon.Banner:Hide(); addon.Banner:SetAlpha(1) end end)
+        local function finishHide()
+          if addon.Banner then addon.Banner:Hide(); addon.Banner:SetAlpha(1) end
+        end
+        if C_Timer and C_Timer.After then C_Timer.After(0.18, finishHide) else finishHide() end
       else
         addon.Banner:Hide()
       end
     end
-
-  end)
+  end
+  if C_Timer and C_Timer.NewTimer then
+    self.Banner.timer = C_Timer.NewTimer(hold, hideBanner)
+  else
+    self.Banner.timer = nil
+  end
 end
 
 function addon:UpdateBanner(primaryText, secondaryText, unusedOverlayText, kind, detailText)
@@ -208,7 +217,11 @@ function addon:FlashScreen()
   if UIFrameFadeOut then
     UIFrameFadeOut(self.Flash, 0.6, 0.35, 0)
   else
-    C_Timer.After(0.6, function() if addon.Flash then addon.Flash:Hide() end end)
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0.6, function() if addon.Flash then addon.Flash:Hide() end end)
+    elseif addon.Flash then
+      addon.Flash:Hide()
+    end
   end
 end
 
@@ -219,24 +232,39 @@ function addon:TestAlert()
   self:ShowBanner(self:Tr("TEST_ALERT_TITLE"), "GroupGuard LFG", false, "TEST", self:Tr("TEST_ALERT_DETAIL"))
 end
 
+local function SafeIsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+
+local function SafeIsInGroup()
+  if not IsInGroup then return false end
+  local ok, value = pcall(IsInGroup)
+  return ok and value and true or false
+end
+
 function addon:GetLeaveActionLabel()
-  if IsInRaid and IsInRaid() then return self:Tr("LEAVE_RAID_BUTTON") end
-  if IsInGroup and IsInGroup() then return self:Tr("LEAVE_PARTY_BUTTON") end
+  if SafeIsInRaid() then return self:Tr("LEAVE_RAID_BUTTON") end
+  if SafeIsInGroup() then return self:Tr("LEAVE_PARTY_BUTTON") end
   return self:Tr("LEAVE_GROUP_BUTTON")
 end
 
 function addon:GetLeaveConfirmText()
-  if IsInRaid and IsInRaid() then return self:Tr("CONFIRM_LEAVE_RAID") end
-  if IsInGroup and IsInGroup() then return self:Tr("CONFIRM_LEAVE_PARTY") end
+  if SafeIsInRaid() then return self:Tr("CONFIRM_LEAVE_RAID") end
+  if SafeIsInGroup() then return self:Tr("CONFIRM_LEAVE_PARTY") end
   return self:Tr("CONFIRM_LEAVE")
 end
 
 function addon:ConfirmAndLeave()
   if self:IsDisabledNow() then return end
-  if not (C_PartyInfo and C_PartyInfo.LeaveParty) then return end
 
   local function leaveNow()
-    C_PartyInfo.LeaveParty()
+    if C_PartyInfo and C_PartyInfo.LeaveParty then
+      C_PartyInfo.LeaveParty()
+    elseif LeaveParty then
+      LeaveParty()
+    end
   end
 
   if self.db and self.db.confirm_leave then

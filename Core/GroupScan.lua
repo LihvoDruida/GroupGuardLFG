@@ -1,9 +1,28 @@
 -- GroupGuard LFG — Core / Group Scan
 local addonName, addon = ...
 
+local function SafeIsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+
+local function SafeIsInGroup()
+  if not IsInGroup then return false end
+  local ok, value = pcall(IsInGroup)
+  return ok and value and true or false
+end
+
+local function SafeGroupCount()
+  if addon and addon.GetGroupMemberCount then return addon:GetGroupMemberCount() end
+  if not GetNumGroupMembers then return 0 end
+  local ok, value = pcall(GetNumGroupMembers)
+  return ok and tonumber(value) or 0
+end
+
 function addon:ShouldShowAlertsNow()
   if self:IsDisabledNow() then return false end
-  if not (IsInGroup() or IsInRaid()) then return false end
+  if not (SafeIsInGroup() or SafeIsInRaid()) then return false end
   return true
 end
 
@@ -40,16 +59,16 @@ function addon:CheckGroup()
     return false
   end
 
-  if IsInRaid() then
+  if SafeIsInRaid() then
     if not (self.db and self.db.show_in_raid) then return false end
-  elseif IsInGroup() then
+  elseif SafeIsInGroup() then
     if not (self.db and self.db.show_in_party) then return false end
   else
     return false
   end
 
-  local unitPrefix = IsInRaid() and "raid" or "party"
-  local num = GetNumGroupMembers() or 0
+  local unitPrefix = SafeIsInRaid() and "raid" or "party"
+  local num = SafeGroupCount()
   local sawNil = false
 
   for i = 1, num do
