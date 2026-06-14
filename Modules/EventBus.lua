@@ -160,6 +160,7 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
     if addon.LFG_HookViewer then addon:LFG_HookViewer() end
     if addon.LFG_HookSearchPanel then addon:LFG_HookSearchPanel() end
     if addon.InitPGFIntegration then addon:InitPGFIntegration() end
+    if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
 
     if addon._lfgRefreshApplicants and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
     if addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
@@ -222,8 +223,10 @@ local function OnEvent(self, event, arg1, ...)
       addon:RequestGroupRefresh(0)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
       addon:RequestLFGRefresh(0, true, true)
+      if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
       if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, "addon_loaded") end
     elseif arg1 == "Blizzard_LookingForGroupUI" then
+      if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
       addon:RequestLFGRefresh(0, true, true)
     elseif arg1 == "PremadeGroupsFilter" then
       if addon.InitPGFIntegration then addon:InitPGFIntegration() end

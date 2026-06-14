@@ -130,6 +130,8 @@ addon.DEFAULTS = {
   lfg_auto_decline_delay = 0.12,
   lfg_tooltips = true,
   lfg_tooltip_reasons = true,
+  lfg_tooltip_details = true,
+  lfg_mute_applicant_ping = true,
   pgf_integration = true,
   alert_sound_cooldown = 10,
   alert_flash_cooldown = 10,
@@ -237,6 +239,15 @@ addon.L10N = {
     LFG_DECLINE_SUMMARY = "LFG decline: %d declined, %d failed.",
     LFG_DECLINE_DONE = "LFG applications declined.",
     LFG_DECLINE_PARTIAL = "Some LFG applications could not be declined.",
+    LFG_INSIGHTS_TITLE = "GroupGuard LFG insights",
+    LFG_INSIGHTS_CREATED = "Created: %s ago",
+    LFG_INSIGHTS_COMP = "Composition: T %d / H %d / DPS %d",
+    LFG_INSIGHTS_MEMBERS = "Members: %d",
+    LFG_INSIGHTS_SOCIAL = "Social: BNet %d / Friends %d / Guild %d",
+    LFG_INSIGHTS_CLASSES = "Classes",
+    LFG_INSIGHTS_SHIFT = "Hold Shift for class breakdown",
+    LFG_STATS_FMT = "Visible LFG rows: %d, marked: %d, friends: %d, guild: %d",
+    LFG_STATS_NO_RESULTS = "No visible LFG search rows found.",
   },
   ukUA = {
     UI_LANG_AUTO = "Мова клієнта гри",
@@ -320,6 +331,15 @@ addon.L10N = {
     LFG_DECLINE_SUMMARY = "LFG-відхилення: %d відхилено, %d помилок.",
     LFG_DECLINE_DONE = "LFG-заявки відхилено.",
     LFG_DECLINE_PARTIAL = "Частину LFG-заявок не вдалося відхилити.",
+    LFG_INSIGHTS_TITLE = "GroupGuard LFG інсайти",
+    LFG_INSIGHTS_CREATED = "Створено: %s тому",
+    LFG_INSIGHTS_COMP = "Склад: T %d / H %d / DPS %d",
+    LFG_INSIGHTS_MEMBERS = "Учасників: %d",
+    LFG_INSIGHTS_SOCIAL = "Соціальне: BNet %d / друзі %d / гільдія %d",
+    LFG_INSIGHTS_CLASSES = "Класи",
+    LFG_INSIGHTS_SHIFT = "Утримуй Shift для розбивки класів",
+    LFG_STATS_FMT = "Видимі LFG-рядки: %d, позначено: %d, друзі: %d, гільдія: %d",
+    LFG_STATS_NO_RESULTS = "Видимих LFG-рядків пошуку не знайдено.",
   },
 }
 
@@ -402,6 +422,8 @@ function addon:EnsureDB()
   if self.db.raid_assist_notify == nil then self.db.raid_assist_notify = true end
   if self.db.scan_debounce == nil or self.db.scan_debounce == 0.18 then self.db.scan_debounce = 0.03 end
   if self.db.lfg_debounce == nil or self.db.lfg_debounce == 0.08 then self.db.lfg_debounce = 0.02 end
+  if self.db.lfg_tooltip_details == nil then self.db.lfg_tooltip_details = true end
+  if self.db.lfg_mute_applicant_ping == nil then self.db.lfg_mute_applicant_ping = true end
   if self.db.lfg_button_text == "Decline LFG applications (%d)" or self.db.lfg_button_text == "Відхилити позначені (%d)" or self.db.lfg_button_text == "Відхилити LFG-заявки (%d)" then self.db.lfg_button_text = self:DefaultLFGButtonText() end
   self:RebuildCaches()
 end

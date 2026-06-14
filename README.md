@@ -10,6 +10,7 @@ The addon does not identify nationality, ethnicity, origin, religion, or any per
 
 * Scan party and raid members using configurable rules.
 * Scan LFG applications and LFG search results.
+* Add lightweight LFG tooltip insights: listing age, role composition, social counters, and Shift class breakdown.
 * Manually or automatically decline marked LFG applications.
 * Show a button to remove marked players from party/raid when you have permission.
 * Centered visual marker on party/raid unit frames.
@@ -19,6 +20,7 @@ The addon does not identify nationality, ethnicity, origin, religion, or any per
 * Raid PUG detector: lists raid members who are not guild members and not direct friends.
 * Friend and guild-member handling for trusted/social LFG entries.
 * Safe compatibility with Premade Groups Filter.
+* Optional duplicate applicant-ping mute while auto-decline is processing.
 * Interface language selector:
 
   * Game client language
@@ -149,6 +151,12 @@ Show current addon state.
 
 Show technical LFG debug information.
 
+```text
+/gglfgstats
+```
+
+Print a quick summary of visible LFG search rows: total, marked, friend, and guild entries.
+
 ---
 
 ## Settings
@@ -170,6 +178,8 @@ Show technical LFG debug information.
 * Configure delay between auto-decline actions.
 * Enable LFG highlighting.
 * Show the match reason in tooltips.
+* Show optional search tooltip details inspired by LFGInspect: created age, role composition, social counters, and Shift class breakdown.
+* Mute duplicate applicant ping while auto-decline is running.
 
 ### Raid Assist
 

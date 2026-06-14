@@ -53,6 +53,12 @@ local SETTINGS_UK = {
   ["Check LFG members against rules"] = "Перевіряти учасників LFG за правилами",
   ["Show GroupGuard tooltip in LFG"] = "Показувати GroupGuard tooltip у LFG",
   ["Show reason in tooltip"] = "Показувати причину в tooltip",
+  ["Show search result age, role composition and class breakdown in tooltip"] =
+    "Показувати в tooltip вік оголошення, склад ролей і розбивку класів",
+  ["Mute duplicate applicant ping while auto-decline is running"] =
+    "Приглушувати зайвий звук нової заявки під час авто-відхилення",
+  ["LFG tooltip insights are lightweight and do not replace Raider.IO, PGF or sorter addons. Hold Shift on a search result tooltip to show class breakdown."] =
+    "LFG-інсайти легкі й не замінюють Raider.IO, PGF або сортери. Утримуй Shift на tooltip результату пошуку, щоб побачити розбивку класів.",
   ["Friends / guild in LFG"] = "Друзі / гільдія у LFG",
   ["Ignore friends even if they match filters"] = "Не реагувати на друзів, навіть якщо вони підпадають під фільтр",
   ["Ignore your guild members even if they match filters"] =
@@ -742,8 +748,12 @@ function addon:InitSettingsPages()
   local l5 = AddCheck(lfgChild, l4, "Check LFG members against rules", "lfg_highlight_search_members", function() SyncAll("lfg_members") end)
   local l6 = AddCheck(lfgChild, l5, "Show GroupGuard tooltip in LFG", "lfg_tooltips", function() SyncAll("lfg_tooltips") end)
   local l7 = AddCheck(lfgChild, l6, "Show reason in tooltip", "lfg_tooltip_reasons", function() SyncAll("lfg_tooltip_reasons") end)
+  local l7b = AddCheck(lfgChild, l7, "Show search result age, role composition and class breakdown in tooltip", "lfg_tooltip_details", function() SyncAll("lfg_tooltip_details") end)
+  local l7c = AddCheck(lfgChild, l7b, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
+  local lfgInsightNote = AddNote(lfgChild, l7c,
+    "LFG tooltip insights are lightweight and do not replace Raider.IO, PGF or sorter addons. Hold Shift on a search result tooltip to show class breakdown.")
 
-  local secSocial = AddSection(lfgChild, l7, "Friends / guild in LFG")
+  local secSocial = AddSection(lfgChild, lfgInsightNote, "Friends / guild in LFG")
   local l8 = AddCheck(lfgChild, secSocial, "Ignore friends even if they match filters", "social_ignore_friends", function() SyncAll("social_ignore_friends") end)
   local l9 = AddCheck(lfgChild, l8, "Ignore your guild members even if they match filters", "social_ignore_guild", function() SyncAll("social_ignore_guild") end)
   local l10 = AddCheck(lfgChild, l9, "Detect friends/guild in LFG and highlight them with different colors", "social_mark_lfg", function() SyncAll("social_mark_lfg") end)
