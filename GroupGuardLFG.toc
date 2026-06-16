@@ -1,11 +1,12 @@
 ## Interface: 120005
 ## Title: GroupGuard LFG
-## Notes: LFG guard release build: modular runtime, raid removal, LFG guard, realm/applicant insights, diagnostics, recycled-row UI fixes
+## Notes: LFG guard release build: enhanced applicant cards, diagnostics, safe LFG hooks, recycled-row UI fixes
 ## Author: LihvoDruida
-## Version: 4.2.1
+## Version: 4.2.2
 ## X-Codename: Release Candidate
-## OptionalDeps: PremadeGroupsFilter, Blizzard_LookingForGroupUI
+## OptionalDeps: PremadeGroupsFilter, Plumber, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
+## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg
 ## X-Curse-Project-ID: 1573624
 ## SavedVariables: GroupGuardLFGDB

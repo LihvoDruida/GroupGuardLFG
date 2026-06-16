@@ -12,7 +12,7 @@ The addon does not identify nationality, ethnicity, origin, religion, or any per
 * Scan LFG applications and LFG search results.
 * Add lightweight LFG tooltip insights: listing age, role composition, role-fit hints, social counters, realm-locale hints, and Shift class/spec breakdowns.
 * Manually or automatically decline marked LFG applications.
-* Show compact applicant chips with role composition, item level, M+ score and leaver warnings.
+* Show two-line applicant cards directly on applicant rows with member count, T/H/D composition, best/average ilvl, PvP ilvl, M+ score, level range, status, leaver warnings, names, specs and comments.
 * Show compact realm badges and technical realm-locale hints for LFG search rows.
 * Show a button to remove marked players from party/raid when you have permission.
 * Centered visual marker on party/raid unit frames.
@@ -21,7 +21,7 @@ The addon does not identify nationality, ethnicity, origin, religion, or any per
 * Automatic Raid Assist assignment for selected guild ranks or manually listed characters.
 * Raid PUG detector: lists raid members who are not guild members and not direct friends.
 * Friend and guild-member handling for trusted/social LFG entries.
-* Safe compatibility with Premade Groups Filter.
+* Safe compatibility with Premade Groups Filter and Plumber-style UI patterns: passive hooks only, no Blizzard UI replacement, no PGF/Plumber interception.
 * Optional duplicate applicant-ping mute while auto-decline is processing.
 * Interface language selector:
 
@@ -159,6 +159,18 @@ Show technical LFG debug information.
 
 Print a quick summary of visible LFG search rows: total, marked, friend, and guild entries.
 
+```text
+/ggapps
+```
+
+Print a summary of current Blizzard LFG applicants.
+
+```text
+/ggapps dump
+```
+
+Print what Blizzard's applicant API is currently returning: applicant IDs, status, comment, member count, member names, roles, specID, ilvl, PvP ilvl, M+ score, level and leaver state. Use this to distinguish a UI issue from missing API data.
+
 ---
 
 ## Settings
@@ -181,6 +193,8 @@ Print a quick summary of visible LFG search rows: total, marked, friend, and gui
 * Enable LFG highlighting.
 * Show the match reason in tooltips.
 * Show optional search tooltip details inspired by LFGInspect: created age, role composition, social counters, and Shift class breakdown.
+* Show two-line applicant cards on the real `LFGListApplicationViewer_UpdateApplicantMember` rows, using the applicantID/memberIdx Blizzard passes to the UI.
+* Use `/ggapps dump` to inspect the exact applicant data returned by the client.
 * Mute duplicate applicant ping while auto-decline is running.
 
 ### Raid Assist
@@ -286,14 +300,26 @@ This release integrates safe ideas from GroupfinderFlags, PGFinder and GroupFind
 
 * Realm hints are based on realm-list metadata and are shown only as technical UI hints. They are not nationality or personal-origin checks.
 * Role-fit hints show whether your current selected role appears to have open slots in a visible group.
-* Applicant chips summarize visible applications directly in the LFG application list.
+* Applicant cards summarize visible applications directly in the LFG application list.
 * `/ggapps` prints visible applicant statistics.
 * `/ggadvisor` prints role-fit statistics for visible LFG search results.
 
 ## 4.2.1 applicant data and recycled-row UI fixes
 
-* Applicant chips now read every safe Blizzard-provided member field available through `C_LFGList.GetApplicantMemberInfo`:
+* Applicant row summaries read safe Blizzard-provided member fields available through `C_LFGList.GetApplicantMemberInfo`:
   role composition, loaded member count, level range, item level best/average, PvP item level, M+ score, spec, class, relationship and leaver warning.
-* Applicant tooltips now show a per-member breakdown instead of only the top-line role/ilvl/score summary.
-* Recycled Blizzard LFG rows are now cleared on `OnShow`, `OnHide`, `SetElementData` and scroll updates, preventing stale GroupGuard chips, realm badges or highlights from appearing on the wrong applicant/search row.
+* Applicant tooltips show a per-member breakdown instead of only the top-line role/ilvl/score summary.
+* Recycled Blizzard LFG rows are cleared on `OnShow`, `OnHide`, `SetElementData` and scroll updates, preventing stale GroupGuard applicant cards, realm badges or highlights from appearing on the wrong applicant/search row.
 * Missing UI labels for the new LFG/realm/applicant settings were localized.
+
+
+---
+
+## 4.2.2 notes
+
+* Replaced the old tiny applicant chip with a visible two-line applicant card on the application/member row.
+* Fixed applicant data reads for both table-return and positional-return `C_LFGList.GetApplicantInfo()` / `GetApplicantMemberInfo()` shapes.
+* Added authoritative hooks to `LFGListApplicationViewer_UpdateApplicantMember(memberFrame, applicantID, memberIdx)` so cards bind to the real Blizzard applicant ID instead of guessing from recycled ScrollBox rows.
+* Added `/ggapps dump` diagnostics for current applicant API data.
+* Improved recycled-row protection: cards hide before ScrollBox refresh/update/full update, mouse wheel recycling, row OnShow/OnHide, and member-frame reuse.
+* Kept compatibility passive: no Blizzard UI replacement, no PGF override, no Plumber interception.
