@@ -45,7 +45,7 @@ local function CanReadValue(value)
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if ok and secret then return false end
+    if not ok or secret then return false end
   end
   return true
 end
@@ -147,8 +147,8 @@ end
 
 local function GetSearchResultLeaderRealm(resultID)
   if not (C_LFGList and C_LFGList.GetSearchResultInfo and resultID) then return nil end
-  local ok, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
-  if not ok or type(info) ~= "table" then return nil end
+  local info = addon and addon.LFG_API_GetSearchResultInfo and addon:LFG_API_GetSearchResultInfo(resultID) or nil
+  if type(info) ~= "table" then return nil end
   local leaderName = SafeText(info.leaderName)
   local _, realm = SplitNameRealm(leaderName)
   return realm, leaderName
@@ -156,10 +156,15 @@ end
 
 local function GetResultIDFromRow(frame)
   if not frame then return nil end
-  if frame.GetElementData then
-    local ed = frame:GetElementData()
+  if addon and addon.SafeGetElementData then
+    local ed = addon:SafeGetElementData(frame)
     if type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.id or ed.ID
+      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
+    end
+  elseif frame.GetElementData then
+    local ok, ed = pcall(frame.GetElementData, frame)
+    if ok and type(ed) == "table" then
+      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
     end
   end
   return frame.resultID or frame.resultId or frame.id or frame.ID

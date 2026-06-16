@@ -16,7 +16,7 @@ local function CanReadValue(value)
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if ok and secret then return false end
+    if not ok or secret then return false end
   end
   return true
 end
@@ -46,10 +46,24 @@ end
 
 local function GetCurrentGroupRoleNeeds()
   local needs = { TANK = 0, HEALER = 0, DAMAGER = 0 }
-  if not IsInGroup or not IsInGroup() then return needs end
-  local count = (GetNumGroupMembers and GetNumGroupMembers()) or 0
+  local inGroup = false
+  if IsInGroup then
+    local ok, value = pcall(IsInGroup)
+    inGroup = ok and value and true or false
+  end
+  if not inGroup then return needs end
+  local count = 0
+  if GetNumGroupMembers then
+    local ok, value = pcall(GetNumGroupMembers)
+    count = ok and tonumber(value) or 0
+  end
+  local inRaid = false
+  if IsInRaid then
+    local ok, value = pcall(IsInRaid)
+    inRaid = ok and value and true or false
+  end
   for i = 1, count do
-    local unit = (IsInRaid and IsInRaid()) and ("raid" .. i) or ("party" .. i)
+    local unit = inRaid and ("raid" .. i) or ("party" .. i)
     if UnitExists and UnitExists(unit) and UnitGroupRolesAssigned then
       local ok, role = pcall(UnitGroupRolesAssigned, unit)
       if ok and needs[role] ~= nil then needs[role] = needs[role] + 1 end
@@ -106,7 +120,15 @@ function addon:LFG_PrintAdvisorStats()
   local sb = sp and sp.ScrollBox
   local frames = nil
   if sb then
-    if sb.GetFrames then frames = sb:GetFrames() elseif sb.EnumerateFrames then frames = {}; for f in sb:EnumerateFrames() do frames[#frames+1] = f end end
+    if addon and addon.SafeEnumerateScrollBoxFrames then
+      frames = addon:SafeEnumerateScrollBoxFrames(sb)
+    elseif sb.GetFrames then
+      local okFrames, got = pcall(sb.GetFrames, sb)
+      frames = okFrames and got or nil
+    elseif sb.EnumerateFrames then
+      frames = {}
+      pcall(function() for f in sb:EnumerateFrames() do frames[#frames+1] = f end end)
+    end
   end
   if not frames then
     print((self.printPrefix or "GroupGuard LFG:"), self:Tr("LFG_STATS_NO_RESULTS"))
@@ -115,9 +137,12 @@ function addon:LFG_PrintAdvisorStats()
   local total, fit, full = 0, 0, 0
   for _, row in ipairs(frames) do
     local rid
-    if row.GetElementData then
-      local ed = row:GetElementData()
-      if type(ed) == "table" then rid = ed.resultID or ed.resultId or ed.id or ed.ID end
+    if addon and addon.SafeGetElementData then
+      local ed = addon:SafeGetElementData(row)
+      if type(ed) == "table" then rid = ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID end
+    elseif row.GetElementData then
+      local okEd, ed = pcall(row.GetElementData, row)
+      if okEd and type(ed) == "table" then rid = ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID end
     end
     rid = rid or row.resultID or row.resultId or row.id or row.ID
     if rid then

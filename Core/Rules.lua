@@ -93,7 +93,7 @@ local function CanAccess(v)
 
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, v)
-    if ok and secret then return false end
+    if not ok or secret then return false end
   end
 
   return true

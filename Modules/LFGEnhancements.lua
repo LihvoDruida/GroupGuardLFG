@@ -24,7 +24,7 @@ local function CanReadValue(value)
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if ok and secret then return false end
+    if not ok or secret then return false end
   end
   return true
 end
@@ -48,10 +48,15 @@ end
 
 local function GetResultIDFromRow(frame)
   if not frame then return nil end
-  if frame.GetElementData then
-    local ed = frame:GetElementData()
+  if addon and addon.SafeGetElementData then
+    local ed = addon:SafeGetElementData(frame)
     if type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.id or ed.ID
+      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
+    end
+  elseif frame.GetElementData then
+    local ok, ed = pcall(frame.GetElementData, frame)
+    if ok and type(ed) == "table" then
+      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
     end
   end
   return frame.resultID or frame.resultId or frame.id or frame.ID
@@ -166,8 +171,8 @@ local function ReadMemberCountsFromPlayers(resultID, info, roleCounts, classCoun
   local loaded = 0
   local playerRoleCounts = { TANK = 0, HEALER = 0, DAMAGER = 0 }
   for i = 1, numMembers do
-    local ok, playerInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, i)
-    if ok and type(playerInfo) == "table" then
+    local playerInfo = addon and addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, i) or nil
+    if type(playerInfo) == "table" then
       loaded = loaded + 1
       AddRoleCount(playerRoleCounts, playerInfo.assignedRole or playerInfo.role or playerInfo.lfgRole, 1)
       AddClassCount(classCounts, playerInfo.classFilename or playerInfo.classFileName or playerInfo.className or playerInfo.class, 1)
@@ -182,8 +187,8 @@ end
 function addon:LFG_BuildSearchInsight(resultID)
   if not (C_LFGList and C_LFGList.GetSearchResultInfo and resultID) then return nil end
 
-  local okInfo, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
-  if not okInfo or type(info) ~= "table" then return nil end
+  local info = addon and addon.LFG_API_GetSearchResultInfo and addon:LFG_API_GetSearchResultInfo(resultID) or nil
+  if type(info) ~= "table" then return nil end
 
   local roleCounts = { TANK = 0, HEALER = 0, DAMAGER = 0 }
   local classCounts = {}

@@ -25,7 +25,7 @@ local function CanReadValue(value)
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if ok and secret then return false end
+    if not ok or secret then return false end
   end
   return true
 end
@@ -111,67 +111,17 @@ local function ColorizeClass(classFile, text)
 end
 
 local function GetApplicantInfoSafe(applicantID)
-  applicantID = SafeNumber(applicantID, nil)
-  if not (C_LFGList and C_LFGList.GetApplicantInfo and applicantID) then return nil end
-  local values = { pcall(C_LFGList.GetApplicantInfo, applicantID) }
-  if not values[1] then return nil end
-
-  if type(values[2]) == "table" then
-    local t = values[2]
-    return {
-      applicantID = SafeNumber(t.applicantID or t.id or applicantID, applicantID),
-      applicationStatus = SafeText(t.applicationStatus or t.status),
-      pendingApplicationStatus = SafeText(t.pendingApplicationStatus),
-      numMembers = SafeNumber(t.numMembers or t.memberCount or t.numApplicants, nil),
-      isNew = SafeBool(t.isNew),
-      comment = SafeText(t.comment),
-      displayOrderID = SafeNumber(t.displayOrderID or t.displayOrderId, nil),
-      raw = t,
-    }
+  if addon and addon.LFG_API_GetApplicantInfo then
+    return addon:LFG_API_GetApplicantInfo(applicantID)
   end
-
-  -- Older/fallback API shape:
-  -- applicantID, applicationStatus, pendingApplicationStatus, numMembers, isNew, comment, displayOrderID
-  local info = {
-    applicantID = SafeNumber(values[2], applicantID) or applicantID,
-    applicationStatus = SafeText(values[3]),
-    pendingApplicationStatus = SafeText(values[4]),
-    numMembers = SafeNumber(values[5], nil),
-    isNew = SafeBool(values[6]),
-    comment = SafeText(values[7]),
-    displayOrderID = SafeNumber(values[8], nil),
-  }
-
-  -- Defensive fallback for clients/addons that proxy the API in a different order.
-  if not info.numMembers then
-    for i = 2, #values do
-      local n = SafeNumber(values[i], nil)
-      if n and n >= 1 and n <= 5 then info.numMembers = n break end
-    end
-  end
-  if not info.applicationStatus then
-    for i = 2, #values do
-      local s = SafeText(values[i])
-      if s == "applied" or s == "invited" or s == "inviteaccepted" or s == "invitedeclined" or s == "cancelled" or s == "declined" or s == "declined_full" or s == "timedout" then
-        info.applicationStatus = s
-        break
-      end
-    end
-  end
-  return info
+  return nil
 end
 
 local function GetApplicantsSafe()
-  if not (C_LFGList and C_LFGList.GetApplicants) then return {} end
-  local values = { pcall(C_LFGList.GetApplicants) }
-  if not values[1] then return {} end
-  if type(values[2]) == "table" then return values[2] end
-  local out = {}
-  for i = 2, #values do
-    local n = SafeNumber(values[i], nil)
-    if n then out[#out + 1] = n end
+  if addon and addon.LFG_API_GetApplicants then
+    return addon:LFG_API_GetApplicants()
   end
-  return out
+  return {}
 end
 
 local function ReadApplicantDungeonListingScore(applicantID, memberIndex)
@@ -200,57 +150,8 @@ local function ReadApplicantDungeonListingScore(applicantID, memberIndex)
 end
 
 local function ReadApplicantMember(applicantID, index)
-  if not (C_LFGList and C_LFGList.GetApplicantMemberInfo and applicantID and index ~= nil) then return nil end
-  local values = { pcall(C_LFGList.GetApplicantMemberInfo, applicantID, index) }
-  if not values[1] then return nil end
-
-  local m
-  if type(values[2]) == "table" then
-    local t = values[2]
-    m = {
-      name = t.name or t.memberName or t.playerName or t.fullName,
-      classFilename = t.classFilename or t.classFileName or t.classFile or t.class,
-      localizedClass = t.localizedClass or t.className,
-      level = t.level,
-      itemLevel = t.itemLevel or t.ilvl,
-      honorLevel = t.honorLevel,
-      tank = t.tank,
-      healer = t.healer,
-      damage = t.damage or t.damager,
-      assignedRole = t.assignedRole or t.role or t.lfgRole,
-      relationship = t.relationship,
-      dungeonScore = t.dungeonScore or t.mythicPlusScore or t.mplusScore,
-      pvpItemLevel = t.pvpItemLevel,
-      factionGroup = t.factionGroup or t.faction,
-      raceID = t.raceID or t.raceId,
-      specID = t.specID or t.specId,
-      isLeaver = t.isLeaver,
-    }
-  else
-    -- Retail positional shape:
-    -- name, classFilename, localizedClass, level, itemLevel, honorLevel,
-    -- tank, healer, damage, assignedRole, relationship, dungeonScore,
-    -- pvpItemLevel, factionGroup, raceID, specID, isLeaver
-    m = {
-      name = values[2],
-      classFilename = values[3],
-      localizedClass = values[4],
-      level = values[5],
-      itemLevel = values[6],
-      honorLevel = values[7],
-      tank = values[8],
-      healer = values[9],
-      damage = values[10],
-      assignedRole = values[11],
-      relationship = values[12],
-      dungeonScore = values[13],
-      pvpItemLevel = values[14],
-      factionGroup = values[15],
-      raceID = values[16],
-      specID = values[17],
-      isLeaver = values[18],
-    }
-  end
+  local m = addon and addon.LFG_API_GetApplicantMemberInfo and addon:LFG_API_GetApplicantMemberInfo(applicantID, index) or nil
+  if type(m) ~= "table" then return nil end
 
   m.name = SafeText(m.name)
   if not m.name then return nil end
@@ -287,6 +188,7 @@ local function EnumerateApplicantRows()
   local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
   local sb = viewer and viewer.ScrollBox
   if not sb then return nil end
+  if addon and addon.SafeEnumerateScrollBoxFrames then return addon:SafeEnumerateScrollBoxFrames(sb) end
   if sb.GetFrames then return sb:GetFrames() end
   if sb.EnumerateFrames then
     local frames = {}
@@ -298,6 +200,20 @@ end
 
 local function GetApplicantIDFromRow(frame)
   if not frame then return nil end
+  local cached = SafeNumber(frame._ggLastApplicantID, nil)
+  if cached then return cached end
+
+  local direct = SafeNumber(frame.applicantID or frame.applicantId or frame.ApplicantID or frame.id or frame.ID, nil)
+  if direct then return direct end
+
+  if frame.GetParent then
+    local okParent, parent = pcall(frame.GetParent, frame)
+    if okParent and parent then
+      local parentID = SafeNumber(parent.applicantID or parent.applicantId or parent.ApplicantID or parent._ggLastApplicantID, nil)
+      if parentID then return parentID end
+    end
+  end
+
   if frame.GetElementData then
     local ok, ed = pcall(frame.GetElementData, frame)
     if ok then
@@ -305,18 +221,40 @@ local function GetApplicantIDFromRow(frame)
       if id then return id end
     end
   end
-  local direct = SafeNumber(frame.applicantID or frame.applicantId or frame.ApplicantID or frame.id or frame.ID, nil)
-  if direct then return direct end
 
-  -- Last-resort ScrollBox fallback: bind visible row order to C_LFGList.GetApplicants().
+  -- Last-resort visible-row fallback: it is only used after all direct Blizzard fields fail.
+  -- It is immediately revalidated by GetApplicantInfoSafe before any UI is shown.
   local rows = EnumerateApplicantRows()
   local apps = GetApplicantsSafe()
-  if rows and apps then
+  if rows and apps and #apps > 0 then
     for index, row in ipairs(rows) do
-      if row == frame then return SafeNumber(apps[index], nil) end
+      if row == frame then
+        local id = SafeNumber(apps[index], nil)
+        if id and GetApplicantInfoSafe(id) then return id end
+      end
     end
   end
   return nil
+end
+
+local function GetApplicantHostFrame(frame, applicantID)
+  if not frame then return nil end
+  applicantID = SafeNumber(applicantID, nil)
+  if frame.Members or SafeNumber(frame.applicantID or frame._ggLastApplicantID, nil) == applicantID then return frame end
+  if frame.GetParent then
+    local ok, parent = pcall(frame.GetParent, frame)
+    if ok and parent and (parent.Members or SafeNumber(parent.applicantID or parent._ggLastApplicantID, nil) == applicantID) then
+      return parent
+    end
+  end
+  return frame
+end
+
+local function HookApplicantTooltipFrame(frame)
+  if not frame or not frame.HookScript or frame._ggApplicantTooltipHooked then return end
+  frame._ggApplicantTooltipHooked = true
+  pcall(frame.HookScript, frame, "OnEnter", function(f) if addon and addon.LFG_AppendApplicantSummaryTooltip then addon:LFG_AppendApplicantSummaryTooltip(f) end end)
+  pcall(frame.HookScript, frame, "OnLeave", function(f) if GameTooltip and GameTooltip:GetOwner() == f then GameTooltip:Hide() end end)
 end
 
 function addon:LFG_BuildApplicantSummary(applicantID)
@@ -488,17 +426,44 @@ local function ApplyCardBackdrop(card)
   end
 end
 
+local function LayoutApplicantCard(frame, card)
+  if not frame or not card then return end
+  card:ClearAllPoints()
+  local width = 0
+  if frame.GetWidth then
+    local ok, w = pcall(frame.GetWidth, frame)
+    if ok and type(w) == "number" then width = w end
+  end
+  if width >= 520 then
+    card:SetPoint("LEFT", frame, "LEFT", 168, 0)
+    card:SetPoint("RIGHT", frame, "RIGHT", -104, 0)
+  elseif width >= 360 then
+    card:SetPoint("LEFT", frame, "LEFT", 8, 0)
+    card:SetPoint("RIGHT", frame, "RIGHT", -78, 0)
+  else
+    card:SetPoint("LEFT", frame, "LEFT", 4, 0)
+    card:SetPoint("RIGHT", frame, "RIGHT", -4, 0)
+  end
+  card:SetPoint("BOTTOM", frame, "BOTTOM", 0, 2)
+end
+
 local function EnsureApplicantCard(frame)
   if not frame or not frame.CreateFontString then return nil end
   if not frame._ggApplicantCard then
     local template = BackdropTemplateMixin and "BackdropTemplate" or nil
     local card = CreateFrame("Frame", nil, frame, template)
     card:SetHeight(31)
-    card:SetPoint("LEFT", frame, "LEFT", 4, 0)
-    card:SetPoint("RIGHT", frame, "RIGHT", -104, 0)
-    card:SetPoint("BOTTOM", frame, "BOTTOM", 0, 2)
-    card:SetFrameStrata(frame:GetFrameStrata() or "MEDIUM")
-    if frame.GetFrameLevel and card.SetFrameLevel then card:SetFrameLevel((frame:GetFrameLevel() or 1) + 8) end
+    if card.EnableMouse then card:EnableMouse(false) end
+    local strata = "MEDIUM"
+    if type(frame.GetFrameStrata) == "function" then
+      local okStrata, frameStrata = pcall(frame.GetFrameStrata, frame)
+      if okStrata and frameStrata then strata = frameStrata end
+    end
+    if card.SetFrameStrata then card:SetFrameStrata(strata) end
+    if type(frame.GetFrameLevel) == "function" and card.SetFrameLevel then
+      local okLevel, level = pcall(frame.GetFrameLevel, frame)
+      card:SetFrameLevel(((okLevel and type(level) == "number") and level or 1) + 8)
+    end
     ApplyCardBackdrop(card)
 
     card.Accent = card:CreateTexture(nil, "ARTWORK")
@@ -523,6 +488,7 @@ local function EnsureApplicantCard(frame)
     if card.Line2.SetWordWrap then card.Line2:SetWordWrap(false) end
     if card.Line2.SetNonSpaceWrap then card.Line2:SetNonSpaceWrap(false) end
 
+    if card.SetClipsChildren then card:SetClipsChildren(true) end
     card:Hide()
     frame._ggApplicantCard = card
   end
@@ -530,11 +496,13 @@ local function EnsureApplicantCard(frame)
 end
 
 local function HookApplicantMemberFrame(frame)
-  if not frame or frame._ggApplicantCardHooked then return end
+  if not frame then return end
+  HookApplicantTooltipFrame(frame)
+  if frame._ggApplicantCardHooked then return end
   frame._ggApplicantCardHooked = true
   if frame.HookScript then
-    frame:HookScript("OnHide", HideApplicantCard)
-    frame:HookScript("OnShow", function(f)
+    pcall(frame.HookScript, frame, "OnHide", HideApplicantCard)
+    pcall(frame.HookScript, frame, "OnShow", function(f)
       HideApplicantCard(f)
       if f._ggLastApplicantID and f._ggLastMemberIdx and addon and addon.LFG_ShowApplicantCard then
         addon:LFG_ShowApplicantCard(f, f._ggLastApplicantID, f._ggLastMemberIdx)
@@ -545,29 +513,42 @@ end
 
 function addon:LFG_ShowApplicantCard(memberFrame, applicantID, memberIdx)
   if not memberFrame then return end
-  HideApplicantCard(memberFrame)
   HookApplicantMemberFrame(memberFrame)
-  if not (self.db and self.db.applicant_summary_chips) then return end
+  if not (self.db and (self.db.applicant_cards_enabled ~= false)) then
+    HideApplicantCard(memberFrame)
+    return
+  end
   if memberFrame.IsShown and not memberFrame:IsShown() then return end
-  applicantID = SafeNumber(applicantID, nil)
-  memberIdx = SafeNumber(memberIdx, 1) or 1
+  applicantID = SafeNumber(applicantID, nil) or GetApplicantIDFromRow(memberFrame)
+  memberIdx = SafeNumber(memberIdx, memberFrame.memberIdx or 1) or 1
   if not applicantID then return end
 
   memberFrame._ggLastApplicantID = applicantID
   memberFrame._ggLastMemberIdx = memberIdx
 
-  -- Show one full two-line card per application, not on every member row.
-  if memberIdx ~= 1 and memberIdx ~= 0 then return end
+  local hostFrame = GetApplicantHostFrame(memberFrame, applicantID)
+  if not hostFrame then return end
+  HookApplicantMemberFrame(hostFrame)
+  hostFrame._ggLastApplicantID = applicantID
+  hostFrame._ggLastMemberIdx = 1
+
+  -- One full two-line card per application. If Blizzard sends member #2 first,
+  -- draw only when the parent does not already have a valid visible card.
+  if memberIdx ~= 1 and memberIdx ~= 0 then
+    local existing = hostFrame._ggApplicantCard
+    if existing and existing:IsShown() and existing._ggOwnerApplicantID == applicantID then return end
+  end
 
   local summary = self:LFG_BuildApplicantSummary(applicantID)
   if not summary then return end
-  local card = EnsureApplicantCard(memberFrame)
+  local card = EnsureApplicantCard(hostFrame)
   if not card then return end
   local line1, line2 = FormatApplicantCardLines(self, summary)
   card._ggOwnerApplicantID = applicantID
   card._ggOwnerMemberIdx = memberIdx
-  card.Line1:SetText(ClampText(line1, 150))
-  card.Line2:SetText(ClampText(line2, 170))
+  LayoutApplicantCard(hostFrame, card)
+  card.Line1:SetText(ClampText(line1, 170))
+  card.Line2:SetText(ClampText(line2, 190))
   if summary.leavers and summary.leavers > 0 then
     if card.SetBackdropBorderColor then card:SetBackdropBorderColor(1.0, 0.42, 0.18, 0.82) end
     card.Accent:SetColorTexture(1.0, 0.42, 0.18, 1)
@@ -663,17 +644,22 @@ function addon:LFG_RefreshApplicantChips()
   self._ggApplicantRows = self._ggApplicantRows or {}
   for index, row in ipairs(rows) do
     self._ggApplicantRows[row] = true
-    if row and row.HookScript and not row._ggApplicantSummaryTooltipHooked then
-      row._ggApplicantSummaryTooltipHooked = true
-      row:HookScript("OnHide", HideApplicantCard)
-      row:HookScript("OnShow", function(frame) HideApplicantCard(frame) end)
-      row:HookScript("OnEnter", function(frame) if addon and addon.LFG_AppendApplicantSummaryTooltip then addon:LFG_AppendApplicantSummaryTooltip(frame) end end)
-      row:HookScript("OnLeave", function(frame) if GameTooltip and GameTooltip:GetOwner() == frame then GameTooltip:Hide() end end)
-    end
-    -- Only use visible-row fallback when the authoritative UpdateApplicantMember hook has not filled it.
-    if row and not row._ggLastApplicantID then
+    if row then
+      HookApplicantMemberFrame(row)
       local appID = GetApplicantIDFromRow(row)
-      if appID and self.LFG_ShowApplicantCard then self:LFG_ShowApplicantCard(row, appID, 1) end
+      if appID then
+        row._ggLastApplicantID = appID
+        if self.LFG_ShowApplicantCard then self:LFG_ShowApplicantCard(row, appID, 1) end
+        if type(row.Members) == "table" then
+          for memberIdx, memberFrame in pairs(row.Members) do
+            if type(memberFrame) == "table" then
+              memberFrame._ggLastApplicantID = appID
+              memberFrame._ggLastMemberIdx = SafeNumber(memberFrame.memberIdx, memberIdx) or memberIdx
+              HookApplicantMemberFrame(memberFrame)
+            end
+          end
+        end
+      end
     end
   end
 end
@@ -771,10 +757,19 @@ function addon:LFG_InitApplicantEnhancements()
   local sb = viewer and viewer.ScrollBox
   if sb and not sb._ggApplicantEnhancementHooked then
     sb._ggApplicantEnhancementHooked = true
-    if sb.HookScript then sb:HookScript("OnMouseWheel", hideThenSchedule) end
-    if sb.FullUpdate then hooksecurefunc(sb, "FullUpdate", hideThenSchedule) end
-    if sb.Update then hooksecurefunc(sb, "Update", hideThenSchedule) end
-    if sb.Refresh then hooksecurefunc(sb, "Refresh", hideThenSchedule) end
+    local function onFramesChanged(frames)
+      if addon and addon.LFG_HideApplicantDecorations then addon:LFG_HideApplicantDecorations() end
+      for _, frame in ipairs(frames or {}) do HookApplicantMemberFrame(frame) end
+      schedule()
+    end
+    if addon.SafeObserveScrollBox then
+      addon:SafeObserveScrollBox(sb, "applicant_cards", onFramesChanged, hideThenSchedule)
+    else
+      if sb.HookScript then sb:HookScript("OnMouseWheel", hideThenSchedule) end
+      if sb.FullUpdate then hooksecurefunc(sb, "FullUpdate", hideThenSchedule) end
+      if sb.Update then hooksecurefunc(sb, "Update", hideThenSchedule) end
+      if sb.Refresh then hooksecurefunc(sb, "Refresh", hideThenSchedule) end
+    end
   end
   if type(LFGListApplicationViewer_UpdateApplicants) == "function" and not self._ggHookedUpdateApplicants then
     self._ggHookedUpdateApplicants = true
@@ -788,18 +783,39 @@ function addon:LFG_InitApplicantEnhancements()
     self._ggHookedUpdateResults = true
     hooksecurefunc("LFGListApplicationViewer_UpdateResults", hideThenSchedule)
   end
+  if type(LFGListApplicationViewer_UpdateApplicant) == "function" and not self._ggHookedUpdateApplicant then
+    self._ggHookedUpdateApplicant = true
+    hooksecurefunc("LFGListApplicationViewer_UpdateApplicant", function(applicantFrame, applicantID)
+      if not addon or not applicantFrame then return end
+      applicantID = SafeNumber(applicantID, nil) or GetApplicantIDFromRow(applicantFrame)
+      if applicantID then
+        applicantFrame._ggLastApplicantID = applicantID
+        HookApplicantMemberFrame(applicantFrame)
+        if addon.LFG_ShowApplicantCard then addon:LFG_ShowApplicantCard(applicantFrame, applicantID, 1) end
+        if type(applicantFrame.Members) == "table" then
+          for memberIdx, memberFrame in pairs(applicantFrame.Members) do
+            if type(memberFrame) == "table" then
+              memberFrame._ggLastApplicantID = applicantID
+              memberFrame._ggLastMemberIdx = SafeNumber(memberFrame.memberIdx, memberIdx) or memberIdx
+              HookApplicantMemberFrame(memberFrame)
+            end
+          end
+        end
+      end
+    end)
+  end
   if type(LFGListApplicationViewer_UpdateApplicantMember) == "function" and not self._ggHookedUpdateApplicantMember then
     self._ggHookedUpdateApplicantMember = true
     hooksecurefunc("LFGListApplicationViewer_UpdateApplicantMember", function(memberFrame, applicantID, memberIdx)
       if not addon then return end
       addon._ggApplicantMemberFrames = addon._ggApplicantMemberFrames or {}
-      if memberFrame then addon._ggApplicantMemberFrames[memberFrame] = true end
-      if addon.LFG_ShowApplicantCard then addon:LFG_ShowApplicantCard(memberFrame, applicantID, memberIdx) end
-      if memberFrame and memberFrame.HookScript and not memberFrame._ggApplicantTooltipHooked then
-        memberFrame._ggApplicantTooltipHooked = true
-        memberFrame:HookScript("OnEnter", function(frame) if addon and addon.LFG_AppendApplicantSummaryTooltip then addon:LFG_AppendApplicantSummaryTooltip(frame) end end)
-        memberFrame:HookScript("OnLeave", function(frame) if GameTooltip and GameTooltip:GetOwner() == frame then GameTooltip:Hide() end end)
+      if memberFrame then
+        addon._ggApplicantMemberFrames[memberFrame] = true
+        memberFrame._ggLastApplicantID = SafeNumber(applicantID, nil) or memberFrame._ggLastApplicantID
+        memberFrame._ggLastMemberIdx = SafeNumber(memberIdx, memberFrame.memberIdx or 1) or 1
+        HookApplicantMemberFrame(memberFrame)
       end
+      if addon.LFG_ShowApplicantCard then addon:LFG_ShowApplicantCard(memberFrame, applicantID, memberIdx) end
     end)
   end
   schedule()

@@ -34,6 +34,7 @@ SafeRegisterEvent("PLAYER_ENTERING_WORLD")
 SafeRegisterEvent("PLAYER_REGEN_ENABLED")
 SafeRegisterEvent("LFG_LIST_APPLICANT_LIST_UPDATED")
 SafeRegisterEvent("LFG_LIST_APPLICANT_UPDATED")
+SafeRegisterEvent("LFG_LIST_APPLICATION_STATUS_UPDATED")
 SafeRegisterEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE")
 SafeRegisterEvent("UNIT_NAME_UPDATE")
 SafeRegisterEvent("UNIT_CONNECTION")
@@ -296,10 +297,11 @@ local function OnEvent(self, event, arg1, ...)
 
   elseif event == "LFG_LIST_APPLICANT_LIST_UPDATED"
       or event == "LFG_LIST_APPLICANT_UPDATED"
+      or event == "LFG_LIST_APPLICATION_STATUS_UPDATED"
       or event == "LFG_LIST_ACTIVE_ENTRY_UPDATE"
       or event == "LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS"
       or event == "LFG_LIST_ENTRY_EXPIRED_TIMEOUT" then
-    if event == "LFG_LIST_APPLICANT_UPDATED" and addon.LFG_RefreshApplicantsAfterDone then
+    if (event == "LFG_LIST_APPLICANT_UPDATED" or event == "LFG_LIST_APPLICATION_STATUS_UPDATED") and addon.LFG_RefreshApplicantsAfterDone then
       addon:LFG_RefreshApplicantsAfterDone(arg1)
     end
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {}; addon._lfgFlagReasons = {} end

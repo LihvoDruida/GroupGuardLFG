@@ -45,7 +45,7 @@ function addon:CanAccessValue(value)
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if ok and secret then return false end
+    if not ok or secret then return false end
   end
   return true
 end
@@ -137,6 +137,7 @@ addon.DEFAULTS = {
   realm_badges = true,
   realm_same_locale_only = true,
   applicant_summary_chips = true,
+  applicant_cards_enabled = true,
   applicant_summary_tooltips = true,
   applicant_auto_refresh_done = true,
   pgf_integration = true,
@@ -190,6 +191,7 @@ addon.L10N = {
     LABEL_MEMBER = "Member",
     LABEL_TITLE = "Title",
     LABEL_LEADER = "Leader",
+    LABEL_VOICE = "Voice",
     LABEL_FRIEND = "friend",
     LABEL_GUILD = "guild",
     LABEL_MARKED = "marked",
@@ -384,6 +386,7 @@ addon.L10N = {
     LABEL_MEMBER = "Учасник",
     LABEL_TITLE = "Назва",
     LABEL_LEADER = "Лідер",
+    LABEL_VOICE = "Голосовий чат",
     LABEL_FRIEND = "друг",
     LABEL_GUILD = "гільдія",
     LABEL_MARKED = "позначено",
@@ -640,6 +643,8 @@ function addon:EnsureDB()
   if self.db.realm_badges == nil then self.db.realm_badges = true end
   if self.db.realm_same_locale_only == nil then self.db.realm_same_locale_only = true end
   if self.db.applicant_summary_chips == nil then self.db.applicant_summary_chips = true end
+  if self.db.applicant_cards_enabled == nil then self.db.applicant_cards_enabled = self.db.applicant_summary_chips ~= false end
+  self.db.applicant_summary_chips = self.db.applicant_cards_enabled ~= false
   if self.db.applicant_summary_tooltips == nil then self.db.applicant_summary_tooltips = true end
   if self.db.applicant_auto_refresh_done == nil then self.db.applicant_auto_refresh_done = true end
   if self.db.lfg_button_text == "Decline LFG applications (%d)" or self.db.lfg_button_text == "Відхилити позначені (%d)" or self.db.lfg_button_text == "Відхилити LFG-заявки (%d)" then self.db.lfg_button_text = self:DefaultLFGButtonText() end

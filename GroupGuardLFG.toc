@@ -1,8 +1,8 @@
 ## Interface: 120005
 ## Title: GroupGuard LFG
-## Notes: LFG guard release build: enhanced applicant cards, diagnostics, safe LFG hooks, recycled-row UI fixes
+## Notes: LFG guard release build: global API/UI audit, applicant cards, diagnostics, safe LFG hooks, recycled-row UI fixes
 ## Author: LihvoDruida
-## Version: 4.2.2
+## Version: 4.2.3
 ## X-Codename: Release Candidate
 ## OptionalDeps: PremadeGroupsFilter, Plumber, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
@@ -12,6 +12,7 @@
 ## SavedVariables: GroupGuardLFGDB
 
 Core\Bootstrap.lua
+Core\SafeAPI.lua
 Core\Performance.lua
 Core\Rules.lua
 Core\Alerts.lua

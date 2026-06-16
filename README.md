@@ -52,17 +52,25 @@ The addon does not infer anything about a player’s nationality, ethnicity, ori
 GroupGuardLFG/
   Core/
     Bootstrap.lua
+    SafeAPI.lua
     Performance.lua
     Rules.lua
     Alerts.lua
     Social.lua
     GroupScan.lua
 
+  Data/
+    RealmLocaleData.lua
+
   Modules/
     EventBus.lua
     FrameMarkers.lua
     GroupActions.lua
     LFG.lua
+    LFGEnhancements.lua
+    RealmInsights.lua
+    LFGAdvisor.lua
+    ApplicantEnhancements.lua
     RaidAssist.lua
     PugDetector.lua
 
@@ -75,7 +83,7 @@ GroupGuardLFG/
     warning_marker.tga
 
   GroupGuardLFG.toc
-  README_GroupGuardLFG.txt
+  README.md
 ```
 
 ---
@@ -323,3 +331,16 @@ This release integrates safe ideas from GroupfinderFlags, PGFinder and GroupFind
 * Added `/ggapps dump` diagnostics for current applicant API data.
 * Improved recycled-row protection: cards hide before ScrollBox refresh/update/full update, mouse wheel recycling, row OnShow/OnHide, and member-frame reuse.
 * Kept compatibility passive: no Blizzard UI replacement, no PGF override, no Plumber interception.
+
+
+---
+
+## 4.2.3 audit notes
+
+* Added `Core/SafeAPI.lua` as a single guarded layer for Blizzard LFG applicant/search API reads.
+* Reworked applicant cards to bind to real applicant/member update hooks first, then fall back to visible row data only after validation.
+* Added stronger recycled-row cleanup for applicant cards, realm badges and LFG highlights.
+* Added `LFG_LIST_APPLICATION_STATUS_UPDATED` handling for applicant status refreshes.
+* Replaced scattered raw LFG applicant reads with guarded helpers where possible.
+* Tightened Secret Value guards: values that cannot be checked safely are treated as unreadable.
+* Completed EN/UA localization parity for current UI text.

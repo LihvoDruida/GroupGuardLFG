@@ -769,7 +769,7 @@ function addon:InitSettingsPages()
   local l7realm = AddCheck(lfgChild, l7fit, "Show technical realm/locale hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
   local l7badge = AddCheck(lfgChild, l7realm, "Show compact realm badges on LFG search rows", "realm_badges", function() SyncAll("realm_badges") end)
   local l7same = AddCheck(lfgChild, l7badge, "Only show realm hints when the realm locale differs from yours", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
-  local l7apps = AddCheck(lfgChild, l7same, "Show two-line applicant cards on applicant rows", "applicant_summary_chips", function() SyncAll("applicant_summary_cards") end)
+  local l7apps = AddCheck(lfgChild, l7same, "Show two-line applicant cards on applicant rows", "applicant_cards_enabled", function() SyncAll("applicant_summary_cards") end)
   local l7appt = AddCheck(lfgChild, l7apps, "Show applicant composition summary in tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
   local l7refresh = AddCheck(lfgChild, l7appt, "Refresh applicant list after cancelled/timed out/invited applications", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
   local l7c = AddCheck(lfgChild, l7refresh, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
@@ -1211,12 +1211,10 @@ SlashCmdList.GROUPGUARDLFGDEBUG = function()
   end
 
   if C_LFGList and C_LFGList.GetApplicants then
-    local okApps, apps = pcall(C_LFGList.GetApplicants)
-    apps = okApps and apps or {}
+    local apps = addon.LFG_API_GetApplicants and addon:LFG_API_GetApplicants() or {}
     print(addon:Tr("CMD_APPLICANTS_COUNT", #apps))
     if apps[1] and C_LFGList.GetApplicantInfo then
-      local okInfo, info = pcall(C_LFGList.GetApplicantInfo, apps[1])
-      info = okInfo and info or nil
+      local info = addon.LFG_API_GetApplicantInfo and addon:LFG_API_GetApplicantInfo(apps[1]) or nil
       print(addon:Tr("CMD_FIRST_APPLICANT", tostring(apps[1]), tostring(info and info.numMembers or addon:Tr("CMD_NIL"))))
     end
   end

@@ -68,28 +68,6 @@ local function EnumerateScrollBoxFrames(sb)
   return nil
 end
 
-local function GetApplicantIDFromRow(frame)
-  if not frame then return nil end
-  if frame.GetElementData then
-    local ed = frame:GetElementData()
-    if type(ed) == "table" then
-      return ed.applicantID or ed.applicantId or ed.ApplicantID or ed.id or ed.ID
-    end
-  end
-  return frame.applicantID or frame.applicantId or frame.ApplicantID or frame.id or frame.ID
-end
-
-local function GetResultIDFromRow(frame)
-  if not frame then return nil end
-  if frame.GetElementData then
-    local ed = frame:GetElementData()
-    if type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.id or ed.ID
-    end
-  end
-  return frame.resultID or frame.resultId or frame.id or frame.ID
-end
-
 local function CanReadValue(value)
   if value == nil then return false end
   if type(canaccessvalue) == "function" then
@@ -116,42 +94,53 @@ local function SafeNumber(value, fallback)
   return fallback
 end
 
-local function GetApplicantInfoSafe(applicantID)
-  if not (C_LFGList and C_LFGList.GetApplicantInfo and applicantID) then return nil end
-  local values = { pcall(C_LFGList.GetApplicantInfo, applicantID) }
-  if not values[1] then return nil end
+local function ResolveIDFromElementData(ed, wanted)
+  if type(ed) ~= "table" then return nil end
+  if wanted == "applicant" then
+    local direct = ed.applicantID or ed.applicantId or ed.ApplicantID or ed.id or ed.ID
+    if direct then return direct end
+  else
+    local direct = ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
+    if direct then return direct end
+  end
+  local nested = ed.info or ed.data or ed.elementData or ed.applicantInfo or ed.applicationInfo or ed.searchResultInfo
+  if type(nested) == "table" then return ResolveIDFromElementData(nested, wanted) end
+  return nil
+end
 
-  local first = values[2]
-  if type(first) == "table" then return first end
-
-  -- Compatibility fallback for clients where GetApplicantInfo returns multiple values.
-  -- Known variants expose applicant/status/numMembers/comment in different slots, so use names conservatively.
-  local info = {}
-  for i = 2, #values do
-    local v = values[i]
-    if type(v) == "number" and (not info.numMembers) and v >= 0 and v <= 5 then
-      info.numMembers = v
-    elseif type(v) == "string" and v ~= "" then
-      if not info.name and not v:find(" ") and #v <= 64 then
-        info.name = v
-      elseif not info.comment then
-        info.comment = v
-      end
+local function GetApplicantIDFromRow(frame)
+  if not frame then return nil end
+  local direct = SafeNumber(frame._ggLastApplicantID or frame.applicantID or frame.applicantId or frame.ApplicantID or frame.id or frame.ID, nil)
+  if direct then return direct end
+  if frame.GetParent then
+    local ok, parent = pcall(frame.GetParent, frame)
+    if ok and parent then
+      local parentID = SafeNumber(parent._ggLastApplicantID or parent.applicantID or parent.applicantId or parent.ApplicantID, nil)
+      if parentID then return parentID end
     end
   end
-  return info
+  local ed = addon and addon.SafeGetElementData and addon:SafeGetElementData(frame) or nil
+  return SafeNumber(ResolveIDFromElementData(ed, "applicant"), nil)
+end
+
+local function GetResultIDFromRow(frame)
+  if not frame then return nil end
+  local direct = SafeNumber(frame.resultID or frame.resultId or frame.searchResultID or frame.searchResultId or frame.id or frame.ID, nil)
+  if direct then return direct end
+  local ed = addon and addon.SafeGetElementData and addon:SafeGetElementData(frame) or nil
+  return SafeNumber(ResolveIDFromElementData(ed, "result"), nil)
+end
+
+local function GetApplicantInfoSafe(applicantID)
+  if addon and addon.LFG_API_GetApplicantInfo then return addon:LFG_API_GetApplicantInfo(applicantID) end
+  return nil
 end
 
 local function GetApplicantMemberNameSafe(applicantID, memberIndex)
-  if not (C_LFGList and C_LFGList.GetApplicantMemberInfo and applicantID and memberIndex) then return nil end
-  local values = { pcall(C_LFGList.GetApplicantMemberInfo, applicantID, memberIndex) }
-  if not values[1] then return nil end
-
-  local first = values[2]
-  if type(first) == "table" then
-    return first.name or first.memberName or first.playerName or first.fullName
+  if addon and addon.LFG_API_GetApplicantMemberInfo then
+    local m = addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
+    return type(m) == "table" and m.name or nil
   end
-  if type(first) == "string" then return first end
   return nil
 end
 
@@ -217,6 +206,12 @@ local function HideRowDecorations(row)
   if not row then return end
   PaintGGHighlight(row, false)
   if row._ggApplicantChip then row._ggApplicantChip:SetText(""); row._ggApplicantChip:Hide() end
+  if row._ggApplicantCard then
+    if row._ggApplicantCard.Line1 then row._ggApplicantCard.Line1:SetText("") end
+    if row._ggApplicantCard.Line2 then row._ggApplicantCard.Line2:SetText("") end
+    row._ggApplicantCard._ggOwnerApplicantID = nil
+    row._ggApplicantCard:Hide()
+  end
   if row._ggRealmBadge then row._ggRealmBadge:SetText(""); row._ggRealmBadge:Hide() end
 end
 
@@ -478,8 +473,8 @@ function addon:EvaluateSearchResultFlag(resultID)
     return self._lfgResultFlagCache[resultID], false
   end
 
-  local okInfo, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
-  if not okInfo or not info then return false, true end
+  local info = addon.LFG_API_GetSearchResultInfo and addon:LFG_API_GetSearchResultInfo(resultID) or nil
+  if not info then return false, true end
 
   local function isIgnoredSocialName(name)
     if type(name) ~= "string" or name == "" or not self.ShouldIgnoreFilteredName then return false end
@@ -498,8 +493,8 @@ function addon:EvaluateSearchResultFlag(resultID)
   local preNum = preNumKnown and SafeNumber(preNumMembers, 0) or 0
   if C_LFGList.GetSearchResultPlayerInfo then
     for memberIndex = 1, preNum do
-      local ok, playerInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, memberIndex)
-      if ok and type(playerInfo) == "table" and isIgnoredSocialName(playerInfo.name) then
+      local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
+      if type(playerInfo) == "table" and isIgnoredSocialName(playerInfo.name) then
         self._lfgResultFlagCache[resultID] = false
         self._lfgResultFlagReasons[resultID] = {}
         return false, false
@@ -522,7 +517,7 @@ function addon:EvaluateSearchResultFlag(resultID)
 
   testField(addon:Tr("LABEL_TITLE"), info.name)
   testField(addon:Tr("LABEL_COMMENT"), info.comment)
-  testField("Voice", info.voiceChat)
+  testField(addon:Tr("LABEL_VOICE"), info.voiceChat)
   testField(addon:Tr("LABEL_LEADER"), info.leaderName)
 
   if flagged then
@@ -547,8 +542,8 @@ function addon:EvaluateSearchResultFlag(resultID)
   local num = numKnown and SafeNumber(numMembers, 0) or 0
   local loaded = 0
   for memberIndex = 1, num do
-    local ok, playerInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, memberIndex)
-    if ok and type(playerInfo) == "table" then
+    local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
+    if type(playerInfo) == "table" then
       local name = playerInfo.name
       local ignored = false
       if type(name) == "string" and self.ShouldIgnoreFilteredName then
@@ -584,8 +579,8 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
     return self._lfgResultSocialCache[resultID], false
   end
 
-  local okInfo, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
-  if not okInfo or not info then return nil, true end
+  local info = addon.LFG_API_GetSearchResultInfo and addon:LFG_API_GetSearchResultInfo(resultID) or nil
+  if not info then return nil, true end
 
   local mode = nil
   local reasons = {}
@@ -614,8 +609,8 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
 
   if self.db and self.db.lfg_highlight_search_members and C_LFGList.GetSearchResultPlayerInfo then
     for memberIndex = 1, num do
-      local ok, playerInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, memberIndex)
-      if ok and type(playerInfo) == "table" then
+      local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
+      if type(playerInfo) == "table" then
         local name = playerInfo.name
         testName(addon:Tr("LABEL_MEMBER"), name)
         if type(name) == "string" and name ~= "" and CanReadValue(name) then
@@ -1140,8 +1135,7 @@ function addon:LFG_DeclineFlagged(source)
     self._lfgSocialReasons = {}
 
     local fresh = {}
-    local okApps, apps = pcall(C_LFGList.GetApplicants)
-    apps = okApps and apps or {}
+    local apps = self.LFG_API_GetApplicants and self:LFG_API_GetApplicants() or {}
     for _, appID in ipairs(apps or {}) do
       if self:EvaluateApplicantFlag(appID) then
         fresh[appID] = true
@@ -1235,8 +1229,8 @@ function addon:LFG_ScanApplicants()
   self._lfgSocialCache = {}
   self._lfgSocialReasons = {}
 
-  local okApps, apps = pcall(C_LFGList.GetApplicants)
-  if not okApps or type(apps) ~= "table" then apps = {} end
+  local apps = self.LFG_API_GetApplicants and self:LFG_API_GetApplicants() or {}
+  if type(apps) ~= "table" then apps = {} end
   local flagged = {}
   for _, appID in ipairs(apps) do
     if self:EvaluateApplicantFlag(appID) then
