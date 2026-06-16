@@ -59,6 +59,21 @@ local SETTINGS_UK = {
     "Приглушувати зайвий звук нової заявки під час авто-відхилення",
   ["LFG tooltip insights are lightweight and do not replace Raider.IO, PGF or sorter addons. Hold Shift on a search result tooltip to show class breakdown."] =
     "LFG-інсайти легкі й не замінюють Raider.IO, PGF або сортери. Утримуй Shift на tooltip результату пошуку, щоб побачити розбивку класів.",
+  ["Show role-fit hints for your current spec"] = "Показувати підказки відповідності ролі для поточної спеціалізації",
+  ["Show realm/locale hints in LFG tooltips"] = "Показувати підказки реалму/локалі в LFG tooltip",
+  ["Show compact realm badges on search rows"] = "Показувати компактні бейджі реалму на рядках пошуку",
+  ["Hide realm badge when the leader realm matches your locale"] = "Ховати бейдж реалму, якщо реалм лідера збігається з твоєю локаллю",
+
+  ["Show whether your current role fits the searched group"] = "Показувати, чи твоя поточна роль підходить знайденій групі",
+  ["Show technical realm/locale hints in search tooltips"] = "Показувати технічні підказки реалму/локалі в tooltip пошуку",
+  ["Show compact realm badges on LFG search rows"] = "Показувати компактні бейджі реалму на LFG-рядках пошуку",
+  ["Only show realm hints when the realm locale differs from yours"] = "Показувати підказки реалму тільки коли локаль реалму відрізняється від твоєї",
+  ["Show compact role/ilvl/score chips on applicant rows"] = "Показувати компактні role/ilvl/score-чипи на рядках заявок",
+  ["Show applicant composition summary in tooltips"] = "Показувати підсумок складу заявки в tooltip",
+  ["Refresh applicant list after cancelled/timed out/invited applications"] = "Оновлювати список заявок після cancelled/timed out/invited статусів",
+  ["LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Hold Shift on tooltips to show deeper breakdowns."] =
+    "LFG-інсайти — пасивні UI-підказки й не замінюють Raider.IO, PGF або сортери. Локаль реалму — лише підказка зі списку реалмів, не перевірка національності гравця. Утримуй Shift у tooltip, щоб побачити детальнішу розбивку.",
+
   ["Friends / guild in LFG"] = "Друзі / гільдія у LFG",
   ["Ignore friends even if they match filters"] = "Не реагувати на друзів, навіть якщо вони підпадають під фільтр",
   ["Ignore your guild members even if they match filters"] =
@@ -1066,12 +1081,12 @@ SlashCmdList.GROUPGUARDLFGLANG = function(msg)
   end
 
   if not lang then
-    print((addon.printPrefix or "GroupGuard LFG:"), "Usage: /gglang auto | en | uk")
+    print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("CMD_USAGE_LANG"))
     return
   end
 
   if addon.SetUILanguage then addon:SetUILanguage(lang) end
-  print((addon.printPrefix or "GroupGuard LFG:"), "Language set to:", lang, "Reloading UI...")
+  print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("CMD_LANGUAGE_SET", lang))
   if ReloadUI then if C_Timer and C_Timer.After then C_Timer.After(0.05, function() ReloadUI() end) else ReloadUI() end end
 end
 
@@ -1090,7 +1105,7 @@ SlashCmdList.GROUPGUARDLFGREMOVE = function()
   end
 
   if #toKick == 0 then
-    print((addon.printPrefix or "GroupGuard LFG:"), "No marked players found for removal.")
+    print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("CMD_NO_MARKED_REMOVE"))
     return
   end
 
@@ -1110,7 +1125,7 @@ SlashCmdList.GROUPGUARDLFGSCAN = function()
 
   local count = 0
   if addon._groupOffenders then for _ in pairs(addon._groupOffenders) do count = count + 1 end end
-  print((addon.printPrefix or "GroupGuard LFG:"), "Scan complete. Marked group players:", count)
+  print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("CMD_SCAN_COMPLETE", count))
 end
 
 SLASH_GROUPGUARDLFGSTATE1 = "/ggstate"
@@ -1154,20 +1169,20 @@ SlashCmdList.GROUPGUARDLFGSTATE = function()
   local autoLeave = db and tostring(db.auto_leave) or "nil"
   local autoDecline = db and tostring(db.lfg_auto_decline) or "nil"
 
-  print("== GroupGuard LFG /ggstate ==")
-  print("Version:", tostring(addon.version), "-", tostring(addon.codename))
-  print("IsInInstance:", tostring(inInst), tostring(instType))
-  print("GetInstanceInfo:", tostring(name), tostring(instanceType))
-  print("DB: disable_in_bg:", disBG, "disable_in_arena:", disArena)
-  print("DB: show_in_party:", showParty, "show_in_raid:", showRaid, "auto_leave:", autoLeave, "lfg_auto_decline:", autoDecline)
-  print("Social: ignore_friends:", tostring(db and db.social_ignore_friends), "ignore_guild:", tostring(db and db.social_ignore_guild), "mark_friends:", tostring(db and db.social_mark_friends), "mark_guild:", tostring(db and db.social_mark_guild))
-  print("RaidAssist: enabled:", tostring(db and db.raid_assist_enabled), "guild_officers:", tostring(db and db.raid_assist_guild_officers), "selected_ranks:", tostring(db and db.raid_assist_selected_ranks or ""))
+  print(addon:Tr("CMD_STATE_TITLE"))
+  print(addon:Tr("CMD_VERSION", tostring(addon.version), tostring(addon.codename)))
+  print(addon:Tr("CMD_IS_IN_INSTANCE", tostring(inInst), tostring(instType)))
+  print(addon:Tr("CMD_GET_INSTANCE_INFO", tostring(name), tostring(instanceType)))
+  print(addon:Tr("CMD_DB_RESTRICTED", disBG, disArena))
+  print(addon:Tr("CMD_DB_BEHAVIOR", showParty, showRaid, autoLeave, autoDecline))
+  print(addon:Tr("CMD_SOCIAL_STATE", tostring(db and db.social_ignore_friends), tostring(db and db.social_ignore_guild), tostring(db and db.social_mark_friends), tostring(db and db.social_mark_guild)))
+  print(addon:Tr("CMD_RAID_ASSIST_STATE", tostring(db and db.raid_assist_enabled), tostring(db and db.raid_assist_guild_officers), tostring(db and db.raid_assist_selected_ranks or "")))
   local offenderCount = 0
   if addon._groupOffenders then for _ in pairs(addon._groupOffenders) do offenderCount = offenderCount + 1 end end
-  print("Group offenders:", offenderCount, "canRemove:", tostring(addon.KickNamesSequential ~= nil))
-  print("Lockout active:", lockout)
-  print("IsInRestrictedInstance:", restrictedNow)
-  print("IsDisabledNow:", disabledNow)
+  print(addon:Tr("CMD_GROUP_OFFENDERS", offenderCount, tostring(addon.KickNamesSequential ~= nil)))
+  print(addon:Tr("CMD_LOCKOUT_ACTIVE", lockout))
+  print(addon:Tr("CMD_RESTRICTED_NOW", restrictedNow))
+  print(addon:Tr("CMD_DISABLED_NOW", disabledNow))
 end
 
 
@@ -1176,32 +1191,32 @@ SlashCmdList.GROUPGUARDLFGDEBUG = function()
   local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
   local sp = LFGListFrame and LFGListFrame.SearchPanel
 
-  print("== GroupGuard LFG LFG Debug ==")
-  print("LFGListFrame:", LFGListFrame and "yes" or "no")
-  print("SearchPanel:", sp and "yes" or "no")
-  print("ApplicationViewer:", viewer and "yes" or "no")
-  print("Premade Groups Filter:", addon.IsPremadeGroupsFilterLoaded and addon:IsPremadeGroupsFilterLoaded() and "loaded" or "not loaded")
+  print(addon:Tr("CMD_DEBUG_TITLE"))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "LFGListFrame", LFGListFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "SearchPanel", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "ApplicationViewer", viewer and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "Premade Groups Filter", addon.IsPremadeGroupsFilterLoaded and addon:IsPremadeGroupsFilterLoaded() and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
 
   if viewer then
-    print("viewer.ScrollFrame:", viewer.ScrollFrame and "yes" or "no")
-    print("viewer.ScrollBox:", viewer.ScrollBox and "yes" or "no")
-    print("viewer.ScrollFrame.buttons:", viewer.ScrollFrame and viewer.ScrollFrame.buttons and #viewer.ScrollFrame.buttons or "nil")
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollFrame", viewer.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollBox", viewer.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_BUTTON_COUNT", "viewer.ScrollFrame", tostring(viewer.ScrollFrame and viewer.ScrollFrame.buttons and #viewer.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
   end
 
   if sp then
-    print("search.ScrollFrame:", sp.ScrollFrame and "yes" or "no")
-    print("search.ScrollBox:", sp.ScrollBox and "yes" or "no")
-    print("search.ScrollFrame.buttons:", sp.ScrollFrame and sp.ScrollFrame.buttons and #sp.ScrollFrame.buttons or "nil")
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "search.ScrollFrame", sp.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "search.ScrollBox", sp.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_BUTTON_COUNT", "search.ScrollFrame", tostring(sp.ScrollFrame and sp.ScrollFrame.buttons and #sp.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
   end
 
   if C_LFGList and C_LFGList.GetApplicants then
     local okApps, apps = pcall(C_LFGList.GetApplicants)
     apps = okApps and apps or {}
-    print("C_LFGList.GetApplicants():", #apps)
+    print(addon:Tr("CMD_APPLICANTS_COUNT", #apps))
     if apps[1] and C_LFGList.GetApplicantInfo then
       local okInfo, info = pcall(C_LFGList.GetApplicantInfo, apps[1])
       info = okInfo and info or nil
-      print("First applicantID:", apps[1], "numMembers:", info and info.numMembers)
+      print(addon:Tr("CMD_FIRST_APPLICANT", tostring(apps[1]), tostring(info and info.numMembers or addon:Tr("CMD_NIL"))))
     end
   end
 end

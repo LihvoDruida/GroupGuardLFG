@@ -213,12 +213,31 @@ local function PaintGGHighlight(rowFrame, mode)
   t:Show()
 end
 
+local function HideRowDecorations(row)
+  if not row then return end
+  PaintGGHighlight(row, false)
+  if row._ggApplicantChip then row._ggApplicantChip:SetText(""); row._ggApplicantChip:Hide() end
+  if row._ggRealmBadge then row._ggRealmBadge:SetText(""); row._ggRealmBadge:Hide() end
+end
+
+local function HookRecycledLFGRow(row)
+  if not row or row._ggRecycleSafeHooked then return end
+  row._ggRecycleSafeHooked = true
+  if row.HookScript then
+    row:HookScript("OnHide", HideRowDecorations)
+    row:HookScript("OnShow", HideRowDecorations)
+  end
+  if row.SetElementData and type(hooksecurefunc) == "function" then
+    hooksecurefunc(row, "SetElementData", HideRowDecorations)
+  end
+end
+
 local function ClearGGHighlightsInScrollBox(sb)
   local frames = EnumerateScrollBoxFrames(sb)
   if not frames then return end
 
   for _, row in ipairs(frames) do
-    PaintGGHighlight(row, false)
+    HideRowDecorations(row)
   end
 end
 
@@ -405,6 +424,7 @@ function addon:LFG_HighlightRows()
 
   local flaggedMap = {}
   for _, row in ipairs(frames) do
+    HookRecycledLFGRow(row)
     local applicantID = GetApplicantIDFromRow(row)
     local mode = nil
     if applicantID then
@@ -812,6 +832,7 @@ function addon:LFG_HighlightSearchResults()
   if not frames then return end
 
   for _, row in ipairs(frames) do
+    HookRecycledLFGRow(row)
     local rid = GetResultIDFromRow(row)
     local mode = nil
     if rid then
@@ -834,6 +855,7 @@ function addon:LFG_HookViewer()
   if sb and not sb._ggHooked then
     sb._ggHooked = true
 
+    if sb.HookScript then sb:HookScript("OnMouseWheel", function() ClearGGHighlightsInScrollBox(sb); addon:LFG_DebouncedHighlight(0.01) end) end
     if sb.FullUpdate and type(sb.FullUpdate) == "function" then
       hooksecurefunc(sb, "FullUpdate", function() addon:LFG_DebouncedHighlight() end)
     end
@@ -871,6 +893,7 @@ function addon:LFG_HookSearchPanel()
   if sb and not sb._ggHooked then
     sb._ggHooked = true
 
+    if sb.HookScript then sb:HookScript("OnMouseWheel", function() ClearGGHighlightsInScrollBox(sb); addon:LFG_DebouncedHighlightResults(0.01) end) end
     if sb.FullUpdate and type(sb.FullUpdate) == "function" then
       hooksecurefunc(sb, "FullUpdate", function() addon:LFG_DebouncedHighlightResults(0.05) end)
     end

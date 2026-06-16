@@ -444,7 +444,7 @@ function addon:PrintRaidPugs()
   end
 
   for i, pug in ipairs(pugs) do
-    print(string.format("%d. %s • %s • %s • %s", i, pug.fullName or pug.name or "?", pug.className or "—", pug.role or "—", pug.guildName or "—"))
+    print(addon:Tr("PUG_PRINT_ROW", i, pug.fullName or pug.name or "?", pug.className or "—", pug.role or "—", pug.guildName or "—"))
   end
 end
 

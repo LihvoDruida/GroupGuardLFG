@@ -289,3 +289,11 @@ This release integrates safe ideas from GroupfinderFlags, PGFinder and GroupFind
 * Applicant chips summarize visible applications directly in the LFG application list.
 * `/ggapps` prints visible applicant statistics.
 * `/ggadvisor` prints role-fit statistics for visible LFG search results.
+
+## 4.2.1 applicant data and recycled-row UI fixes
+
+* Applicant chips now read every safe Blizzard-provided member field available through `C_LFGList.GetApplicantMemberInfo`:
+  role composition, loaded member count, level range, item level best/average, PvP item level, M+ score, spec, class, relationship and leaver warning.
+* Applicant tooltips now show a per-member breakdown instead of only the top-line role/ilvl/score summary.
+* Recycled Blizzard LFG rows are now cleared on `OnShow`, `OnHide`, `SetElementData` and scroll updates, preventing stale GroupGuard chips, realm badges or highlights from appearing on the wrong applicant/search row.
+* Missing UI labels for the new LFG/realm/applicant settings were localized.

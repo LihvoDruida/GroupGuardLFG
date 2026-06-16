@@ -184,17 +184,58 @@ local function EnsureRealmBadge(row)
     badge:SetJustifyH("RIGHT")
     badge:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -5)
     badge:SetTextColor(0.85, 0.85, 0.85, 0.95)
+    if badge.SetWordWrap then badge:SetWordWrap(false) end
+    if badge.SetNonSpaceWrap then badge:SetNonSpaceWrap(false) end
     row._ggRealmBadge = badge
   end
   return row._ggRealmBadge
 end
 
-function addon:LFG_PaintRealmBadge(row, resultID)
-  if not (self.db and self.db.realm_insights and self.db.realm_badges) then
-    if row and row._ggRealmBadge then row._ggRealmBadge:Hide() end
-    return
+local function HideRealmBadge(row)
+  if row and row._ggRealmBadge then
+    row._ggRealmBadge._ggOwnerResultID = nil
+    row._ggRealmBadge:SetText("")
+    row._ggRealmBadge:Hide()
   end
-  if not row or not resultID then return end
+end
+
+local function ScheduleRealmBadgeRefresh(row)
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      if not row or not addon or not addon.LFG_PaintRealmBadge then return end
+      local rid = GetResultIDFromRow(row)
+      addon:LFG_PaintRealmBadge(row, rid)
+    end)
+  elseif addon and addon.LFG_PaintRealmBadge then
+    local rid = GetResultIDFromRow(row)
+    addon:LFG_PaintRealmBadge(row, rid)
+  end
+end
+
+local function HookRealmRow(row)
+  if not row or row._ggRealmRecycleHooked then return end
+  row._ggRealmRecycleHooked = true
+  if row.HookScript then
+    row:HookScript("OnHide", HideRealmBadge)
+    row:HookScript("OnShow", function(frame)
+      HideRealmBadge(frame)
+      ScheduleRealmBadgeRefresh(frame)
+    end)
+  end
+  if row.SetElementData and type(hooksecurefunc) == "function" then
+    hooksecurefunc(row, "SetElementData", function(frame)
+      HideRealmBadge(frame)
+      ScheduleRealmBadgeRefresh(frame)
+    end)
+  end
+end
+
+function addon:LFG_PaintRealmBadge(row, resultID)
+  if not row then return end
+  HideRealmBadge(row)
+  if not (self.db and self.db.realm_insights and self.db.realm_badges) then return end
+  if row.IsShown and not row:IsShown() then return end
+  if not resultID then return end
   local realm = GetSearchResultLeaderRealm(resultID)
   local hint = realm and self:GetRealmHintFromFullName("x-" .. realm) or nil
   if not hint then
@@ -212,6 +253,7 @@ function addon:LFG_PaintRealmBadge(row, resultID)
   end
   local badge = EnsureRealmBadge(row)
   if not badge then return end
+  badge._ggOwnerResultID = resultID
   local c = REALM_BADGE_COLORS[hint.code]
   if c then badge:SetTextColor(c[1], c[2], c[3], 0.95) else badge:SetTextColor(0.85, 0.85, 0.85, 0.95) end
   badge:SetText("[" .. (hint.short or "RL") .. "]")
@@ -246,10 +288,18 @@ local function RefreshRealmBadges()
   local sb = sp and sp.ScrollBox
   local frames = EnumerateScrollBoxFrames(sb)
   if not frames then return end
+  addon._ggRealmRows = addon._ggRealmRows or {}
   for _, row in ipairs(frames) do
+    addon._ggRealmRows[row] = true
+    HookRealmRow(row)
     local rid = GetResultIDFromRow(row)
-    if rid and addon.LFG_PaintRealmBadge then addon:LFG_PaintRealmBadge(row, rid) end
+    if addon.LFG_PaintRealmBadge then addon:LFG_PaintRealmBadge(row, rid) end
   end
+end
+
+function addon:LFG_HideRealmDecorations()
+  if not self._ggRealmRows then return end
+  for row in pairs(self._ggRealmRows) do HideRealmBadge(row) end
 end
 
 function addon:LFG_InitRealmInsights()
@@ -263,10 +313,11 @@ function addon:LFG_InitRealmInsights()
   end
 
   local function schedule()
+    if addon and addon.LFG_HideRealmDecorations then addon:LFG_HideRealmDecorations() end
     if addon and addon.RunDebounced then
-      addon:RunDebounced("realm_badges", 0.05, RefreshRealmBadges)
+      addon:RunDebounced("realm_badges", 0.01, RefreshRealmBadges)
     elseif C_Timer and C_Timer.After then
-      C_Timer.After(0.05, RefreshRealmBadges)
+      C_Timer.After(0.01, RefreshRealmBadges)
     else
       RefreshRealmBadges()
     end
@@ -276,6 +327,7 @@ function addon:LFG_InitRealmInsights()
   local sb = sp and sp.ScrollBox
   if sb and not sb._ggRealmHooked then
     sb._ggRealmHooked = true
+    if sb.HookScript then sb:HookScript("OnMouseWheel", schedule) end
     if sb.FullUpdate then hooksecurefunc(sb, "FullUpdate", schedule) end
     if sb.Update then hooksecurefunc(sb, "Update", schedule) end
     if sb.Refresh then hooksecurefunc(sb, "Refresh", schedule) end
