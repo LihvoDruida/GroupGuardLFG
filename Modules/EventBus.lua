@@ -161,11 +161,14 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
     if addon.LFG_HookSearchPanel then addon:LFG_HookSearchPanel() end
     if addon.InitPGFIntegration then addon:InitPGFIntegration() end
     if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
+    if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
+    if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
 
     if addon._lfgRefreshApplicants and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
     if addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
     if addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(0) end
     if addon._lfgRefreshResults and addon.LFG_DebouncedHighlightResults then addon:LFG_DebouncedHighlightResults(0) end
+    if addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end
 
     addon._lfgRefreshApplicants = false
     addon._lfgRefreshResults = false
@@ -224,9 +227,13 @@ local function OnEvent(self, event, arg1, ...)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
       addon:RequestLFGRefresh(0, true, true)
       if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
+      if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
+      if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
       if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, "addon_loaded") end
     elseif arg1 == "Blizzard_LookingForGroupUI" then
       if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
+      if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
+      if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
       addon:RequestLFGRefresh(0, true, true)
     elseif arg1 == "PremadeGroupsFilter" then
       if addon.InitPGFIntegration then addon:InitPGFIntegration() end
@@ -292,6 +299,9 @@ local function OnEvent(self, event, arg1, ...)
       or event == "LFG_LIST_ACTIVE_ENTRY_UPDATE"
       or event == "LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS"
       or event == "LFG_LIST_ENTRY_EXPIRED_TIMEOUT" then
+    if event == "LFG_LIST_APPLICANT_UPDATED" and addon.LFG_RefreshApplicantsAfterDone then
+      addon:LFG_RefreshApplicantsAfterDone(arg1)
+    end
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {}; addon._lfgFlagReasons = {} end
     addon:RequestLFGRefresh(0, true, true)
 

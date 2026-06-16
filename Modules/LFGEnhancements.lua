@@ -276,6 +276,10 @@ function addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
     tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_MEMBERS", insight.numMembers), 0.82, 0.82, 0.82, true)
   end
 
+  if self.LFG_AppendAdvisorTooltipLines then
+    self:LFG_AppendAdvisorTooltipLines(tooltip, resultID, insight, ensureHeader)
+  end
+
   if insight.socialTotal and insight.socialTotal > 0 then
     ensureHeader()
     tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_SOCIAL", insight.bnetFriends, insight.charFriends, insight.guildMates), 0.35, 0.90, 1.0, true)

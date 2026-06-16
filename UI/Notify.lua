@@ -46,6 +46,20 @@ local function CreateBanner()
   glow:SetColorTexture(0.65, 0.16, 0.08, 0.08)
   f.glow = glow
 
+  local severityStrip = f:CreateTexture(nil, "BORDER")
+  severityStrip:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
+  severityStrip:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+  severityStrip:SetWidth(4)
+  severityStrip:SetColorTexture(1.0, 0.22, 0.12, 0.88)
+  f.severityStrip = severityStrip
+
+  local softTop = f:CreateTexture(nil, "BORDER")
+  softTop:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -28)
+  softTop:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -28)
+  softTop:SetHeight(20)
+  softTop:SetColorTexture(1.0, 0.55, 0.18, 0.06)
+  f.softTop = softTop
+
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   title:SetPoint("TOP", f, "TOP", 0, -6)
   title:SetText(DISPLAY_NAME)
@@ -55,8 +69,14 @@ local function CreateBanner()
   local headerLine = CreateDivider(f, "TOPLEFT", f, "TOPLEFT", 16, -26, 528, 1, 1, 0.82, 0.36, 0.16)
   f.headerLine = headerLine
 
+  local tagBg = f:CreateTexture(nil, "ARTWORK")
+  tagBg:SetPoint("TOPRIGHT", f, "TOPRIGHT", -24, -28)
+  tagBg:SetSize(112, 18)
+  tagBg:SetColorTexture(1.0, 0.22, 0.12, 0.14)
+  f.tagBg = tagBg
+
   local tag = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  tag:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, -31)
+  tag:SetPoint("CENTER", tagBg, "CENTER", 0, 0)
   tag:SetText(addon:Tr("MARKED"))
   tag:SetTextColor(1.0, 0.38, 0.22)
   f.tag = tag
@@ -89,7 +109,7 @@ local function CreateBanner()
 
   local primary = f:CreateFontString(nil, "ARTWORK")
   primary:SetPoint("TOPLEFT", f, "TOPLEFT", 88, -46)
-  primary:SetPoint("RIGHT", f, "RIGHT", -110, 0)
+  primary:SetPoint("RIGHT", f, "RIGHT", -124, 0)
   primary:SetJustifyH("LEFT")
   primary:SetFont(SAFE_FONT, 17, "OUTLINE")
   primary:SetTextColor(1, 0.92, 0.76)

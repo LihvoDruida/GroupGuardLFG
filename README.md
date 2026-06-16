@@ -10,8 +10,10 @@ The addon does not identify nationality, ethnicity, origin, religion, or any per
 
 * Scan party and raid members using configurable rules.
 * Scan LFG applications and LFG search results.
-* Add lightweight LFG tooltip insights: listing age, role composition, social counters, and Shift class breakdown.
+* Add lightweight LFG tooltip insights: listing age, role composition, role-fit hints, social counters, realm-locale hints, and Shift class/spec breakdowns.
 * Manually or automatically decline marked LFG applications.
+* Show compact applicant chips with role composition, item level, M+ score and leaver warnings.
+* Show compact realm badges and technical realm-locale hints for LFG search rows.
 * Show a button to remove marked players from party/raid when you have permission.
 * Centered visual marker on party/raid unit frames.
 * Compact notification banner with action button.
@@ -276,3 +278,14 @@ Old databases from other addons are not used.
 GroupGuard LFG is a local UI organization tool for LFG and group management. It is not intended for discrimination, harassment, or judging people based on personal characteristics.
 
 Recommended use cases include filtering spam, boost advertising, carry offers, sell messages, GDKP advertisements, repeated unwanted text patterns, or other technical signals that interfere with your gameplay.
+
+
+## 4.2.0 user-experience enhancements
+
+This release integrates safe ideas from GroupfinderFlags, PGFinder and GroupFinderRio without replacing Blizzard, PGF or sorter addon UI.
+
+* Realm hints are based on realm-list metadata and are shown only as technical UI hints. They are not nationality or personal-origin checks.
+* Role-fit hints show whether your current selected role appears to have open slots in a visible group.
+* Applicant chips summarize visible applications directly in the LFG application list.
+* `/ggapps` prints visible applicant statistics.
+* `/ggadvisor` prints role-fit statistics for visible LFG search results.

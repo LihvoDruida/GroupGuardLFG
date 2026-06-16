@@ -131,7 +131,14 @@ addon.DEFAULTS = {
   lfg_tooltips = true,
   lfg_tooltip_reasons = true,
   lfg_tooltip_details = true,
+  lfg_role_fit_hints = true,
   lfg_mute_applicant_ping = true,
+  realm_insights = true,
+  realm_badges = true,
+  realm_same_locale_only = true,
+  applicant_summary_chips = true,
+  applicant_summary_tooltips = true,
+  applicant_auto_refresh_done = true,
   pgf_integration = true,
   alert_sound_cooldown = 10,
   alert_flash_cooldown = 10,
@@ -248,6 +255,24 @@ addon.L10N = {
     LFG_INSIGHTS_SHIFT = "Hold Shift for class breakdown",
     LFG_STATS_FMT = "Visible LFG rows: %d, marked: %d, friends: %d, guild: %d",
     LFG_STATS_NO_RESULTS = "No visible LFG search rows found.",
+    ROLE_TANK = "tank",
+    ROLE_HEALER = "healer",
+    ROLE_DAMAGER = "DPS",
+    LFG_ROLE_FIT_OK = "Your %s role fits: %d slot(s) open",
+    LFG_ROLE_FIT_FULL = "Your %s role looks full",
+    LFG_ADVISOR_STATS_FMT = "Visible rows: %d, role-fit: %d, role-full: %d",
+    REALM_INSIGHTS_TITLE = "Realm hint",
+    REALM_INSIGHTS_LEADER = "Leader realm: %s — %s",
+    REALM_INSIGHTS_NOTE = "Realm locale is a technical realm-list hint, not a player nationality check.",
+    APPLICANT_SUMMARY_TITLE = "Applicant summary",
+    APPLICANT_SUMMARY_COMP = "Composition: T %d / H %d / DPS %d",
+    APPLICANT_SUMMARY_ILVL = "Best item level: %.0f",
+    APPLICANT_SUMMARY_SCORE = "Best M+ score: %.0f",
+    APPLICANT_SUMMARY_LEAVER = "Leaver flag: %d member(s)",
+    APPLICANT_SUMMARY_SPECS = "Spec IDs",
+    APPLICANT_SUMMARY_SHIFT = "Hold Shift for spec IDs",
+    APPLICANT_STATS_FMT = "Visible applications: %d, members: %d, T %d / H %d / DPS %d, leavers: %d",
+    APPLICANT_STATS_NO_ROWS = "No visible applicant rows found.",
   },
   ukUA = {
     UI_LANG_AUTO = "Мова клієнта гри",
@@ -340,6 +365,24 @@ addon.L10N = {
     LFG_INSIGHTS_SHIFT = "Утримуй Shift для розбивки класів",
     LFG_STATS_FMT = "Видимі LFG-рядки: %d, позначено: %d, друзі: %d, гільдія: %d",
     LFG_STATS_NO_RESULTS = "Видимих LFG-рядків пошуку не знайдено.",
+    ROLE_TANK = "танк",
+    ROLE_HEALER = "хіл",
+    ROLE_DAMAGER = "ДД",
+    LFG_ROLE_FIT_OK = "Твоя роль %s підходить: відкрито слотів %d",
+    LFG_ROLE_FIT_FULL = "Твоя роль %s схожа на заповнену",
+    LFG_ADVISOR_STATS_FMT = "Видимі рядки: %d, роль підходить: %d, роль заповнена: %d",
+    REALM_INSIGHTS_TITLE = "Підказка реалму",
+    REALM_INSIGHTS_LEADER = "Реалм лідера: %s — %s",
+    REALM_INSIGHTS_NOTE = "Локаль реалму — технічна підказка за списком реалмів, не перевірка національності гравця.",
+    APPLICANT_SUMMARY_TITLE = "Підсумок заявки",
+    APPLICANT_SUMMARY_COMP = "Склад: T %d / H %d / DPS %d",
+    APPLICANT_SUMMARY_ILVL = "Найкращий ilvl: %.0f",
+    APPLICANT_SUMMARY_SCORE = "Найкращий M+ score: %.0f",
+    APPLICANT_SUMMARY_LEAVER = "Leaver-позначка: %d учасн.",
+    APPLICANT_SUMMARY_SPECS = "Spec ID",
+    APPLICANT_SUMMARY_SHIFT = "Утримуй Shift для Spec ID",
+    APPLICANT_STATS_FMT = "Видимі заявки: %d, учасників: %d, T %d / H %d / DPS %d, leavers: %d",
+    APPLICANT_STATS_NO_ROWS = "Видимих рядків заявок не знайдено.",
   },
 }
 
@@ -423,7 +466,14 @@ function addon:EnsureDB()
   if self.db.scan_debounce == nil or self.db.scan_debounce == 0.18 then self.db.scan_debounce = 0.03 end
   if self.db.lfg_debounce == nil or self.db.lfg_debounce == 0.08 then self.db.lfg_debounce = 0.02 end
   if self.db.lfg_tooltip_details == nil then self.db.lfg_tooltip_details = true end
+  if self.db.lfg_role_fit_hints == nil then self.db.lfg_role_fit_hints = true end
   if self.db.lfg_mute_applicant_ping == nil then self.db.lfg_mute_applicant_ping = true end
+  if self.db.realm_insights == nil then self.db.realm_insights = true end
+  if self.db.realm_badges == nil then self.db.realm_badges = true end
+  if self.db.realm_same_locale_only == nil then self.db.realm_same_locale_only = true end
+  if self.db.applicant_summary_chips == nil then self.db.applicant_summary_chips = true end
+  if self.db.applicant_summary_tooltips == nil then self.db.applicant_summary_tooltips = true end
+  if self.db.applicant_auto_refresh_done == nil then self.db.applicant_auto_refresh_done = true end
   if self.db.lfg_button_text == "Decline LFG applications (%d)" or self.db.lfg_button_text == "Відхилити позначені (%d)" or self.db.lfg_button_text == "Відхилити LFG-заявки (%d)" then self.db.lfg_button_text = self:DefaultLFGButtonText() end
   self:RebuildCaches()
 end

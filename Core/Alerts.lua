@@ -80,6 +80,11 @@ function addon:ApplyBannerKind(kind)
     self.Banner.tag:SetTextColor(r, g, b)
   end
   if self.Banner.glow then self.Banner.glow:SetColorTexture(r * 0.25, g * 0.10, b * 0.08, 0.26) end
+  if self.Banner.softTop then self.Banner.softTop:SetColorTexture(r, g, b, 0.07) end
+  if self.Banner.severityStrip then self.Banner.severityStrip:SetColorTexture(r, g * 0.72, b * 0.62, 0.88) end
+  if self.Banner.tagBg then self.Banner.tagBg:SetColorTexture(r, g * 0.55, b * 0.45, 0.16) end
+  if self.Banner.headerLine then self.Banner.headerLine:SetColorTexture(r, g * 0.74, b * 0.62, 0.18) end
+  if self.Banner.iconBg then self.Banner.iconBg:SetColorTexture(r * 0.14, g * 0.08, b * 0.08, 0.88) end
   if self.Banner.icon then self.Banner.icon:SetVertexColor(1, 1, 1, 1) end
   if self.Banner.iconRing and self.Banner.iconRing.SetBackdropBorderColor then self.Banner.iconRing:SetBackdropBorderColor(r, g * 0.55, b * 0.45, 0.92) end
 end

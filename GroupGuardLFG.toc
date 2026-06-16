@@ -1,8 +1,8 @@
 ## Interface: 120005
 ## Title: GroupGuard LFG
-## Notes: LFG guard release build: modular runtime, raid removal, LFG guard, tooltip insights, diagnostics
+## Notes: LFG guard release build: modular runtime, raid removal, LFG guard, realm/applicant insights, diagnostics
 ## Author: LihvoDruida
-## Version: 4.1.0
+## Version: 4.2.0
 ## X-Codename: Release Candidate
 ## OptionalDeps: PremadeGroupsFilter, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
@@ -17,11 +17,16 @@ Core\Alerts.lua
 Core\Social.lua
 Core\GroupScan.lua
 
+Data\RealmLocaleData.lua
+
 UI\Notify.lua
 
 Modules\FrameMarkers.lua
 Modules\LFG.lua
 Modules\LFGEnhancements.lua
+Modules\RealmInsights.lua
+Modules\LFGAdvisor.lua
+Modules\ApplicantEnhancements.lua
 Modules\GroupActions.lua
 Modules\RaidAssist.lua
 Modules\PugDetector.lua
