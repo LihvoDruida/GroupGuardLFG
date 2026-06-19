@@ -1,9 +1,9 @@
-## Interface: 120005
+## Interface: 120007
 ## Title: GroupGuard LFG
 ## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.2.17
-## X-Codename: Clean UI
+## Version: 4.2.18
+## X-Codename: 12.0.7 TOC
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
