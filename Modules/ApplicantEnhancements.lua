@@ -1,5 +1,5 @@
 -- GroupGuard LFG — Modules / Applicant Enhancements
--- Compatibility-safe applicant diagnostics. Keeps stock Blizzard rows and adds a narrow GroupGuard context column without replacing Blizzard/PGF data.
+-- Adds the compact GroupGuard applicant column while keeping the default applicant list intact.
 local addonName, addon = ...
 
 local C_Timer = C_Timer
@@ -197,7 +197,7 @@ local function ReadApplicantDungeonListingScore(applicantID, memberIndex)
   local activityIDs = GetActiveActivityIDs()
   local best
 
-  -- Primary source: exact current listing activity. This preserves the normal Rating column and only feeds the GG column.
+  -- Prefer the active listing value so the GG column stays relevant to the current group.
   for _, activityID in ipairs(activityIDs) do
     local scoreInfo
     if addon and addon.LFG_API_GetApplicantDungeonScoreForListing then
@@ -218,7 +218,7 @@ local function ReadApplicantDungeonListingScore(applicantID, memberIndex)
     end
   end
 
-  -- Fallback: Blizzard's best dungeon score for the active application/listing where available.
+  -- Fallback when the exact listing value is unavailable.
   if not best or (SafeNumber(best.bestRunLevel, 0) or 0) <= 0 then
     local fallback = NormalizeDungeonScoreInfo(ReadApplicantBestDungeonScore(applicantID, memberIndex), nil, "blizzard-best")
     if fallback then best = fallback end
@@ -608,7 +608,7 @@ end
 local function StyleApplicantContextHeaderFrame(frame, templateUsed)
   if not frame then return end
   SafeEnableMouse(frame, false)
-  -- Prefer inherited Blizzard textures when a template exists. The fallback is a tiny passive backdrop that visually reads as a normal column header.
+  -- Prefer the native column style when available.
   if not templateUsed then
     SafeSetBackdrop(frame, {
       bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -809,7 +809,7 @@ local function EnsureApplicantContextHeader()
     SafeShow(headerFrame)
     SafeShow(fs)
   else
-    -- No reliable stock headers yet: keep hidden until Blizzard renders the application viewer.
+    -- Wait until the applicant viewer has finished drawing its headers.
     HideApplicantContextHeader(viewer)
   end
 end
@@ -829,7 +829,7 @@ local function EnsureRowContextColumn(frame)
   end
 
   if not PositionApplicantRowColumns(frame, fs) then
-    -- Conservative fallback: value still goes before iLvl, but this branch is only used before headers are measurable.
+    -- Keep the value near iLvl until the header grid is measurable.
     SafeClearAllPoints(fs)
     local ilvl = FindItemLevelFontString(frame)
     if ilvl then
@@ -1162,12 +1162,12 @@ local function ApplyApplicantContextMetric(frame, applicantID, memberIdx)
   EnsureApplicantContextHeader()
   local fs = EnsureRowContextColumn(frame)
   if not fs then return end
-  -- Re-run after the row value column exists, so the stock-style GG header can align to the same x-position.
+  -- Re-run after the row value exists so header and values share one grid.
   EnsureApplicantContextHeader()
   HideFontString(fs)
   if not (addon and addon.db and addon.db.applicant_context_progress) then return end
 
-  -- Do not touch the stock Rating column. Old overrides are restored by cleanup.
+  -- Keep the normal Rating column unchanged.
   if frame._ggRatingOverridden and IsFontString(frame._ggStockRatingFS) then
     SafeSetText(frame._ggStockRatingFS, frame._ggOriginalRatingText or "")
     frame._ggRatingOverridden = nil
@@ -1266,7 +1266,7 @@ function addon:LFG_RequestApplicantSummaryTooltip(row)
       RenderApplicantSummaryTooltip(addon, row, appID)
     end
   end
-  -- Wait for Blizzard and tooltip-heavy addons such as Raider.IO/Plumber to finish their own rendering first.
+  -- Wait briefly so other tooltip addons can finish first.
   if C_Timer and C_Timer.After then
     C_Timer.After(0.03, tryAppend)
     C_Timer.After(0.12, tryAppend)
@@ -1283,7 +1283,7 @@ local function HookApplicantTooltipFrame(frame)
   end)
   pcall(frame.HookScript, frame, "OnLeave", function(f)
     if f then f._ggTooltipToken = nil end
-    -- Do not hide or clear GameTooltip here. Blizzard/Raider.IO/Plumber own the tooltip lifecycle.
+    -- Do not hide or clear GameTooltip here.
   end)
 end
 
@@ -1300,7 +1300,7 @@ local function HookApplicantMemberFrame(frame)
 end
 
 function addon:LFG_ShowApplicantCard(memberFrame, applicantID, memberIdx)
-  -- Compatibility entry point: intentionally no row drawing. Tooltips carry minimal GroupGuard-only data.
+  -- Compatibility entry point: no row replacement.
   if not memberFrame then return end
   memberFrame._ggLastApplicantID = SafeNumber(applicantID, nil) or memberFrame._ggLastApplicantID or GetApplicantIDFromRow(memberFrame)
   memberFrame._ggLastMemberIdx = SafeNumber(memberIdx, memberFrame.memberIdx or 1) or 1
@@ -1395,7 +1395,7 @@ function addon:LFG_DumpApplicants()
   for _, appID in ipairs(applicants) do
     local info = GetApplicantInfoSafe(appID)
     if info then
-      print(prefix, self:Tr("APPLICANT_DUMP_APP", appID, DumpValue(self, info.applicationStatus), DumpValue(self, info.pendingApplicationStatus), DumpValue(self, info.numMembers), DumpValue(self, info.comment)))
+      print(prefix, self:Tr("APPLICANT_DUMP_APP", appID, DumpValue(self, info.applicationStatus), DumpValue(self, info.numMembers), DumpValue(self, info.comment)))
       local num = SafeNumber(info.numMembers, 1) or 1
       if num < 1 then num = 1 elseif num > 5 then num = 5 end
       for i = 1, num do
@@ -1403,7 +1403,8 @@ function addon:LFG_DumpApplicants()
         if m then
           local run = type(m.listingScore) == "table" and SafeNumber(m.listingScore.bestRunLevel, nil) or nil
           local metric = BuildApplicantContextMetric(appID, i)
-          print(prefix, self:Tr("APPLICANT_DUMP_MEMBER", i, DumpValue(self, m.name), DumpValue(self, m.assignedRole), DumpValue(self, m.specID), DumpValue(self, m.itemLevel), DumpValue(self, m.pvpItemLevel), DumpValue(self, m.dungeonScore), DumpValue(self, m.level), DumpValue(self, m.isLeaver), DumpValue(self, run), DumpValue(self, metric and metric.text), DumpValue(self, metric and metric.source)))
+          local memberLabel = m.specName or m.assignedRole or "-"
+          print(prefix, self:Tr("APPLICANT_DUMP_MEMBER", i, DumpValue(self, m.name), DumpValue(self, memberLabel), DumpValue(self, m.itemLevel), DumpValue(self, m.dungeonScore), DumpValue(self, run), DumpValue(self, metric and metric.text), DumpValue(self, m.isLeaver)))
         else
           print(prefix, self:Tr("APPLICANT_DUMP_MEMBER_MISSING", i))
         end

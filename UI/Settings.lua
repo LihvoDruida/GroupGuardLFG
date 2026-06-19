@@ -9,8 +9,8 @@ local SETTINGS_UK = {
   ["GroupGuard LFG — Settings (Fallback)"] = "GroupGuard LFG — Налаштування (Fallback)",
   ["Version: %s — %s"] = "Версія: %s — %s",
 
-  ["Settings are grouped by how the addon works:\n• General — where the addon works and what to do on a match.\n• LFG applications — manual/auto decline and list highlighting.\n• Raid Assist — automatic raid assistant assignment.\n• Rules — keywords, guild names and language/text signals.\n• Notifications — banner, sound, flash and frame markers.\n• Compatibility — PGF, debounce and technical UI refresh."] =
-    "Налаштування згруповані за логікою роботи аддона:\n• Основне — де працює аддон і що робити при збігу.\n• LFG-заявки — ручне/авто-відхилення та підсвітка списків.\n• Raid Assist — автоматична видача помічника рейду.\n• Правила — ключові слова, гільдії та мовні/текстові сигнали.\n• Сповіщення — банер, звук, спалах і мітки на фреймах.\n• Сумісність — PGF, debounce і технічне оновлення UI.",
+  ["Settings are grouped by how the addon works:\n• General — where the addon works and what to do on a match.\n• LFG applications — application actions, highlights and the GG column.\n• Raid Assist — automatic raid assistant assignment.\n• Rules — keywords, guild names and optional text checks.\n• Notifications — banner, sound, flash and frame markers.\n• Compatibility — other LFG addons and manual refresh."] =
+    "Налаштування згруповані за логікою роботи аддона:\n• Основне — де працює аддон і що робити при збігу.\n• LFG-заявки — дії із заявками, підсвітка та GG-колонка.\n• Raid Assist — автоматична видача помічника рейду.\n• Правила — ключові слова, гільдії та додаткові текстові перевірки.\n• Сповіщення — банер, звук, спалах і мітки на фреймах.\n• Сумісність — інші LFG-аддони та ручне оновлення.",
 
   ["Interface language:"] = "Мова інтерфейсу:",
   ["Default is Game client language. Change takes effect immediately for addon messages; reopen settings to refresh all labels."] =
@@ -40,12 +40,12 @@ local SETTINGS_UK = {
   ["Automatically decline marked LFG applications when you have permission"] =
     "Автоматично відхиляти позначені LFG-заявки, якщо є права",
   ["Notify about auto-declines"] = "Сповіщати про авто-відхилення",
-  ["Show the manual “Decline LFG applications” fallback button"] =
-    "Показувати ручну fallback-кнопку «Відхилити LFG-заявки»",
-  ["Auto-decline runs only for marked applications and only while you can manage the active listing. The manual button remains available for applicants that Blizzard does not allow to decline automatically."] =
-    "Авто-відхилення працює лише для позначених заявок і тільки коли ти можеш керувати активним оголошенням. Ручна кнопка залишається fallback-дією для заявок, які Blizzard не дозволяє відхилити автоматично.",
+  ["Show the manual “Decline LFG applications” button"] =
+    "Показувати ручну кнопку «Відхилити LFG-заявки»",
+  ["Auto-decline works only for marked applications and only while you can manage the active listing. The manual button remains available for anything that needs review."] =
+    "Авто-відхилення працює лише для позначених заявок і тільки коли ти можеш керувати активним оголошенням. Ручна кнопка залишається для випадків, які треба перевірити вручну.",
   ["Auto-decline limit per pass:"] = "Ліміт авто-відхилень за один прохід:",
-  ["Delay between auto-declines (sec):"] = "Затримка між авто-відхиленнями (сек):",
+  ["Pause between auto-declines (sec):"] = "Пауза між авто-відхиленнями (сек):",
   ["Manual LFG button text:"] = "Текст ручної LFG-кнопки:",
   ["Decline LFG applications (%d)"] = "Відхилити LFG-заявки (%d)",
   ["LFG highlighting"] = "Підсвітка LFG",
@@ -53,26 +53,26 @@ local SETTINGS_UK = {
   ["Check LFG members against rules"] = "Перевіряти учасників LFG за правилами",
   ["Show GroupGuard tooltip in LFG"] = "Показувати GroupGuard tooltip у LFG",
   ["Show reason in tooltip"] = "Показувати причину в tooltip",
-  ["Show search result age, role composition and class breakdown in tooltip"] =
-    "Показувати в tooltip вік оголошення, склад ролей і розбивку класів",
+  ["Show extra group details in tooltip"] =
+    "Показувати додаткові деталі групи в tooltip",
   ["Mute duplicate applicant ping while auto-decline is running"] =
     "Приглушувати зайвий звук нової заявки під час авто-відхилення",
-  ["LFG tooltip insights are lightweight and do not replace Raider.IO, PGF or sorter addons. Hold Shift on a search result tooltip to show class breakdown."] =
-    "LFG-інсайти легкі й не замінюють Raider.IO, PGF або сортери. Утримуй Shift на tooltip результату пошуку, щоб побачити розбивку класів.",
+  ["LFG tooltip details are optional. Hold Shift on a search result tooltip to show a class breakdown."] =
+    "Деталі в LFG tooltip є опціональними. Утримуй Shift на tooltip результату пошуку, щоб побачити розбивку класів.",
   ["Show role-fit hints for your current spec"] = "Показувати підказки відповідності ролі для поточної спеціалізації",
-  ["Show realm/locale hints in LFG tooltips"] = "Показувати підказки реалму/локалі в LFG tooltip",
+  ["Show realm hints in LFG tooltips"] = "Показувати підказки реалму в LFG tooltip",
   ["Show compact realm badges on search rows"] = "Показувати компактні бейджі реалму на рядках пошуку",
-  ["Hide realm badge when the leader realm matches your locale"] = "Ховати бейдж реалму, якщо реалм лідера збігається з твоєю локаллю",
+  ["Hide realm badge when it is not useful"] = "Ховати бейдж реалму, якщо він не потрібний",
 
   ["Show whether your current role fits the searched group"] = "Показувати, чи твоя поточна роль підходить знайденій групі",
-  ["Show technical realm/locale hints in search tooltips"] = "Показувати технічні підказки реалму/локалі в tooltip пошуку",
+  ["Show realm hints in search tooltips"] = "Показувати підказки реалму в tooltip пошуку",
   ["Show compact realm badges on LFG search rows"] = "Показувати компактні бейджі реалму на LFG-рядках пошуку",
-  ["Only show realm hints when the realm locale differs from yours"] = "Показувати підказки реалму тільки коли локаль реалму відрізняється від твоєї",
-  ["Show minimal GroupGuard applicant warnings in tooltips"] = "Показувати мінімальні попередження GroupGuard у tooltip заявок",
-  ["Refresh applicant list after cancelled/timed out/invited applications"] = "Оновлювати список заявок після cancelled/timed out/invited статусів",
-  ["Show current dungeon key / raid progress in a separate applicant GG column"] = "Показувати поточний ключ підземелля / прогрес рейду в окремій GG-колонці заявок",
-  ["LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Applicant tooltips are appended as a minimal GroupGuard section only when there is unique warning data. Applicant context progress uses a separate GG applicant column and never replaces Blizzard or PGF rating data."] =
-    "LFG-інсайти — пасивні UI-підказки й не замінюють Raider.IO, PGF або сортери. Локаль реалму — лише підказка зі списку реалмів, не перевірка національності гравця. Tooltip заявок доповнюється мінімальним блоком GroupGuard тільки коли є унікальні попередження. Контекст заявок використовує окрему GG-колонку й не замінює рейтинг Blizzard або PGF.",
+  ["Only show realm hints when they are useful"] = "Показувати підказки реалму тільки коли вони корисні",
+  ["Show GroupGuard warnings in applicant tooltips"] = "Показувати попередження GroupGuard у tooltip заявок",
+  ["Refresh applicant list after status changes"] = "Оновлювати список заявок після зміни статусу",
+  ["Show current dungeon key / raid progress in the GG column"] = "Показувати поточний ключ / прогрес рейду в GG-колонці",
+  ["These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged."] =
+    "Ці опції додають невеликі підказки у вікно LFG. GG-колонка показує поточний ключ або прогрес рейду, якщо ці дані доступні. GroupGuard не змінює стандартні колонки iLvl і Rating.",
 
   ["Friends / guild in LFG"] = "Друзі / гільдія у LFG",
   ["Ignore friends even if they match filters"] = "Не реагувати на друзів, навіть якщо вони підпадають під фільтр",
@@ -103,8 +103,8 @@ local SETTINGS_UK = {
 
   ["Filter rules"] = "Правила фільтрів",
   ["4. Rules"] = "4. Правила",
-  ["Neutral marking rules: keywords, names, guilds and optional language/text signals."] =
-    "Нейтральні правила позначення: ключові слова, імена, гільдії та опціональні мовні/текстові сигнали.",
+  ["Neutral marking rules: keywords, names, guilds and optional text checks."] =
+    "Нейтральні правила позначення: ключові слова, імена, гільдії та додаткові текстові перевірки.",
   ["What to scan"] = "Що перевіряти",
   ["Check player names in party/raid"] = "Перевіряти імена гравців у party/raid",
   ["Check guild names in party/raid"] = "Перевіряти назви гільдій у party/raid",
@@ -154,16 +154,16 @@ local SETTINGS_UK = {
   ["Comment — test"] = "Коментар — test",
   ["Test banner."] = "Тестовий банер.",
 
-  ["Compatibility and technical"] = "Сумісність і технічне",
+  ["Compatibility"] = "Сумісність",
   ["6. Compatibility"] = "6. Сумісність",
-  ["Technical UI refresh parameters, Premade Groups Filter compatibility and manual synchronization."] =
-    "Технічні параметри оновлення UI, сумісність з Premade Groups Filter та ручна синхронізація.",
-  ["Deeper compatibility with Premade Groups Filter"] = "Глибша сумісність з Premade Groups Filter",
-  ["Debounce group scan (sec):"] = "Debounce group scan (сек):",
-  ["Debounce LFG scan (sec):"] = "Debounce LFG scan (сек):",
-  ["Silent startup after ReloadUI (sec):"] = "Тихий запуск після ReloadUI (сек):",
-  ["Suppress intermediate action spam"] = "Приглушити проміжні повідомлення дій",
-  ["Synchronize UI now"] = "Синхронізувати UI зараз",
+  ["Compatibility with other LFG addons and manual refresh tools."] =
+    "Сумісність з іншими LFG-аддонами та ручне оновлення.",
+  ["Improve Premade Groups Filter compatibility"] = "Покращити сумісність з Premade Groups Filter",
+  ["Group refresh delay (sec):"] = "Затримка оновлення групи (сек):",
+  ["LFG refresh delay (sec):"] = "Затримка оновлення LFG (сек):",
+  ["Quiet startup after /reload (sec):"] = "Тихий запуск після /reload (сек):",
+  ["Reduce repeated chat messages"] = "Зменшити повтори повідомлень у чаті",
+  ["Refresh GroupGuard UI"] = "Оновити UI GroupGuard",
 }
 
 local function LS(text)
@@ -548,17 +548,17 @@ function addon:InitSettingsPages()
   title:SetPoint("TOPLEFT", 16, -12)
 
   local subtitle = FS(rootPanel, "GameFontHighlightSmall",
-    LSF("Version: %s — %s", addon.version or "4.0.0", addon.codename or "Release Candidate"))
+    LSF("Version: %s — %s", addon.version or "4.0.0", addon.codename or "Clean UI"))
   subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 
   local overview = FS(rootPanel, "GameFontHighlight",
     "Settings are grouped by how the addon works:\n" ..
     "• General — where the addon works and what to do on a match.\n" ..
-    "• LFG applications — manual/auto decline and list highlighting.\n" ..
+    "• LFG applications — application actions, highlights and the GG column.\n" ..
     "• Raid Assist — automatic raid assistant assignment.\n" ..
-    "• Rules — keywords, guild names and language/text signals.\n" ..
+    "• Rules — keywords, guild names and optional text checks.\n" ..
     "• Notifications — banner, sound, flash and frame markers.\n" ..
-    "• Compatibility — PGF, debounce and technical UI refresh.")
+    "• Compatibility — other LFG addons and manual refresh.")
   overview:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -18)
   overview:SetPoint("RIGHT", rootPanel, "RIGHT", -24, 0)
   overview:SetJustifyH("LEFT")
@@ -719,9 +719,9 @@ function addon:InitSettingsPages()
   local secDecline = AddSection(lfgChild, lfgNote, "Application decline")
   local l1 = AddCheck(lfgChild, secDecline, "Automatically decline marked LFG applications when you have permission", "lfg_auto_decline", function() SyncAll("lfg_auto_decline") end)
   local l2 = AddCheck(lfgChild, l1, "Notify about auto-declines", "lfg_auto_decline_notify", function() SyncAll("lfg_auto_decline_notify") end)
-  local l3 = AddCheck(lfgChild, l2, "Show the manual “Decline LFG applications” fallback button", "lfg_show_button", function() SyncAll("lfg_show_button") end)
+  local l3 = AddCheck(lfgChild, l2, "Show the manual “Decline LFG applications” button", "lfg_show_button", function() SyncAll("lfg_show_button") end)
   local lfgAutoNote = AddNote(lfgChild, l3,
-    "Auto-decline runs only for marked applications and only while you can manage the active listing. The manual button remains available for applicants that Blizzard does not allow to decline automatically.")
+    "Auto-decline works only for marked applications and only while you can manage the active listing. The manual button remains available for anything that needs review.")
 
   local limitRow = AddEdit(
     lfgChild, lfgAutoNote, "Auto-decline limit per pass:",
@@ -736,7 +736,7 @@ function addon:InitSettingsPages()
   )
 
   local delayRow = AddEdit(
-    lfgChild, limitRow, "Delay between auto-declines (sec):",
+    lfgChild, limitRow, "Pause between auto-declines (sec):",
     function() return addon.db.lfg_auto_decline_delay or 0.12 end,
     function(txt)
       local v = tonumber(txt) or 0.12
@@ -763,17 +763,17 @@ function addon:InitSettingsPages()
   local l5 = AddCheck(lfgChild, l4, "Check LFG members against rules", "lfg_highlight_search_members", function() SyncAll("lfg_members") end)
   local l6 = AddCheck(lfgChild, l5, "Show GroupGuard tooltip in LFG", "lfg_tooltips", function() SyncAll("lfg_tooltips") end)
   local l7 = AddCheck(lfgChild, l6, "Show reason in tooltip", "lfg_tooltip_reasons", function() SyncAll("lfg_tooltip_reasons") end)
-  local l7b = AddCheck(lfgChild, l7, "Show search result age, role composition and class breakdown in tooltip", "lfg_tooltip_details", function() SyncAll("lfg_tooltip_details") end)
+  local l7b = AddCheck(lfgChild, l7, "Show extra group details in tooltip", "lfg_tooltip_details", function() SyncAll("lfg_tooltip_details") end)
   local l7fit = AddCheck(lfgChild, l7b, "Show whether your current role fits the searched group", "lfg_role_fit_hints", function() SyncAll("lfg_role_fit_hints") end)
-  local l7realm = AddCheck(lfgChild, l7fit, "Show technical realm/locale hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
+  local l7realm = AddCheck(lfgChild, l7fit, "Show realm hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
   local l7badge = AddCheck(lfgChild, l7realm, "Show compact realm badges on LFG search rows", "realm_badges", function() SyncAll("realm_badges") end)
-  local l7same = AddCheck(lfgChild, l7badge, "Only show realm hints when the realm locale differs from yours", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
-  local l7appt = AddCheck(lfgChild, l7same, "Show minimal GroupGuard applicant warnings in tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
-  local l7context = AddCheck(lfgChild, l7appt, "Show current dungeon key / raid progress in a separate applicant GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
-  local l7refresh = AddCheck(lfgChild, l7context, "Refresh applicant list after cancelled/timed out/invited applications", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
+  local l7same = AddCheck(lfgChild, l7badge, "Only show realm hints when they are useful", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
+  local l7appt = AddCheck(lfgChild, l7same, "Show GroupGuard warnings in applicant tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
+  local l7context = AddCheck(lfgChild, l7appt, "Show current dungeon key / raid progress in the GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
+  local l7refresh = AddCheck(lfgChild, l7context, "Refresh applicant list after status changes", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
   local l7c = AddCheck(lfgChild, l7refresh, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
   local lfgInsightNote = AddNote(lfgChild, l7c,
-    "LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Applicant tooltips are appended as a minimal GroupGuard section only when there is unique warning data. Applicant context progress uses a separate GG applicant column and never replaces Blizzard or PGF rating data.")
+    "These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged.")
 
   local secSocial = AddSection(lfgChild, lfgInsightNote, "Friends / guild in LFG")
   local l8 = AddCheck(lfgChild, secSocial, "Ignore friends even if they match filters", "social_ignore_friends", function() SyncAll("social_ignore_friends") end)
@@ -830,7 +830,7 @@ function addon:InitSettingsPages()
   local rulesPage, rulesChild, rulesTitle = RegisterPage("GroupGuardLFGConfigRules", "Filter rules", "4. Rules")
 
   local rulesNote = FS(rulesChild, "GameFontHighlightSmall",
-    "Neutral marking rules: keywords, names, guilds and optional language/text signals.")
+    "Neutral marking rules: keywords, names, guilds and optional text checks.")
   rulesNote:SetPoint("TOPLEFT", rulesTitle, "BOTTOMLEFT", 0, -10)
   rulesNote:SetPoint("RIGHT", rulesChild, "RIGHT", -24, 0)
   rulesNote:SetJustifyH("LEFT")
@@ -952,20 +952,20 @@ function addon:InitSettingsPages()
   end)
 
   --------------------------------------------------
-  -- 6. Compatibility and technical
+  -- 6. Compatibility
   --------------------------------------------------
-  local compatPage, compatChild, compatTitle = RegisterPage("GroupGuardLFGConfigCompat", "Compatibility and technical", "6. Compatibility")
+  local compatPage, compatChild, compatTitle = RegisterPage("GroupGuardLFGConfigCompat", "Compatibility", "6. Compatibility")
 
   local compatNote = FS(compatChild, "GameFontHighlightSmall",
-    "Technical UI refresh parameters, Premade Groups Filter compatibility and manual synchronization.")
+    "Compatibility with other LFG addons and manual refresh tools.")
   compatNote:SetPoint("TOPLEFT", compatTitle, "BOTTOMLEFT", 0, -10)
   compatNote:SetPoint("RIGHT", compatChild, "RIGHT", -24, 0)
   compatNote:SetJustifyH("LEFT")
 
-  local c1 = AddCheck(compatChild, compatNote, "Deeper compatibility with Premade Groups Filter", "pgf_integration", function() SyncAll("pgf_integration") end)
+  local c1 = AddCheck(compatChild, compatNote, "Improve Premade Groups Filter compatibility", "pgf_integration", function() SyncAll("pgf_integration") end)
 
   local scanRow = AddEdit(
-    compatChild, c1, "Debounce group scan (sec):",
+    compatChild, c1, "Group refresh delay (sec):",
     function() return addon.db.scan_debounce or 0.03 end,
     function(txt)
       local v = tonumber(txt) or 0.03
@@ -977,7 +977,7 @@ function addon:InitSettingsPages()
   )
 
   local lfgDebounceRow = AddEdit(
-    compatChild, scanRow, "Debounce LFG scan (sec):",
+    compatChild, scanRow, "LFG refresh delay (sec):",
     function() return addon.db.lfg_debounce or 0.02 end,
     function(txt)
       local v = tonumber(txt) or 0.02
@@ -989,7 +989,7 @@ function addon:InitSettingsPages()
   )
 
   local silentRow = AddEdit(
-    compatChild, lfgDebounceRow, "Silent startup after ReloadUI (sec):",
+    compatChild, lfgDebounceRow, "Quiet startup after /reload (sec):",
     function() return addon.db.startup_silent_seconds or 3.0 end,
     function(txt)
       local v = tonumber(txt) or 3.0
@@ -1000,11 +1000,11 @@ function addon:InitSettingsPages()
     false
   )
 
-  local spamCheck = AddCheck(compatChild, silentRow, "Suppress intermediate action spam", "suppress_action_spam", function()
+  local spamCheck = AddCheck(compatChild, silentRow, "Reduce repeated chat messages", "suppress_action_spam", function()
     SyncAll("suppress_action_spam")
   end)
 
-  AddActionButton(compatChild, spamCheck, "Synchronize UI now", 190, function()
+  AddActionButton(compatChild, spamCheck, "Refresh GroupGuard UI", 190, function()
     SyncAll("manual_full_sync")
   end)
 end

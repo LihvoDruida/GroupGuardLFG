@@ -1,9 +1,9 @@
 ## Interface: 120005
 ## Title: GroupGuard LFG
-## Notes: LFG guard release build: aligned stock applicant GG column with PGF-safe hooks
+## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.2.16
-## X-Codename: Release Candidate
+## Version: 4.2.17
+## X-Codename: Clean UI
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
