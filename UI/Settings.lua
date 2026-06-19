@@ -68,12 +68,11 @@ local SETTINGS_UK = {
   ["Show technical realm/locale hints in search tooltips"] = "Показувати технічні підказки реалму/локалі в tooltip пошуку",
   ["Show compact realm badges on LFG search rows"] = "Показувати компактні бейджі реалму на LFG-рядках пошуку",
   ["Only show realm hints when the realm locale differs from yours"] = "Показувати підказки реалму тільки коли локаль реалму відрізняється від твоєї",
-  ["Show compact role/ilvl/score chips on applicant rows"] = "Показувати двострокові картки заявок з ролями, ilvl, M+, рівнями та коментарем",
-  ["Show two-line applicant cards on applicant rows"] = "Показувати двострокові картки заявок на рядках учасників",
-  ["Show applicant composition summary in tooltips"] = "Показувати підсумок складу заявки в tooltip",
+  ["Show minimal GroupGuard applicant warnings in tooltips"] = "Показувати мінімальні попередження GroupGuard у tooltip заявок",
   ["Refresh applicant list after cancelled/timed out/invited applications"] = "Оновлювати список заявок після cancelled/timed out/invited статусів",
-  ["LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Hold Shift on tooltips to show deeper breakdowns."] =
-    "LFG-інсайти — пасивні UI-підказки й не замінюють Raider.IO, PGF або сортери. Локаль реалму — лише підказка зі списку реалмів, не перевірка національності гравця. Утримуй Shift у tooltip, щоб побачити детальнішу розбивку.",
+  ["Show current dungeon key / raid progress in a separate applicant GG column"] = "Показувати поточний ключ підземелля / прогрес рейду в окремій GG-колонці заявок",
+  ["LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Applicant tooltips are appended as a minimal GroupGuard section only when there is unique warning data. Applicant context progress uses a separate GG applicant column and never replaces Blizzard or PGF rating data."] =
+    "LFG-інсайти — пасивні UI-підказки й не замінюють Raider.IO, PGF або сортери. Локаль реалму — лише підказка зі списку реалмів, не перевірка національності гравця. Tooltip заявок доповнюється мінімальним блоком GroupGuard тільки коли є унікальні попередження. Контекст заявок використовує окрему GG-колонку й не замінює рейтинг Blizzard або PGF.",
 
   ["Friends / guild in LFG"] = "Друзі / гільдія у LFG",
   ["Ignore friends even if they match filters"] = "Не реагувати на друзів, навіть якщо вони підпадають під фільтр",
@@ -769,12 +768,12 @@ function addon:InitSettingsPages()
   local l7realm = AddCheck(lfgChild, l7fit, "Show technical realm/locale hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
   local l7badge = AddCheck(lfgChild, l7realm, "Show compact realm badges on LFG search rows", "realm_badges", function() SyncAll("realm_badges") end)
   local l7same = AddCheck(lfgChild, l7badge, "Only show realm hints when the realm locale differs from yours", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
-  local l7apps = AddCheck(lfgChild, l7same, "Show two-line applicant cards on applicant rows", "applicant_cards_enabled", function() SyncAll("applicant_summary_cards") end)
-  local l7appt = AddCheck(lfgChild, l7apps, "Show applicant composition summary in tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
-  local l7refresh = AddCheck(lfgChild, l7appt, "Refresh applicant list after cancelled/timed out/invited applications", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
+  local l7appt = AddCheck(lfgChild, l7same, "Show minimal GroupGuard applicant warnings in tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
+  local l7context = AddCheck(lfgChild, l7appt, "Show current dungeon key / raid progress in a separate applicant GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
+  local l7refresh = AddCheck(lfgChild, l7context, "Refresh applicant list after cancelled/timed out/invited applications", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
   local l7c = AddCheck(lfgChild, l7refresh, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
   local lfgInsightNote = AddNote(lfgChild, l7c,
-    "LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Hold Shift on tooltips to show deeper breakdowns.")
+    "LFG insights are passive UI hints and do not replace Raider.IO, PGF or sorter addons. Realm locale is a realm-list hint only, not a player nationality check. Applicant tooltips are appended as a minimal GroupGuard section only when there is unique warning data. Applicant context progress uses a separate GG applicant column and never replaces Blizzard or PGF rating data.")
 
   local secSocial = AddSection(lfgChild, lfgInsightNote, "Friends / guild in LFG")
   local l8 = AddCheck(lfgChild, secSocial, "Ignore friends even if they match filters", "social_ignore_friends", function() SyncAll("social_ignore_friends") end)
@@ -1210,11 +1209,11 @@ SlashCmdList.GROUPGUARDLFGDEBUG = function()
     print(addon:Tr("CMD_BUTTON_COUNT", "search.ScrollFrame", tostring(sp.ScrollFrame and sp.ScrollFrame.buttons and #sp.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
   end
 
-  if C_LFGList and C_LFGList.GetApplicants then
-    local apps = addon.LFG_API_GetApplicants and addon:LFG_API_GetApplicants() or {}
+  if addon.LFG_API_GetApplicants then
+    local apps = addon:LFG_API_GetApplicants() or {}
     print(addon:Tr("CMD_APPLICANTS_COUNT", #apps))
-    if apps[1] and C_LFGList.GetApplicantInfo then
-      local info = addon.LFG_API_GetApplicantInfo and addon:LFG_API_GetApplicantInfo(apps[1]) or nil
+    if apps[1] and addon.LFG_API_GetApplicantInfo then
+      local info = addon:LFG_API_GetApplicantInfo(apps[1]) or nil
       print(addon:Tr("CMD_FIRST_APPLICANT", tostring(apps[1]), tostring(info and info.numMembers or addon:Tr("CMD_NIL"))))
     end
   end

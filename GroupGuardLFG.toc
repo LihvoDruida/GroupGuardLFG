@@ -1,10 +1,10 @@
 ## Interface: 120005
 ## Title: GroupGuard LFG
-## Notes: LFG guard release build: global API/UI audit, applicant cards, diagnostics, safe LFG hooks, recycled-row UI fixes
+## Notes: LFG guard release build: aligned stock applicant GG column with PGF-safe hooks
 ## Author: LihvoDruida
-## Version: 4.2.3
+## Version: 4.2.16
 ## X-Codename: Release Candidate
-## OptionalDeps: PremadeGroupsFilter, Plumber, Blizzard_LookingForGroupUI
+## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg

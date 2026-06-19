@@ -241,7 +241,7 @@ end
 --------------------------------------------------
 
 function addon:EvaluateApplicantFlag(id)
-  if not id or not C_LFGList or not C_LFGList.GetApplicantInfo then return false end
+  if not id or not self.LFG_API_GetApplicantInfo then return false end
   self._lfgFlagCache = self._lfgFlagCache or {}
   self._lfgFlagReasons = self._lfgFlagReasons or {}
 
@@ -265,7 +265,7 @@ function addon:EvaluateApplicantFlag(id)
     self._lfgFlagReasons[id] = {}
     return false
   end
-  if C_LFGList.GetApplicantMemberInfo then
+  if self.LFG_API_GetApplicantMemberInfo then
     for memberIndex = 1, num do
       local memberName = GetApplicantMemberNameSafe(id, memberIndex)
       if isIgnoredSocialName(memberName) then
@@ -295,7 +295,7 @@ function addon:EvaluateApplicantFlag(id)
     testField(addon:Tr("LABEL_NAME"), info.name)
   end
 
-  if self.db and self.db.lfg_highlight_search_members and C_LFGList.GetApplicantMemberInfo then
+  if self.db and self.db.lfg_highlight_search_members and self.LFG_API_GetApplicantMemberInfo then
     for memberIndex = 1, num do
       local name = GetApplicantMemberNameSafe(id, memberIndex)
       local ignored = false
@@ -314,7 +314,7 @@ end
 
 function addon:LFG_EvaluateApplicantSocial(id)
   if not (self.db and self.db.social_mark_lfg) then return nil end
-  if not id or not C_LFGList or not C_LFGList.GetApplicantInfo then return nil end
+  if not id or not self.LFG_API_GetApplicantInfo then return nil end
 
   self._lfgSocialCache = self._lfgSocialCache or {}
   self._lfgSocialReasons = self._lfgSocialReasons or {}
@@ -344,7 +344,7 @@ function addon:LFG_EvaluateApplicantSocial(id)
     testName(addon:Tr("LABEL_NAME"), info.name)
   end
 
-  if self.db and self.db.lfg_highlight_search_members and C_LFGList.GetApplicantMemberInfo then
+  if self.db and self.db.lfg_highlight_search_members and self.LFG_API_GetApplicantMemberInfo then
     for memberIndex = 1, num do
       local name = GetApplicantMemberNameSafe(id, memberIndex)
       testName(addon:Tr("LABEL_MEMBER"), name)
@@ -1128,7 +1128,7 @@ end
 
 function addon:LFG_DeclineFlagged(source)
   source = source or "manual"
-  if source == "manual" and C_LFGList and C_LFGList.GetApplicants then
+  if source == "manual" and self.LFG_API_GetApplicants then
     self._lfgFlagCache = {}
     self._lfgFlagReasons = {}
     self._lfgSocialCache = {}
@@ -1195,7 +1195,7 @@ function addon:LFG_UpdateButton()
 end
 
 function addon:LFG_ScanApplicants()
-  if not C_LFGList or not C_LFGList.GetApplicants then
+  if not self.LFG_API_GetApplicants then
     self._lfgFlagged = {}
     self._lfgFlagCache = {}
     self._lfgFlagReasons = {}

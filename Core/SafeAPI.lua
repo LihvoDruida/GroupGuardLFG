@@ -260,6 +260,82 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   return m
 end
 
+
+function addon:LFG_API_GetActiveEntryInfo()
+  if not (C_LFGList and type(C_LFGList.GetActiveEntryInfo) == "function") then return nil end
+  local ok, entry = pcall(C_LFGList.GetActiveEntryInfo)
+  if ok and type(entry) == "table" then return entry end
+  return nil
+end
+
+function addon:LFG_API_GetActivityInfoTable(activityID)
+  activityID = self:SafeNumber(activityID, nil)
+  if not activityID then return nil end
+  if C_LFGList and type(C_LFGList.GetActivityInfoTable) == "function" then
+    local ok, info = pcall(C_LFGList.GetActivityInfoTable, activityID)
+    if ok and type(info) == "table" then return info end
+  end
+  if C_LFGList and type(C_LFGList.GetActivityInfo) == "function" then
+    local values = { pcall(C_LFGList.GetActivityInfo, activityID) }
+    if values[1] then
+      return {
+        fullName = self:SafeText(values[2]),
+        shortName = self:SafeText(values[3]),
+        categoryID = self:SafeNumber(values[4], nil),
+        groupID = self:SafeNumber(values[5], nil),
+        itemLevel = self:SafeNumber(values[6], nil),
+        filters = self:SafeNumber(values[7], nil),
+        minLevel = self:SafeNumber(values[8], nil),
+        maxPlayers = self:SafeNumber(values[9], nil),
+        displayType = self:SafeNumber(values[10], nil),
+        orderIndex = self:SafeNumber(values[11], nil),
+        useHonorLevel = self:SafeBool(values[12]),
+        showQuickJoinToast = self:SafeBool(values[13]),
+        isMythicPlusActivity = self:SafeBool(values[14]),
+        isRatedPvpActivity = self:SafeBool(values[15]),
+        isCurrentRaidActivity = self:SafeBool(values[16]),
+      }
+    end
+  end
+  return nil
+end
+
+function addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberIndex, activityID)
+  applicantID = self:SafeNumber(applicantID, nil)
+  memberIndex = self:SafeNumber(memberIndex, nil)
+  activityID = self:SafeNumber(activityID, nil)
+  if not (C_LFGList and type(C_LFGList.GetApplicantDungeonScoreForListing) == "function" and applicantID and memberIndex ~= nil and activityID) then return nil end
+  local ok, scoreInfo = pcall(C_LFGList.GetApplicantDungeonScoreForListing, applicantID, memberIndex, activityID)
+  if ok and type(scoreInfo) == "table" then
+    return {
+      mapScore = self:SafeNumber(scoreInfo.mapScore, 0) or 0,
+      bestRunLevel = self:SafeNumber(scoreInfo.bestRunLevel or scoreInfo.level or scoreInfo.bestLevel, 0) or 0,
+      finishedSuccess = self:SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed),
+      bestLevelIncrement = self:SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, 0) or 0,
+      raw = scoreInfo,
+    }
+  end
+  return nil
+end
+
+function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
+  applicantID = self:SafeNumber(applicantID, nil)
+  memberIndex = self:SafeNumber(memberIndex, nil)
+  if not (C_LFGList and type(C_LFGList.GetApplicantBestDungeonScore) == "function" and applicantID and memberIndex ~= nil) then return nil end
+  local ok, scoreInfo = pcall(C_LFGList.GetApplicantBestDungeonScore, applicantID, memberIndex)
+  if ok and type(scoreInfo) == "table" then
+    return {
+      mapScore = self:SafeNumber(scoreInfo.mapScore, 0) or 0,
+      mapName = self:SafeText(scoreInfo.mapName),
+      bestRunLevel = self:SafeNumber(scoreInfo.bestRunLevel or scoreInfo.level or scoreInfo.bestLevel, 0) or 0,
+      finishedSuccess = self:SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed),
+      bestLevelIncrement = self:SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, 0) or 0,
+      raw = scoreInfo,
+    }
+  end
+  return nil
+end
+
 function addon:LFG_API_GetSearchResultInfo(resultID)
   resultID = self:SafeNumber(resultID, nil)
   if not (C_LFGList and type(C_LFGList.GetSearchResultInfo) == "function" and resultID) then return nil, false end
