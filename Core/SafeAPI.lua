@@ -352,3 +352,138 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   if ok and type(info) == "table" then return info end
   return nil
 end
+
+
+-- Short-lived LFG API cache. Blizzard LFG fires many update/scroll hooks in bursts;
+-- caching avoids repeated protected API calls for the same visible rows.
+local GG_NIL = {}
+local function CacheNow() return (GetTime and GetTime()) or 0 end
+local function CacheBucket(self, name)
+  self._lfgAPICache = self._lfgAPICache or {}
+  local bucket = self._lfgAPICache[name]
+  if not bucket then bucket = {}; self._lfgAPICache[name] = bucket end
+  return bucket
+end
+local function CacheGet(self, name, key)
+  local bucket = self._lfgAPICache and self._lfgAPICache[name]
+  local item = bucket and bucket[key]
+  if item and item.expires >= CacheNow() then
+    return true, item.value == GG_NIL and nil or item.value
+  end
+  if bucket then bucket[key] = nil end
+  return false, nil
+end
+local function CacheSet(self, name, key, value, ttl)
+  CacheBucket(self, name)[key] = { value = value == nil and GG_NIL or value, expires = CacheNow() + (ttl or 0.6) }
+  return value
+end
+
+function addon:LFG_API_ClearCaches(scope)
+  if not self._lfgAPICache then return end
+  if not scope or scope == "all" then
+    self._lfgAPICache = {}
+  elseif scope == "applicants" then
+    self._lfgAPICache.applicants = nil
+    self._lfgAPICache.applicantInfo = nil
+    self._lfgAPICache.memberInfo = nil
+    self._lfgAPICache.listingScore = nil
+    self._lfgAPICache.bestScore = nil
+  elseif scope == "search" then
+    self._lfgAPICache.searchInfo = nil
+    self._lfgAPICache.searchPlayer = nil
+  elseif scope == "activity" then
+    self._lfgAPICache.activeEntry = nil
+    self._lfgAPICache.activityInfo = nil
+  end
+end
+
+local _rawGetApplicants = addon.LFG_API_GetApplicants
+function addon:LFG_API_GetApplicants()
+  local hit, value = CacheGet(self, "applicants", "list")
+  if hit then return value or {} end
+  return CacheSet(self, "applicants", "list", _rawGetApplicants(self), 0.35) or {}
+end
+
+local _rawGetApplicantInfo = addon.LFG_API_GetApplicantInfo
+function addon:LFG_API_GetApplicantInfo(applicantID)
+  applicantID = self:SafeNumber(applicantID, nil)
+  if not applicantID then return nil end
+  local key = tostring(applicantID)
+  local hit, value = CacheGet(self, "applicantInfo", key)
+  if hit then return value end
+  return CacheSet(self, "applicantInfo", key, _rawGetApplicantInfo(self, applicantID), 0.65)
+end
+
+local _rawGetApplicantMemberInfo = addon.LFG_API_GetApplicantMemberInfo
+function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
+  applicantID = self:SafeNumber(applicantID, nil)
+  memberIndex = self:SafeNumber(memberIndex, nil)
+  if not applicantID or memberIndex == nil then return nil end
+  local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
+  local hit, value = CacheGet(self, "memberInfo", key)
+  if hit then return value end
+  return CacheSet(self, "memberInfo", key, _rawGetApplicantMemberInfo(self, applicantID, memberIndex), 0.65)
+end
+
+local _rawGetActiveEntryInfo = addon.LFG_API_GetActiveEntryInfo
+function addon:LFG_API_GetActiveEntryInfo()
+  local hit, value = CacheGet(self, "activeEntry", "entry")
+  if hit then return value end
+  return CacheSet(self, "activeEntry", "entry", _rawGetActiveEntryInfo(self), 0.8)
+end
+
+local _rawGetActivityInfoTable = addon.LFG_API_GetActivityInfoTable
+function addon:LFG_API_GetActivityInfoTable(activityID)
+  activityID = self:SafeNumber(activityID, nil)
+  if not activityID then return nil end
+  local key = tostring(activityID)
+  local hit, value = CacheGet(self, "activityInfo", key)
+  if hit then return value end
+  return CacheSet(self, "activityInfo", key, _rawGetActivityInfoTable(self, activityID), 120)
+end
+
+local _rawGetListingScore = addon.LFG_API_GetApplicantDungeonScoreForListing
+function addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberIndex, activityID)
+  applicantID = self:SafeNumber(applicantID, nil)
+  memberIndex = self:SafeNumber(memberIndex, nil)
+  activityID = self:SafeNumber(activityID, nil)
+  if not applicantID or memberIndex == nil or not activityID then return nil end
+  local key = tostring(applicantID) .. ":" .. tostring(memberIndex) .. ":" .. tostring(activityID)
+  local hit, value = CacheGet(self, "listingScore", key)
+  if hit then return value end
+  return CacheSet(self, "listingScore", key, _rawGetListingScore(self, applicantID, memberIndex, activityID), 2.5)
+end
+
+local _rawGetBestScore = addon.LFG_API_GetApplicantBestDungeonScore
+function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
+  applicantID = self:SafeNumber(applicantID, nil)
+  memberIndex = self:SafeNumber(memberIndex, nil)
+  if not applicantID or memberIndex == nil then return nil end
+  local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
+  local hit, value = CacheGet(self, "bestScore", key)
+  if hit then return value end
+  return CacheSet(self, "bestScore", key, _rawGetBestScore(self, applicantID, memberIndex), 2.5)
+end
+
+local _rawGetSearchResultInfo = addon.LFG_API_GetSearchResultInfo
+function addon:LFG_API_GetSearchResultInfo(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not resultID then return nil, false end
+  local key = tostring(resultID)
+  local hit, value = CacheGet(self, "searchInfo", key)
+  if hit then return value and value[1], value and value[2] or false end
+  local info, ok = _rawGetSearchResultInfo(self, resultID)
+  CacheSet(self, "searchInfo", key, { info, ok }, 0.65)
+  return info, ok
+end
+
+local _rawGetSearchResultPlayerInfo = addon.LFG_API_GetSearchResultPlayerInfo
+function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
+  resultID = self:SafeNumber(resultID, nil)
+  memberIndex = self:SafeNumber(memberIndex, nil)
+  if not resultID or not memberIndex then return nil end
+  local key = tostring(resultID) .. ":" .. tostring(memberIndex)
+  local hit, value = CacheGet(self, "searchPlayer", key)
+  if hit then return value end
+  return CacheSet(self, "searchPlayer", key, _rawGetSearchResultPlayerInfo(self, resultID, memberIndex), 0.65)
+end

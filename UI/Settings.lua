@@ -966,10 +966,10 @@ function addon:InitSettingsPages()
 
   local scanRow = AddEdit(
     compatChild, c1, "Group refresh delay (sec):",
-    function() return addon.db.scan_debounce or 0.03 end,
+    function() return addon.db.scan_debounce or 0.05 end,
     function(txt)
-      local v = tonumber(txt) or 0.03
-      if v < 0 then v = 0 elseif v > 1.0 then v = 1.0 end
+      local v = tonumber(txt) or 0.05
+      if v < 0.04 then v = 0.04 elseif v > 1.0 then v = 1.0 end
       addon.db.scan_debounce = v
       SyncAll("scan_debounce")
     end,
@@ -978,10 +978,10 @@ function addon:InitSettingsPages()
 
   local lfgDebounceRow = AddEdit(
     compatChild, scanRow, "LFG refresh delay (sec):",
-    function() return addon.db.lfg_debounce or 0.02 end,
+    function() return addon.db.lfg_debounce or 0.08 end,
     function(txt)
-      local v = tonumber(txt) or 0.02
-      if v < 0 then v = 0 elseif v > 1.0 then v = 1.0 end
+      local v = tonumber(txt) or 0.08
+      if v < 0.06 then v = 0.06 elseif v > 1.0 then v = 1.0 end
       addon.db.lfg_debounce = v
       SyncAll("lfg_debounce")
     end,
@@ -1120,7 +1120,7 @@ SlashCmdList.GROUPGUARDLFGSCAN = function()
   if addon.RebuildCaches then addon:RebuildCaches() end
   if addon.ScanGroupOffenders then addon:ScanGroupOffenders() end
   if addon.RequestGroupRefresh then addon:RequestGroupRefresh(0) end
-  if addon.RequestLFGRefresh then addon:RequestLFGRefresh(0, true, true) end
+  if addon.RequestLFGRefresh then addon:RequestLFGRefresh(nil, true, true) end
   if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
 
   local count = 0

@@ -142,8 +142,8 @@ addon.DEFAULTS = {
   pgf_integration = true,
   alert_sound_cooldown = 10,
   alert_flash_cooldown = 10,
-  scan_debounce = 0.03,
-  lfg_debounce = 0.02,
+  scan_debounce = 0.05,
+  lfg_debounce = 0.08,
   kick_button_enabled = true,
   disable_in_bg = true,
   disable_in_arena = true,
@@ -575,8 +575,8 @@ function addon:EnsureDB()
   if self.db.raid_assist_selected_ranks == nil then self.db.raid_assist_selected_ranks = "" end
   if self.db.raid_assist_manual_names == nil then self.db.raid_assist_manual_names = "" end
   if self.db.raid_assist_notify == nil then self.db.raid_assist_notify = true end
-  if self.db.scan_debounce == nil or self.db.scan_debounce == 0.18 then self.db.scan_debounce = 0.03 end
-  if self.db.lfg_debounce == nil or self.db.lfg_debounce == 0.08 then self.db.lfg_debounce = 0.02 end
+  if self.db.scan_debounce == nil or self.db.scan_debounce < 0.04 then self.db.scan_debounce = 0.05 end
+  if self.db.lfg_debounce == nil or self.db.lfg_debounce < 0.06 then self.db.lfg_debounce = 0.08 end
   if self.db.lfg_tooltip_details == nil then self.db.lfg_tooltip_details = true end
   if self.db.lfg_role_fit_hints == nil then self.db.lfg_role_fit_hints = true end
   if self.db.lfg_mute_applicant_ping == nil then self.db.lfg_mute_applicant_ping = true end

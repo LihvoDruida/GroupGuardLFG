@@ -108,7 +108,8 @@ end
 
 function addon:RequestGroupRefresh(delay)
   if not self.db then return end
-  delay = tonumber(delay) or tonumber(self.db.scan_debounce) or 0.03
+  delay = tonumber(delay) or tonumber(self.db.scan_debounce) or 0.05
+  if delay > 0 and delay < 0.04 then delay = 0.04 end
   if self._groupRefreshPending and delay > 0.01 then return end
 
   local function run()
@@ -139,7 +140,8 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
     return
   end
 
-  delay = tonumber(delay) or tonumber(self.db.lfg_debounce) or 0.02
+  delay = tonumber(delay) or tonumber(self.db.lfg_debounce) or 0.08
+  if delay < 0.05 then delay = 0.05 end
   if self._lfgRefreshPending and delay > 0.01 then
     self._lfgRefreshApplicants = self._lfgRefreshApplicants or scanApplicants
     self._lfgRefreshResults = self._lfgRefreshResults or refreshResults
@@ -167,17 +169,12 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
 
     if addon._lfgRefreshApplicants and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
     if addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
-    if addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(0) end
-    if addon._lfgRefreshResults and addon.LFG_DebouncedHighlightResults then addon:LFG_DebouncedHighlightResults(0) end
+    if addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(nil) end
+    if addon._lfgRefreshResults and addon.LFG_DebouncedHighlightResults then addon:LFG_DebouncedHighlightResults(nil) end
     if addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end
 
     addon._lfgRefreshApplicants = false
     addon._lfgRefreshResults = false
-  end
-
-  if delay <= 0.01 then
-    run()
-    return
   end
 
   self._lfgRefreshPending = true
@@ -207,10 +204,10 @@ function addon:SyncSettingsState(reason)
   self._lfgResultSocialReasons = {}
 
   if self.RequestGroupRefresh then self:RequestGroupRefresh(0) end
-  if self.RequestLFGRefresh then self:RequestLFGRefresh(0, true, true) end
+  if self.RequestLFGRefresh then self:RequestLFGRefresh(nil, true, true) end
   if self.LFG_UpdateButton then self:LFG_UpdateButton() end
-  if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(0) end
-  if self.LFG_DebouncedHighlightResults then self:LFG_DebouncedHighlightResults(0) end
+  if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(nil) end
+  if self.LFG_DebouncedHighlightResults then self:LFG_DebouncedHighlightResults(nil) end
   if self.UpdateFrameMarkers then self:UpdateFrameMarkers() end
   if self.ScheduleRaidAssist then self:ScheduleRaidAssist(0, reason or "settings") end
 end
@@ -226,7 +223,7 @@ local function OnEvent(self, event, arg1, ...)
       wasInGroup = SafeInGroupOrRaid()
       addon:RequestGroupRefresh(0)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
-      addon:RequestLFGRefresh(0, true, true)
+      addon:RequestLFGRefresh(nil, true, true)
       if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
       if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
       if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
@@ -235,10 +232,10 @@ local function OnEvent(self, event, arg1, ...)
       if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
       if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
       if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
-      addon:RequestLFGRefresh(0, true, true)
+      addon:RequestLFGRefresh(nil, true, true)
     elseif arg1 == "PremadeGroupsFilter" then
       if addon.InitPGFIntegration then addon:InitPGFIntegration() end
-      addon:RequestLFGRefresh(0, false, true)
+      addon:RequestLFGRefresh(nil, false, true)
     end
     return
   end
@@ -253,12 +250,12 @@ local function OnEvent(self, event, arg1, ...)
     -- Immediate UI refresh, plus a delayed pass after Blizzard finishes rebuilding frames.
     addon:RequestGroupRefresh(0)
     if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
-    addon:RequestLFGRefresh(0, true, true)
+    addon:RequestLFGRefresh(nil, true, true)
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, event) end
     local function delayedWorldRefresh()
       addon:RequestGroupRefresh(0)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
-      addon:RequestLFGRefresh(0, false, true)
+      addon:RequestLFGRefresh(nil, false, true)
       if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0, "delayed_world") end
     end
     if C_Timer and C_Timer.After then C_Timer.After(1.75, delayedWorldRefresh) else delayedWorldRefresh() end
@@ -281,7 +278,7 @@ local function OnEvent(self, event, arg1, ...)
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {} end
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() end
     addon:RequestGroupRefresh(0)
-    addon:RequestLFGRefresh(0, true, true)
+    addon:RequestLFGRefresh(nil, true, true)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
 
@@ -292,7 +289,7 @@ local function OnEvent(self, event, arg1, ...)
       addon:ScheduleRaidAssist(0, "combat_end")
     end
     addon:RequestGroupRefresh(0)
-    addon:RequestLFGRefresh(0, true, true)
+    addon:RequestLFGRefresh(nil, true, true)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
 
   elseif event == "LFG_LIST_APPLICANT_LIST_UPDATED"
@@ -305,12 +302,12 @@ local function OnEvent(self, event, arg1, ...)
       addon:LFG_RefreshApplicantsAfterDone(arg1)
     end
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {}; addon._lfgFlagReasons = {} end
-    addon:RequestLFGRefresh(0, true, true)
+    addon:RequestLFGRefresh(nil, true, true)
 
   elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED"
       or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
-    addon:RequestLFGRefresh(0, false, true)
+    addon:RequestLFGRefresh(nil, false, true)
 
   elseif event == "UNIT_NAME_UPDATE"
       or event == "UNIT_CONNECTION"
@@ -327,7 +324,7 @@ local function OnEvent(self, event, arg1, ...)
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {} end
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {} end
     addon:RequestGroupRefresh(0)
-    addon:RequestLFGRefresh(0, true, true)
+    addon:RequestLFGRefresh(nil, true, true)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
   end

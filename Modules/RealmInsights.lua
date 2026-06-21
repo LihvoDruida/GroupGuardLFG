@@ -320,9 +320,9 @@ function addon:LFG_InitRealmInsights()
   local function schedule()
     if addon and addon.LFG_HideRealmDecorations then addon:LFG_HideRealmDecorations() end
     if addon and addon.RunDebounced then
-      addon:RunDebounced("realm_badges", 0.01, RefreshRealmBadges)
+      addon:RunDebounced("realm_badges", 0.08, RefreshRealmBadges)
     elseif C_Timer and C_Timer.After then
-      C_Timer.After(0.01, RefreshRealmBadges)
+      C_Timer.After(0.08, RefreshRealmBadges)
     else
       RefreshRealmBadges()
     end

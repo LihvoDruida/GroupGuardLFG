@@ -254,8 +254,7 @@ local function ReadApplicantMember(applicantID, index)
   m.specID = SafeNumber(m.specID, nil)
   m.specName = GetSpecName(m.specID)
   m.isLeaver = SafeBool(m.isLeaver)
-  m.listingScore = ReadApplicantDungeonListingScore(applicantID, index)
-  m.stats = ReadApplicantMemberStats(applicantID, index)
+  -- Expensive listing score and stats are read lazily only when the GG column needs them.
   return m
 end
 
@@ -805,7 +804,15 @@ local function EnsureApplicantContextHeader()
   if headerFrame.Text and IsFontString(headerFrame.Text) then SafeSetText(headerFrame.Text, label) end
   if type(headerFrame.SetText) == "function" then pcall(headerFrame.SetText, headerFrame, label) end
 
+  local now = (GetTime and GetTime()) or 0
+  if viewer._ggApplicantColumnLayout and (viewer._ggHeaderReflowUntil or 0) > now then
+    SafeShow(headerFrame)
+    SafeShow(fs)
+    return
+  end
+
   if ReflowApplicantColumnHeaders(viewer, headerFrame) then
+    viewer._ggHeaderReflowUntil = now + 0.25
     SafeShow(headerFrame)
     SafeShow(fs)
   else
@@ -947,14 +954,7 @@ function addon:LFG_BuildApplicantSummary(applicantID)
       maxLevel = (not maxLevel or lvl > maxLevel) and lvl or maxLevel
     end
     if m.isLeaver == true then leavers = leavers + 1 end
-    if type(m.listingScore) == "table" then
-      local run = SafeNumber(m.listingScore.bestRunLevel, 0) or 0
-      if run > bestRunLevel then
-        bestRunLevel = run
-        bestRunIncrement = SafeNumber(m.listingScore.bestLevelIncrement, 0) or 0
-        bestRunTimed = SafeBool(m.listingScore.finishedSuccess)
-      end
-    end
+    -- GG context runs are intentionally not calculated here; this summary is used by tooltips/stats.
   end
 
   for i = 1, num do
@@ -1115,15 +1115,15 @@ local function BuildApplicantContextMetric(applicantID, memberIdx)
 
   if raidMode then
     local raidProgress = ReadRaiderIORaidProgress(member)
-    if raidProgress and raidProgress.text then return raidProgress end
-    return nil
+    if raidProgress and raidProgress.text then return raidProgress, member end
+    return nil, member
   end
 
-  if dungeonMode or type(member.listingScore) == "table" then
-    local score = type(member.listingScore) == "table" and member.listingScore or nil
+  if dungeonMode then
+    local score = nil
     if not score then
       local tried = {}
-      local candidates = { memberIdx, memberIdx - 1, memberIdx + 1, 1, 0 }
+      local candidates = { memberIdx, 1 }
       for _, idx in ipairs(candidates) do
         idx = SafeNumber(idx, nil)
         if idx ~= nil and not tried[idx] then
@@ -1135,16 +1135,16 @@ local function BuildApplicantContextMetric(applicantID, memberIdx)
     end
     local run = type(score) == "table" and SafeNumber(score.bestRunLevel, 0) or 0
     if run and run > 0 then
-      return { text = "+" .. tostring(math_floor(run)), level = run, source = "blizzard" }
+      return { text = "+" .. tostring(math_floor(run)), level = run, source = "blizzard" }, member
     end
   end
 
-  return nil
+  return nil, member
 end
 
 
-local function AddLeaverFlagToMetric(metric, applicantID, memberIdx)
-  local member = ReadApplicantMember(applicantID, memberIdx or 1)
+local function AddLeaverFlagToMetric(metric, applicantID, memberIdx, member)
+  member = member or ReadApplicantMember(applicantID, memberIdx or 1)
   if not member and memberIdx ~= 1 then member = ReadApplicantMember(applicantID, 1) end
   if member and member.isLeaver then
     if metric and metric.text and metric.text ~= "" then
@@ -1175,9 +1175,9 @@ local function ApplyApplicantContextMetric(frame, applicantID, memberIdx)
 
   applicantID = SafeNumber(applicantID, nil) or SafeNumber(frame._ggLastApplicantID, nil) or GetApplicantIDFromRow(frame)
   memberIdx = SafeNumber(memberIdx, nil) or SafeNumber(frame._ggLastMemberIdx, nil) or SafeNumber(frame.memberIdx, nil) or 1
-  local metric = BuildApplicantContextMetric(applicantID, memberIdx)
-  metric = AddLeaverFlagToMetric(metric, applicantID, memberIdx)
-  if not metric or not metric.text or metric.text == "" then return end
+  local metric, member = BuildApplicantContextMetric(applicantID, memberIdx)
+  metric = AddLeaverFlagToMetric(metric, applicantID, memberIdx, member)
+  if not metric or not metric.text or metric.text == "" then return nil end
 
   frame._ggContextMetric = metric
   SafeSetText(fs, metric.text)
@@ -1187,24 +1187,25 @@ local function ApplyApplicantContextMetric(frame, applicantID, memberIdx)
     if type(fs.SetTextColor) == "function" then pcall(fs.SetTextColor, fs, 1.0, 0.82, 0.0) end
   end
   if type(fs.Show) == "function" then pcall(fs.Show, fs) end
+  return metric
 end
 
 local function ScheduleApplicantContextMetric(frame, applicantID, memberIdx)
   if not frame then return end
   applicantID = SafeNumber(applicantID, nil) or SafeNumber(frame._ggLastApplicantID, nil)
   memberIdx = SafeNumber(memberIdx, nil) or SafeNumber(frame._ggLastMemberIdx, nil) or 1
-  ApplyApplicantContextMetric(frame, applicantID, memberIdx)
-  frame._ggMetricToken = {}
+  local metric = ApplyApplicantContextMetric(frame, applicantID, memberIdx)
+  if metric and metric.text and metric.text ~= "" then return end
+
+  -- One late pass is enough for Blizzard applicant data that arrives after the row update.
+  frame._ggMetricToken = (frame._ggMetricToken or 0) + 1
   local token = frame._ggMetricToken
-  local function refresh()
-    if frame._ggMetricToken == token then
-      ApplyApplicantContextMetric(frame, applicantID, memberIdx)
-    end
-  end
   if C_Timer and C_Timer.After then
-    C_Timer.After(0.03, refresh)
-    C_Timer.After(0.15, refresh)
-    C_Timer.After(0.35, refresh)
+    C_Timer.After(0.16, function()
+      if frame._ggMetricToken == token then
+        ApplyApplicantContextMetric(frame, applicantID, memberIdx)
+      end
+    end)
   end
 end
 
@@ -1268,8 +1269,7 @@ function addon:LFG_RequestApplicantSummaryTooltip(row)
   end
   -- Wait briefly so other tooltip addons can finish first.
   if C_Timer and C_Timer.After then
-    C_Timer.After(0.03, tryAppend)
-    C_Timer.After(0.12, tryAppend)
+    C_Timer.After(0.08, tryAppend)
   else
     tryAppend()
   end
@@ -1401,8 +1401,8 @@ function addon:LFG_DumpApplicants()
       for i = 1, num do
         local m = ReadApplicantMember(appID, i)
         if m then
-          local run = type(m.listingScore) == "table" and SafeNumber(m.listingScore.bestRunLevel, nil) or nil
           local metric = BuildApplicantContextMetric(appID, i)
+          local run = metric and metric.level or nil
           local memberLabel = m.specName or m.assignedRole or "-"
           print(prefix, self:Tr("APPLICANT_DUMP_MEMBER", i, DumpValue(self, m.name), DumpValue(self, memberLabel), DumpValue(self, m.itemLevel), DumpValue(self, m.dungeonScore), DumpValue(self, run), DumpValue(self, metric and metric.text), DumpValue(self, m.isLeaver)))
         else
@@ -1419,9 +1419,9 @@ function addon:LFG_InitApplicantEnhancements()
   local function schedule()
     EnsureApplicantContextHeader()
     if addon and addon.RunDebounced then
-      addon:RunDebounced("applicant_minimal_hooks", 0.03, function() if addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end end)
+      addon:RunDebounced("applicant_minimal_hooks", 0.10, function() if addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end end)
     elseif C_Timer and C_Timer.After then
-      C_Timer.After(0.03, function() if addon and addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end end)
+      C_Timer.After(0.10, function() if addon and addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end end)
     elseif addon and addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end
   end
   local function cleanupThenSchedule()

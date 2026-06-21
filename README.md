@@ -90,6 +90,20 @@ GroupGuard is designed to run beside common LFG addons.
 
 GroupGuard does not identify a player’s nationality, ethnicity, religion, origin or personal identity. Optional text checks are based only on visible text such as group titles, comments, character names, guild names and user-configured rules. Text and realm hints can be wrong, so rules should be reviewed carefully.
 
+
+## Release notes — 4.2.19
+
+- Reduced CPU spikes during LFG scrolling and applicant updates.
+- Added short-lived guarded LFG API caches.
+- Coalesced repeated refresh events into fewer UI passes.
+- Reduced applicant GG column refresh retries.
+- Kept stock applicant UI, Rating column, PGF, Raider.IO and Plumber compatibility.
+
+## Release notes — 4.2.18
+
+- Updated Retail TOC Interface to 120007 for WoW 12.0.7.
+- Kept the addon behavior unchanged. This is a compatibility metadata update only.
+
 ## Release notes — 4.2.17
 
 - Cleaned user-facing text in settings, README and applicant output.

@@ -7,32 +7,43 @@ addon._debounceTimers = addon._debounceTimers or {}
 function addon:RunDebounced(key, delay, callback)
   if not key or type(callback) ~= "function" then return end
   delay = tonumber(delay) or 0
-
-  local old = self._debounceTimers[key]
-  if old and old.Cancel then
-    old:Cancel()
-  end
+  if delay > 0 and delay < 0.03 then delay = 0.03 end
 
   if not (C_Timer and C_Timer.NewTimer) then
     callback()
     return
   end
 
-  self._debounceTimers[key] = C_Timer.NewTimer(delay, function()
+  -- Coalesce bursty UI events instead of canceling and recreating timers.
+  -- This is cheaper during LFG scrolling, PGF refreshes and applicant updates.
+  local pending = self._debounceTimers[key]
+  if pending then
+    if type(pending) == "table" then
+      pending.callback = callback
+    end
+    return
+  end
+
+  local bucket = { callback = callback }
+  self._debounceTimers[key] = bucket
+  bucket.timer = C_Timer.NewTimer(delay, function()
+    local cb = bucket.callback
     addon._debounceTimers[key] = nil
-    callback()
+    if type(cb) == "function" then cb() end
   end)
 end
 
 function addon:CancelDebounce(key)
   local old = self._debounceTimers and self._debounceTimers[key]
-  if old and old.Cancel then old:Cancel() end
+  local timer = type(old) == "table" and old.timer or old
+  if timer and timer.Cancel then timer:Cancel() end
   if self._debounceTimers then self._debounceTimers[key] = nil end
 end
 
 function addon:ClearDebounces()
   if not self._debounceTimers then return end
-  for key, timer in pairs(self._debounceTimers) do
+  for key, bucket in pairs(self._debounceTimers) do
+    local timer = type(bucket) == "table" and bucket.timer or bucket
     if timer and timer.Cancel then timer:Cancel() end
     self._debounceTimers[key] = nil
   end
@@ -59,7 +70,7 @@ function addon:EnterStartupQuiet(seconds, reason)
       addon._suppressedGroupAlert = nil
       addon._alertActive = false
       if addon.RequestGroupRefresh then addon:RequestGroupRefresh(0) end
-      if addon.RequestLFGRefresh then addon:RequestLFGRefresh(0, true, true) end
+      if addon.RequestLFGRefresh then addon:RequestLFGRefresh(nil, true, true) end
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
     end)
   end

@@ -362,6 +362,7 @@ function addon:LFG_ClearApplicantCaches()
   self._lfgFlagReasons = {}
   self._lfgSocialCache = {}
   self._lfgSocialReasons = {}
+  if self.LFG_API_ClearCaches then self:LFG_API_ClearCaches("applicants") end
 end
 
 function addon:LFG_ClearSearchCaches()
@@ -369,6 +370,7 @@ function addon:LFG_ClearSearchCaches()
   self._lfgResultFlagReasons = {}
   self._lfgResultSocialCache = {}
   self._lfgResultSocialReasons = {}
+  if self.LFG_API_ClearCaches then self:LFG_API_ClearCaches("search") end
 end
 
 function addon:LFG_ClearVisibleHighlights()
@@ -382,13 +384,10 @@ end
 
 function addon:LFG_DebouncedHighlight(delay)
   delay = tonumber(delay)
-  if delay and delay <= 0.01 then
-    addon._lfgDebounceTimer = nil
-    addon:LFG_HighlightRows()
-    return
-  end
+  if delay and delay <= 0.01 then delay = nil end
 
-  delay = delay or tonumber(addon.db and addon.db.lfg_debounce) or 0.02
+  delay = delay or tonumber(addon.db and addon.db.lfg_debounce) or 0.08
+  if delay < 0.05 then delay = 0.05 end
   if addon.RunDebounced then
     return addon:RunDebounced("lfg_applicant_highlight", delay, function()
       if addon.LFG_HighlightRows then addon:LFG_HighlightRows() end
@@ -441,14 +440,10 @@ end
 
 function addon:LFG_DebouncedHighlightResults(delay)
   delay = tonumber(delay)
-  if delay and delay <= 0.01 then
-    addon._lfgResultDebounce = nil
-    if addon.LFG_HighlightSearchResults then addon:LFG_HighlightSearchResults() end
-    if addon.LFG_RetryHighlightSearchResults then addon:LFG_RetryHighlightSearchResults(true) end
-    return
-  end
+  if delay and delay <= 0.01 then delay = nil end
 
-  delay = delay or tonumber(addon.db and addon.db.lfg_debounce) or 0.02
+  delay = delay or tonumber(addon.db and addon.db.lfg_debounce) or 0.08
+  if delay < 0.05 then delay = 0.05 end
   if addon.RunDebounced then
     return addon:RunDebounced("lfg_search_highlight", delay, function()
       if addon.LFG_RetryHighlightSearchResults then addon:LFG_RetryHighlightSearchResults() end
@@ -797,7 +792,7 @@ function addon:LFG_RetryHighlightSearchResults(force)
   self._lfgResultSocialCache = {}
   self._lfgResultSocialReasons = {}
 
-  local delays = { 0.03, 0.18, 0.55, 1.10 }
+  local delays = { 0.08, 0.30 }
   if not (C_Timer and C_Timer.After) then
     addon:LFG_HighlightSearchResults()
     addon._lfgResultRetryScheduled = false
@@ -850,7 +845,7 @@ function addon:LFG_HookViewer()
   if sb and not sb._ggHooked then
     sb._ggHooked = true
 
-    if sb.HookScript then sb:HookScript("OnMouseWheel", function() ClearGGHighlightsInScrollBox(sb); addon:LFG_DebouncedHighlight(0.01) end) end
+    if sb.HookScript then sb:HookScript("OnMouseWheel", function() addon:LFG_DebouncedHighlight(0.08) end) end
     if sb.FullUpdate and type(sb.FullUpdate) == "function" then
       hooksecurefunc(sb, "FullUpdate", function() addon:LFG_DebouncedHighlight() end)
     end
@@ -888,7 +883,7 @@ function addon:LFG_HookSearchPanel()
   if sb and not sb._ggHooked then
     sb._ggHooked = true
 
-    if sb.HookScript then sb:HookScript("OnMouseWheel", function() ClearGGHighlightsInScrollBox(sb); addon:LFG_DebouncedHighlightResults(0.01) end) end
+    if sb.HookScript then sb:HookScript("OnMouseWheel", function() addon:LFG_DebouncedHighlightResults(0.08) end) end
     if sb.FullUpdate and type(sb.FullUpdate) == "function" then
       hooksecurefunc(sb, "FullUpdate", function() addon:LFG_DebouncedHighlightResults(0.05) end)
     end
@@ -924,7 +919,7 @@ function addon:LFG_HookSearchPanel()
   end
   if type(LFGListSearchEntry_Update) == "function" then
     hooksecurefunc("LFGListSearchEntry_Update", function()
-      addon:LFG_DebouncedHighlightResults(0.03)
+      addon:LFG_DebouncedHighlightResults(0.08)
     end)
   end
 end
@@ -1054,7 +1049,7 @@ function addon:LFG_DeclineApplicants(appIDs, source)
 
     self._lfgDeclineInFlight = {}
     if self.LFG_UpdateButton then self:LFG_UpdateButton() end
-    if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(0) end
+    if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(nil) end
     local function rescan()
       if addon and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
     end
@@ -1117,7 +1112,7 @@ function addon:LFG_DeclineApplicants(appIDs, source)
 
   if scheduled > 0 then
     if self.LFG_UpdateButton then self:LFG_UpdateButton() end
-    if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(0) end
+    if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(nil) end
     if C_Timer and C_Timer.After then C_Timer.After(delayStep * scheduled + 0.18, finishAuto) else finishAuto() end
   else
     self._lfgAutoDeclineRunning = false
