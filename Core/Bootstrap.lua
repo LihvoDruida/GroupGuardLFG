@@ -161,6 +161,7 @@ addon.DEFAULTS = {
   raid_assist_selected_ranks = "",
   raid_assist_manual_names = "",
   raid_assist_notify = true,
+  raid_manager_pug_button = true,
 }
 
 addon.L10N = {
@@ -329,6 +330,8 @@ addon.L10N = {
     CMD_APPLICANTS_COUNT = "Applicants: %d",
     CMD_FIRST_APPLICANT = "First application: %s members: %s",
     PUG_PRINT_ROW = "%d. %s • %s • %s • %s",
+    RAID_MANAGER_PUG_BUTTON = "PUGs",
+    RAID_MANAGER_PUG_TOOLTIP = "Open the raid PUG list.",
   },
   ukUA = {
     UI_LANG_AUTO = "Мова клієнта гри",
@@ -495,6 +498,8 @@ addon.L10N = {
     CMD_APPLICANTS_COUNT = "Заявок: %d",
     CMD_FIRST_APPLICANT = "Перша заявка: %s учасників: %s",
     PUG_PRINT_ROW = "%d. %s • %s • %s • %s",
+    RAID_MANAGER_PUG_BUTTON = "Пуги",
+    RAID_MANAGER_PUG_TOOLTIP = "Відкрити список пугів у рейді.",
   },
 }
 
@@ -575,6 +580,7 @@ function addon:EnsureDB()
   if self.db.raid_assist_selected_ranks == nil then self.db.raid_assist_selected_ranks = "" end
   if self.db.raid_assist_manual_names == nil then self.db.raid_assist_manual_names = "" end
   if self.db.raid_assist_notify == nil then self.db.raid_assist_notify = true end
+  if self.db.raid_manager_pug_button == nil then self.db.raid_manager_pug_button = true end
   if self.db.scan_debounce == nil or self.db.scan_debounce < 0.04 then self.db.scan_debounce = 0.05 end
   if self.db.lfg_debounce == nil or self.db.lfg_debounce < 0.06 then self.db.lfg_debounce = 0.08 end
   if self.db.lfg_tooltip_details == nil then self.db.lfg_tooltip_details = true end

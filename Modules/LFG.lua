@@ -163,48 +163,85 @@ end
 
 -- highlight overlay that is safe even if Background is a Texture
 local LFG_HIGHLIGHT_COLORS = {
-  FLAG = { 0.95, 0.16, 0.08, 0.34 },
-  FRIEND = { 0.12, 0.48, 1.00, 0.30 },
-  GUILD = { 0.08, 0.85, 0.24, 0.30 },
+  FLAG = { 0.44, 0.17, 0.15, 0.21, 0.72, 0.30, 0.24, 0.26 },
+  FRIEND = { 0.16, 0.30, 0.46, 0.20, 0.34, 0.52, 0.72, 0.24 },
+  GUILD = { 0.16, 0.34, 0.22, 0.20, 0.30, 0.56, 0.38, 0.23 },
 }
+
+local function GetGGHighlightHost(rowFrame)
+  if not rowFrame then return nil end
+  local host = rowFrame.Contents or rowFrame.Content or rowFrame.Button or rowFrame
+  if host and not host.CreateTexture and host.GetParent then
+    host = host:GetParent()
+  end
+  if host and host.CreateTexture then return host end
+  if rowFrame.CreateTexture then return rowFrame end
+  return nil
+end
 
 local function EnsureGGHighlight(host)
   if not host then return nil end
 
-  -- If it's not a Frame/doesn't have CreateTexture, try parent
-  if not host.CreateTexture and host.GetParent then
-    host = host:GetParent()
-  end
-  if not host or not host.CreateTexture then return nil end
-
   if not host._ggHL then
-    local t = host:CreateTexture(nil, "OVERLAY")
-    t:SetAllPoints(true)
-    t:SetColorTexture(0.95, 0.16, 0.08, 0.34)
-    host._ggHL = t
+    local fill = host:CreateTexture(nil, "BACKGROUND", nil, 1)
+    fill:ClearAllPoints()
+    fill:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -3)
+    fill:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -4, 0)
+    fill:SetColorTexture(0.17, 0.56, 0.96, 0.18)
+
+    local top = host:CreateTexture(nil, "BORDER")
+    top:SetHeight(1)
+    top:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+    top:SetColorTexture(0.34, 0.52, 0.72, 0.24)
+
+    local bottom = host:CreateTexture(nil, "BORDER")
+    bottom:SetHeight(1)
+    bottom:SetPoint("BOTTOMLEFT", fill, "BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+    bottom:SetColorTexture(0.34, 0.52, 0.72, 0.18)
+
+    host._ggHL = fill
+    host._ggHLTop = top
+    host._ggHLBottom = bottom
   end
-  return host._ggHL
+
+  return host._ggHL, host._ggHLTop, host._ggHLBottom
 end
 
 local function PaintGGHighlight(rowFrame, mode)
   if not rowFrame then return end
-  local candidate = rowFrame.Contents or rowFrame.Button or rowFrame.Background or rowFrame
-  local t = EnsureGGHighlight(candidate) or EnsureGGHighlight(rowFrame)
-  if not t then return end
+  local host = GetGGHighlightHost(rowFrame)
+  local fill, top, bottom = EnsureGGHighlight(host)
+  if not fill then return end
 
   if not mode or mode == false then
-    t:Hide()
+    fill:Hide()
+    if top then top:Hide() end
+    if bottom then bottom:Hide() end
     return
   end
 
   local c = LFG_HIGHLIGHT_COLORS[mode] or LFG_HIGHLIGHT_COLORS.FLAG
-  t:SetColorTexture(c[1], c[2], c[3], c[4])
-  t:Show()
+  fill:SetColorTexture(c[1], c[2], c[3], c[4])
+  if top then
+    top:SetColorTexture(c[5] or c[1], c[6] or c[2], c[7] or c[3], c[8] or math.min((c[4] or 0.20) + 0.04, 0.26))
+    top:Show()
+  end
+  if bottom then
+    bottom:SetColorTexture(c[5] or c[1], c[6] or c[2], c[7] or c[3], math.max((c[8] or c[4] or 0.20) - 0.05, 0.14))
+    bottom:Show()
+  end
+  fill:Show()
 end
 
 local function HideRowDecorations(row)
   if not row then return end
   PaintGGHighlight(row, false)
+  local host = GetGGHighlightHost(row)
+  if host and host._ggHL then host._ggHL:Hide() end
+  if host and host._ggHLTop then host._ggHLTop:Hide() end
+  if host and host._ggHLBottom then host._ggHLBottom:Hide() end
   if row._ggApplicantChip then row._ggApplicantChip:SetText(""); row._ggApplicantChip:Hide() end
   if row._ggApplicantCard then
     if row._ggApplicantCard.Line1 then row._ggApplicantCard.Line1:SetText("") end
