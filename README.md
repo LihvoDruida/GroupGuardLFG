@@ -13,8 +13,8 @@ GroupGuard LFG helps you keep LFG applications, party members and raid members e
   - Leaver warning: `⚠` when the game reports it.
 - Keeps the normal **Name / Role / iLvl / Rating** columns visible.
 - Adds small tooltip warnings only when they add value, without replacing other addon tooltips.
-- Detects raid PUGs: players who are not in your guild and not direct friends.
-- Adds a small **PUGs** button to the default raid manager panel for quick access.
+- Detects raid PUGs: raid members outside your guild and direct friends.
+- Adds a small **PUG List** button to the default raid manager panel for quick access.
 - Can grant raid assistant to selected ranks, officers or named players.
 - Supports English and Ukrainian UI text.
 
@@ -51,7 +51,7 @@ Remove marked players when you have permission.
 ```text
 /ggpugs
 ```
-Open the raid PUG detector.
+Open the raid PUG list.
 
 ```text
 /ggapps
@@ -76,7 +76,7 @@ Change addon language.
 2. Keep **LFG applications → GG column** enabled.
 3. Keep **Compatibility → Improve Premade Groups Filter compatibility** enabled when PGF is installed.
 4. Use `/ggapps` when you want to check whether applications are loaded.
-5. Use the **PUGs** button in the default raid manager panel, or `/ggpugs`, to quickly see non-guild / non-friend members.
+5. Use the **PUG List** button in the default raid manager panel, or `/ggpugs`, to quickly see non-guild / non-friend members.
 
 ## Compatibility
 
