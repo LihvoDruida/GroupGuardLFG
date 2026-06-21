@@ -2,8 +2,8 @@
 ## Title: GroupGuard LFG
 ## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.2.18
-## X-Codename: 12.0.7 TOC
+## Version: 4.2.29
+## X-Codename: LFG highlight denser fill
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
@@ -32,6 +32,7 @@ Modules\ApplicantEnhancements.lua
 Modules\GroupActions.lua
 Modules\RaidAssist.lua
 Modules\PugDetector.lua
+Modules\RaidManagerButtons.lua
 Modules\EventBus.lua
 
 UI\Settings.lua
