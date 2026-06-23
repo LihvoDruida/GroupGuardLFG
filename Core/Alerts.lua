@@ -79,14 +79,14 @@ function addon:ApplyBannerKind(kind)
     self.Banner.tag:SetText(tagText)
     self.Banner.tag:SetTextColor(r, g, b)
   end
-  if self.Banner.glow then self.Banner.glow:SetColorTexture(r * 0.25, g * 0.10, b * 0.08, 0.26) end
-  if self.Banner.softTop then self.Banner.softTop:SetColorTexture(r, g, b, 0.07) end
-  if self.Banner.severityStrip then self.Banner.severityStrip:SetColorTexture(r, g * 0.72, b * 0.62, 0.88) end
-  if self.Banner.tagBg then self.Banner.tagBg:SetColorTexture(r, g * 0.55, b * 0.45, 0.16) end
-  if self.Banner.headerLine then self.Banner.headerLine:SetColorTexture(r, g * 0.74, b * 0.62, 0.18) end
-  if self.Banner.iconBg then self.Banner.iconBg:SetColorTexture(r * 0.14, g * 0.08, b * 0.08, 0.88) end
+  if self.Banner.glow then self.Banner.glow:SetColorTexture(r * 0.20, g * 0.28, b * 0.34, 0.08) end
+  if self.Banner.softTop then self.Banner.softTop:SetColorTexture(r, g, b, 0.05) end
+  if self.Banner.severityStrip then self.Banner.severityStrip:SetColorTexture(r * 0.80, g * 0.76, b * 0.78, 0.26) end
+  if self.Banner.tagBg then self.Banner.tagBg:SetColorTexture(r, g * 0.55, b * 0.45, 0.12) end
+  if self.Banner.headerLine then self.Banner.headerLine:SetColorTexture(r * 0.70, g * 0.78, b * 0.86, 0.18) end
+  if self.Banner.iconBg then self.Banner.iconBg:SetColorTexture(r * 0.10, g * 0.12, b * 0.14, 0.82) end
   if self.Banner.icon then self.Banner.icon:SetVertexColor(1, 1, 1, 1) end
-  if self.Banner.iconRing and self.Banner.iconRing.SetBackdropBorderColor then self.Banner.iconRing:SetBackdropBorderColor(r, g * 0.55, b * 0.45, 0.92) end
+  if self.Banner.iconRing and self.Banner.iconRing.SetBackdropBorderColor then self.Banner.iconRing:SetBackdropBorderColor(r * 0.74, g * 0.76, b * 0.82, 0.88) end
 end
 
 function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, detailText)
@@ -173,13 +173,19 @@ function addon:LayoutBannerActionButtons()
   prepare(self.leaveButton)
   prepare(self.kickButton)
 
+  local totalWidth = 0
+  for _, btn in ipairs(ordered) do
+    totalWidth = totalWidth + (btn:GetWidth() or 0)
+  end
+  if #ordered > 1 then totalWidth = totalWidth + ((#ordered - 1) * 6) end
+
   local prev
-  for i = #ordered, 1, -1 do
-    local btn = ordered[i]
-    if not prev then
-      btn:SetPoint("RIGHT", actionBar, "RIGHT", 0, 0)
+  local startX = -(totalWidth / 2)
+  for i, btn in ipairs(ordered) do
+    if i == 1 then
+      btn:SetPoint("LEFT", actionBar, "CENTER", startX, 0)
     else
-      btn:SetPoint("RIGHT", prev, "LEFT", -6, 0)
+      btn:SetPoint("LEFT", prev, "RIGHT", 6, 0)
     end
     prev = btn
   end
