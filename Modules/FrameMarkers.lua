@@ -166,6 +166,15 @@ local function ApplyMarkerMode(marker, mode)
   if marker.glow then marker.glow:SetVertexColor(c[5], c[6], c[7], c[8]) end
 end
 
+local function HideFrameMarker(marker)
+  if not marker then return end
+  if marker.GroupGuardPulse and marker.GroupGuardPulse:IsPlaying() then
+    marker.GroupGuardPulse:Stop()
+  end
+  marker:SetAlpha(1)
+  marker:Hide()
+end
+
 local function ShowFrameMarker(frame, marker, mode)
   if not marker or ShouldSuppressFrameMarkers() then
     if marker then HideFrameMarker(marker) end
@@ -178,15 +187,6 @@ local function ShowFrameMarker(frame, marker, mode)
   if marker.GroupGuardPulse and not marker.GroupGuardPulse:IsPlaying() then
     marker.GroupGuardPulse:Play()
   end
-end
-
-local function HideFrameMarker(marker)
-  if not marker then return end
-  if marker.GroupGuardPulse and marker.GroupGuardPulse:IsPlaying() then
-    marker.GroupGuardPulse:Stop()
-  end
-  marker:SetAlpha(1)
-  marker:Hide()
 end
 
 local function CollectKnownUnitFrames()

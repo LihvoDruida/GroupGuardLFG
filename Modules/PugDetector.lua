@@ -63,6 +63,127 @@ local function SafeText(value, fallback)
   return fallback or "—"
 end
 
+local function SafeGetTime()
+  if GetTime then
+    local ok, value = pcall(GetTime)
+    if ok and type(value) == "number" then return value end
+  end
+  return 0
+end
+
+local function SafeUnitGUID(unit)
+  if UnitGUID then
+    local ok, guid = pcall(UnitGUID, unit)
+    if ok and CanReadValue(guid) and type(guid) == "string" and guid ~= "" then return guid end
+  end
+  return nil
+end
+
+local function ReadInspectItemLevel(unit)
+  local value
+  if C_PaperDollInfo and type(C_PaperDollInfo.GetInspectItemLevel) == "function" then
+    local ok, result = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
+    if ok then value = tonumber(result) end
+  end
+  if (not value or value <= 0) and type(GetInspectItemLevel) == "function" then
+    local ok, result = pcall(GetInspectItemLevel, unit)
+    if ok then value = tonumber(result) end
+  end
+  if value and value > 0 then return math.floor(value + 0.5) end
+  return nil
+end
+
+local function CanRequestInspect(unit)
+  if not unit then return false end
+  if type(InCombatLockdown) == "function" then
+    local ok, locked = pcall(InCombatLockdown)
+    if ok and locked then return false end
+  end
+  if UnitAffectingCombat then
+    local ok, inCombat = pcall(UnitAffectingCombat, "player")
+    if ok and inCombat then return false end
+  end
+  if CanInspect then
+    local ok, value = pcall(CanInspect, unit, false)
+    if ok and not value then return false end
+  end
+  return type(NotifyInspect) == "function"
+end
+
+local function FormatItemLevel(value, pending)
+  value = tonumber(value)
+  if value and value > 0 then return tostring(math.floor(value + 0.5)) end
+  if pending then return "…" end
+  return "—"
+end
+
+function addon:GetPugItemLevel(unit, fullName)
+  self._pugIlvlCache = self._pugIlvlCache or {}
+  local key = fullName or unit
+  local guid = SafeUnitGUID(unit)
+  local cache = key and self._pugIlvlCache[key] or nil
+  local now = SafeGetTime()
+
+  if cache and cache.itemLevel and (now - (cache.time or 0)) < 900 then
+    return cache.itemLevel, false
+  end
+
+  local live = ReadInspectItemLevel(unit)
+  if live and key then
+    self._pugIlvlCache[key] = { itemLevel = live, guid = guid, time = now }
+    return live, false
+  end
+
+  if not key or not CanRequestInspect(unit) then
+    return cache and cache.itemLevel or nil, false
+  end
+
+  cache = cache or {}
+  local requestedAt = tonumber(cache.requestedAt or 0) or 0
+  if (now - requestedAt) > 12 and (now - (self._lastPugInspectRequest or 0)) > 0.9 then
+    cache.requestedAt = now
+    cache.guid = guid
+    self._pugIlvlCache[key] = cache
+    self._lastPugInspectRequest = now
+    pcall(NotifyInspect, unit)
+    return nil, true
+  end
+
+  return cache.itemLevel, true
+end
+
+local function EnsurePugInspectEvents()
+  if addon._pugInspectFrame then return end
+  local frame = CreateFrame("Frame")
+  frame:RegisterEvent("INSPECT_READY")
+  frame:SetScript("OnEvent", function(_, _, guid)
+    if not guid then return end
+    if not addon._pugIlvlCache then return end
+    for i = 1, SafeGroupCount() do
+      local unit = "raid" .. i
+      local unitGuid = SafeUnitGUID(unit)
+      if unitGuid and unitGuid == guid then
+        local fullName = FullNameFromUnit(unit)
+        local ilvl = ReadInspectItemLevel(unit)
+        if fullName and ilvl then
+          addon._pugIlvlCache[fullName] = { itemLevel = ilvl, guid = guid, time = SafeGetTime() }
+          if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then
+            if C_Timer and C_Timer.After then
+              C_Timer.After(0.05, function()
+                if addon.PugWindow and addon.PugWindow:IsShown() then addon:RefreshPugWindow() end
+              end)
+            else
+              addon:RefreshPugWindow()
+            end
+          end
+        end
+        break
+      end
+    end
+  end)
+  addon._pugInspectFrame = frame
+end
+
 function addon:CanManagePugRemoval()
   if self.PlayerCanManageGroup then return self:PlayerCanManageGroup() end
   return false
@@ -136,6 +257,8 @@ function addon:ScanRaidPugs()
             if okRoster then subgroup = tonumber(sg) end
           end
 
+          local itemLevel, itemLevelPending = self:GetPugItemLevel(unit, fullName)
+
           result[#result + 1] = {
             unit = unit,
             index = i,
@@ -147,6 +270,8 @@ function addon:ScanRaidPugs()
             guildName = SafeText(guildName, "—"),
             role = PugRoleText(unit),
             subgroup = subgroup,
+            itemLevel = itemLevel,
+            itemLevelPending = itemLevelPending,
             online = online,
           }
         end
@@ -192,7 +317,7 @@ local function CreateRow(parent, index)
 
   row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   row.name:SetPoint("LEFT", row.num, "RIGHT", 4, 0)
-  row.name:SetWidth(145)
+  row.name:SetWidth(132)
   row.name:SetJustifyH("LEFT")
 
   row.kick = CreateFrame("Button", nil, row, "UIPanelCloseButton")
@@ -245,17 +370,22 @@ local function CreateRow(parent, index)
 
   row.class = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
   row.class:SetPoint("LEFT", row.kick, "RIGHT", 8, 0)
-  row.class:SetWidth(84)
+  row.class:SetWidth(78)
   row.class:SetJustifyH("LEFT")
 
   row.role = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
   row.role:SetPoint("LEFT", row.class, "RIGHT", 8, 0)
-  row.role:SetWidth(48)
+  row.role:SetWidth(46)
   row.role:SetJustifyH("LEFT")
 
+  row.ilvl = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  row.ilvl:SetPoint("LEFT", row.role, "RIGHT", 8, 0)
+  row.ilvl:SetWidth(42)
+  row.ilvl:SetJustifyH("LEFT")
+
   row.guild = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  row.guild:SetPoint("LEFT", row.role, "RIGHT", 8, 0)
-  row.guild:SetWidth(154)
+  row.guild:SetPoint("LEFT", row.ilvl, "RIGHT", 8, 0)
+  row.guild:SetWidth(116)
   row.guild:SetJustifyH("LEFT")
 
   row.group = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
@@ -268,6 +398,7 @@ end
 
 function addon:CreatePugWindow()
   if self.PugWindow then return self.PugWindow end
+  EnsurePugInspectEvents()
 
   local f = CreateFrame("Frame", "GroupGuardLFG_PugWindow", UIParent, "BasicFrameTemplateWithInset")
   f:SetSize(640, 430)
@@ -308,10 +439,11 @@ function addon:CreatePugWindow()
   f.header = header
 
   CreateHeaderText(header, "#", 28, "LEFT", header, "LEFT", 8, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), 145, "LEFT", header, "LEFT", 40, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), 84, "LEFT", header, "LEFT", 214, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), 48, "LEFT", header, "LEFT", 306, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), 154, "LEFT", header, "LEFT", 362, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), 132, "LEFT", header, "LEFT", 40, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), 78, "LEFT", header, "LEFT", 214, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), 46, "LEFT", header, "LEFT", 300, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_ILVL"), 42, "LEFT", header, "LEFT", 354, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), 116, "LEFT", header, "LEFT", 406, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), 32, "LEFT", header, "LEFT", 526, 0)
 
   local line = header:CreateTexture(nil, "BORDER")
@@ -403,6 +535,7 @@ function addon:RefreshPugWindow()
     row.name:SetTextColor(classColor.r or 1, classColor.g or 0.82, classColor.b or 0.36)
     row.class:SetText(pug.className or "—")
     row.role:SetText(pug.role or "—")
+    row.ilvl:SetText(FormatItemLevel(pug.itemLevel, pug.itemLevelPending))
     row.guild:SetText(pug.guildName or "—")
     row.group:SetText(pug.subgroup and tostring(pug.subgroup) or "—")
     row:SetAlpha(pug.online and 1 or 0.48)
@@ -444,7 +577,7 @@ function addon:PrintRaidPugs()
   end
 
   for i, pug in ipairs(pugs) do
-    print(addon:Tr("PUG_PRINT_ROW", i, pug.fullName or pug.name or "?", pug.className or "—", pug.role or "—", pug.guildName or "—"))
+    print(addon:Tr("PUG_PRINT_ROW", i, pug.fullName or pug.name or "?", pug.className or "—", pug.role or "—", FormatItemLevel(pug.itemLevel, pug.itemLevelPending), pug.guildName or "—"))
   end
 end
 
