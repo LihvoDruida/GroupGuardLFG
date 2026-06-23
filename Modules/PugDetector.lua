@@ -300,15 +300,15 @@ end
 
 
 local PUG_COL = {
-  NUM_X = 8,  NUM_W = 26,
-  NAME_X = 40, NAME_W = 160,
+  NUM_X = 8,  NUM_W = 18,
+  ACTION_X = 30, ACTION_W = 18,
+  NAME_X = 56, NAME_W = 144,
   CLASS_X = 206, CLASS_W = 84,
   ROLE_X = 296, ROLE_W = 46,
   ILVL_X = 348, ILVL_W = 42,
   GUILD_X = 396, GUILD_W = 126,
   GROUP_X = 528, GROUP_W = 22,
-  ACTION_X = 548, ACTION_W = 18,
-  ROW_W = 570,
+  ROW_W = 550,
 }
 
 local function CreateRow(parent, index)
@@ -358,9 +358,20 @@ local function CreateRow(parent, index)
   row.group:SetWidth(PUG_COL.GROUP_W)
   row.group:SetJustifyH("LEFT")
 
-  row.kick = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+  row.kick = CreateFrame("Button", nil, row, "BackdropTemplate")
   row.kick:SetSize(PUG_COL.ACTION_W, PUG_COL.ACTION_W)
   row.kick:SetPoint("LEFT", row, "LEFT", PUG_COL.ACTION_X, 0)
+  row.kick:SetBackdrop({
+    bgFile = "Interface\Buttons\WHITE8X8",
+    edgeFile = "Interface\Buttons\WHITE8X8",
+    edgeSize = 1,
+  })
+  row.kick:SetBackdropColor(0.42, 0.06, 0.05, 0.82)
+  row.kick:SetBackdropBorderColor(0.90, 0.24, 0.18, 0.92)
+  row.kick.text = row.kick:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  row.kick.text:SetPoint("CENTER", row.kick, "CENTER", 0, 0)
+  row.kick.text:SetText("×")
+  row.kick.text:SetTextColor(1.0, 0.74, 0.58)
   row.kick:SetScript("OnEnter", function(btn)
     if not GameTooltip then return end
     GameTooltip:SetOwner(btn, "ANCHOR_LEFT")
@@ -452,15 +463,13 @@ function addon:CreatePugWindow()
   f.header = header
 
   CreateHeaderText(header, "#", PUG_COL.NUM_W, "LEFT", header, "LEFT", PUG_COL.NUM_X, 0)
+  CreateHeaderText(header, "", PUG_COL.ACTION_W, "LEFT", header, "LEFT", PUG_COL.ACTION_X, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_NAME"), PUG_COL.NAME_W, "LEFT", header, "LEFT", PUG_COL.NAME_X, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), PUG_COL.CLASS_W, "LEFT", header, "LEFT", PUG_COL.CLASS_X, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), PUG_COL.ROLE_W, "LEFT", header, "LEFT", PUG_COL.ROLE_X, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_ILVL"), PUG_COL.ILVL_W, "LEFT", header, "LEFT", PUG_COL.ILVL_X, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), PUG_COL.GUILD_W, "LEFT", header, "LEFT", PUG_COL.GUILD_X, 0)
   CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), PUG_COL.GROUP_W, "LEFT", header, "LEFT", PUG_COL.GROUP_X, 0)
-  local actionHeader = CreateHeaderText(header, "", PUG_COL.ACTION_W, "LEFT", header, "LEFT", PUG_COL.ACTION_X, 0)
-  actionHeader:SetTextColor(1, 0.82, 0.36)
-
   local line = header:CreateTexture(nil, "BORDER")
   line:SetColorTexture(1, 0.82, 0.36, 0.16)
   line:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, -2)
@@ -561,9 +570,20 @@ function addon:RefreshPugWindow()
     row.group:SetText(pug.subgroup and tostring(pug.subgroup) or "—")
     row:SetAlpha(pug.online and 1 or 0.48)
     if row.kick then
+      local enabled = canKick and pug.online
       row.kick:Show()
-      row.kick:SetEnabled(canKick and pug.online)
-      row.kick:SetAlpha((canKick and pug.online) and 1 or 0.35)
+      row.kick:SetEnabled(enabled)
+      row.kick:SetAlpha(enabled and 1 or 0.55)
+      if row.kick.SetBackdropColor then
+        if enabled then
+          row.kick:SetBackdropColor(0.42, 0.06, 0.05, 0.82)
+          row.kick:SetBackdropBorderColor(0.90, 0.24, 0.18, 0.92)
+        else
+          row.kick:SetBackdropColor(0.18, 0.08, 0.07, 0.62)
+          row.kick:SetBackdropBorderColor(0.45, 0.20, 0.16, 0.72)
+        end
+      end
+      if row.kick.text then row.kick.text:SetTextColor(enabled and 1.0 or 0.72, enabled and 0.74 or 0.50, enabled and 0.58 or 0.44) end
     end
     row:Show()
   end
