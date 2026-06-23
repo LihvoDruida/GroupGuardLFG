@@ -300,15 +300,15 @@ end
 
 
 local PUG_COL = {
-  NUM_X = 8,  NUM_W = 18,
-  ACTION_X = 30, ACTION_W = 18,
-  NAME_X = 56, NAME_W = 144,
-  CLASS_X = 206, CLASS_W = 84,
-  ROLE_X = 296, ROLE_W = 46,
-  ILVL_X = 348, ILVL_W = 42,
-  GUILD_X = 396, GUILD_W = 126,
-  GROUP_X = 528, GROUP_W = 22,
-  ROW_W = 550,
+  NUM_X = 8,  NUM_W = 22,
+  ACTION_X = 34, ACTION_W = 22,
+  NAME_X = 64, NAME_W = 172,
+  CLASS_X = 244, CLASS_W = 88,
+  ROLE_X = 340, ROLE_W = 46,
+  ILVL_X = 392, ILVL_W = 46,
+  GUILD_X = 446, GUILD_W = 132,
+  GROUP_X = 586, GROUP_W = 30,
+  ROW_W = 620,
 }
 
 local function CreateRow(parent, index)
@@ -358,23 +358,13 @@ local function CreateRow(parent, index)
   row.group:SetWidth(PUG_COL.GROUP_W)
   row.group:SetJustifyH("LEFT")
 
-  row.kick = CreateFrame("Button", nil, row, "BackdropTemplate")
+  row.kick = CreateFrame("Button", nil, row, "UIPanelCloseButton")
   row.kick:SetSize(PUG_COL.ACTION_W, PUG_COL.ACTION_W)
   row.kick:SetPoint("LEFT", row, "LEFT", PUG_COL.ACTION_X, 0)
-  row.kick:SetBackdrop({
-    bgFile = "Interface\Buttons\WHITE8X8",
-    edgeFile = "Interface\Buttons\WHITE8X8",
-    edgeSize = 1,
-  })
-  row.kick:SetBackdropColor(0.42, 0.06, 0.05, 0.82)
-  row.kick:SetBackdropBorderColor(0.90, 0.24, 0.18, 0.92)
-  row.kick.text = row.kick:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  row.kick.text:SetPoint("CENTER", row.kick, "CENTER", 0, 0)
-  row.kick.text:SetText("×")
-  row.kick.text:SetTextColor(1.0, 0.74, 0.58)
+  if row.kick.SetHitRectInsets then row.kick:SetHitRectInsets(0, 0, 0, 0) end
   row.kick:SetScript("OnEnter", function(btn)
     if not GameTooltip then return end
-    GameTooltip:SetOwner(btn, "ANCHOR_LEFT")
+    GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
     GameTooltip:AddLine(addon:Tr("PUG_KICK"), 1, 0.82, 0.36)
     GameTooltip:AddLine(addon:Tr("PUG_KICK_TOOLTIP"), 0.86, 0.82, 0.72, true)
     if not addon:CanManagePugRemoval() then
@@ -425,7 +415,7 @@ function addon:CreatePugWindow()
   EnsurePugInspectEvents()
 
   local f = CreateFrame("Frame", "GroupGuardLFG_PugWindow", UIParent, "BasicFrameTemplateWithInset")
-  f:SetSize(640, 430)
+  f:SetSize(700, 455)
   f:SetPoint("CENTER")
   f:SetFrameStrata("DIALOG")
   f:SetFrameLevel(270)
@@ -446,20 +436,20 @@ function addon:CreatePugWindow()
   f.title = title
 
   local count = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  count:SetPoint("TOPRIGHT", f, "TOPRIGHT", -32, -38)
+  count:SetPoint("TOPRIGHT", f, "TOPRIGHT", -38, -38)
   count:SetText("")
   f.count = count
 
   local note = f:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
   note:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-  note:SetPoint("RIGHT", f, "RIGHT", -28, 0)
+  note:SetPoint("RIGHT", f, "RIGHT", -38, 0)
   note:SetJustifyH("LEFT")
   note:SetText(self:Tr("PUG_WINDOW_NOTE"))
   f.note = note
 
   local header = CreateFrame("Frame", nil, f)
   header:SetSize(PUG_COL.ROW_W, 22)
-  header:SetPoint("TOPLEFT", f, "TOPLEFT", 36, -88)
+  header:SetPoint("TOPLEFT", f, "TOPLEFT", 34, -92)
   f.header = header
 
   CreateHeaderText(header, "#", PUG_COL.NUM_W, "LEFT", header, "LEFT", PUG_COL.NUM_X, 0)
@@ -477,7 +467,7 @@ function addon:CreatePugWindow()
 
   local scroll = CreateFrame("ScrollFrame", "GroupGuardLFG_PugScroll", f, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
-  scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -46, 62)
+  scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -56, 72)
 
   local child = CreateFrame("Frame", nil, scroll)
   child:SetSize(PUG_COL.ROW_W, 260)
@@ -496,26 +486,26 @@ function addon:CreatePugWindow()
 
   local actionBar = CreateFrame("Frame", nil, f)
   actionBar:SetSize(340, 24)
-  actionBar:SetPoint("BOTTOM", f, "BOTTOM", 0, 22)
+  actionBar:SetPoint("BOTTOM", f, "BOTTOM", 0, 26)
   f.actionBar = actionBar
 
   local printBtn = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
-  printBtn:SetSize(104, 24)
+  printBtn:SetSize(102, 24)
   printBtn:SetPoint("LEFT", actionBar, "LEFT", 0, 0)
   printBtn:SetText(self:Tr("PUG_PRINT"))
   printBtn:SetScript("OnClick", function() addon:PrintRaidPugs() end)
   f.printBtn = printBtn
 
   local refresh = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
-  refresh:SetSize(104, 24)
-  refresh:SetPoint("LEFT", printBtn, "RIGHT", 10, 0)
+  refresh:SetSize(102, 24)
+  refresh:SetPoint("LEFT", printBtn, "RIGHT", 12, 0)
   refresh:SetText(self:Tr("PUG_REFRESH"))
   refresh:SetScript("OnClick", function() addon:RefreshPugWindow() end)
   f.refresh = refresh
 
   local close = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
   close:SetSize(102, 24)
-  close:SetPoint("LEFT", refresh, "RIGHT", 10, 0)
+  close:SetPoint("LEFT", refresh, "RIGHT", 12, 0)
   close:SetText(CLOSE or "Close")
   close:SetScript("OnClick", function() f:Hide() end)
   f.close = close
@@ -533,6 +523,7 @@ function addon:RefreshPugWindow()
     f.count:SetText(self:Tr("PUG_COUNT_FMT", 0, 0))
     f.empty:SetText(self:Tr("PUG_RAID_ONLY"))
     f.empty:Show()
+    f.child:SetWidth(PUG_COL.ROW_W)
     f.child:SetHeight(260)
     return
   end
@@ -542,6 +533,7 @@ function addon:RefreshPugWindow()
   if #pugs == 0 then
     f.empty:SetText(self:Tr("PUG_EMPTY"))
     f.empty:Show()
+    f.child:SetWidth(PUG_COL.ROW_W)
     f.child:SetHeight(260)
     return
   end

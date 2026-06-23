@@ -2,8 +2,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.2.29
-## X-Codename: LFG highlight denser fill
+## Version: 4.2.39
+## X-Codename: PUG window fit and native kick button
+## X-Prev-Codename: PUG list item level
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
