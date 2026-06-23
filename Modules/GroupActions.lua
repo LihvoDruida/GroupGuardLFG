@@ -340,7 +340,7 @@ function addon:CreateLeaveButton()
 
   local parent = self.Banner or UIParent
   local btn = CreateFrame("Button", "GroupGuardLFGLeaveBtn", parent, "UIPanelButtonTemplate")
-  btn:SetSize(136, 22)
+  btn:SetSize(138, 22)
   btn:SetFrameStrata("DIALOG")
   btn:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 260) + 12)
   btn:SetText(self.GetLeaveActionLabel and self:GetLeaveActionLabel() or self:Tr("LEAVE_GROUP_BUTTON"))
@@ -389,7 +389,7 @@ function addon:CreateKickButton()
   end
   local parent = self.Banner or UIParent
   local btn = CreateFrame("Button", "GroupGuardLFGKickBtn", parent, "UIPanelButtonTemplate")
-  btn:SetSize(156, 22)
+  btn:SetSize(150, 22)
   btn:SetFrameStrata("DIALOG")
   btn:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 260) + 12)
   btn:SetText(addon:Tr("KICK_BUTTON"))

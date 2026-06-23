@@ -14,8 +14,8 @@ end
 
 local function CreateBanner()
   local f = CreateFrame("Frame", "GroupGuardLFG_Banner", UIParent, "BasicFrameTemplateWithInset")
-  f:SetSize(430, 190)
-  f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+  f:SetSize(430, 214)
+  f:SetPoint("CENTER", UIParent, "CENTER", 0, 118)
   f:SetFrameStrata("DIALOG")
   f:SetFrameLevel(260)
   f:EnableMouse(true)
@@ -39,24 +39,33 @@ local function CreateBanner()
   if f.Inset then
     local bg = f.Inset:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(true)
-    bg:SetColorTexture(0.05, 0.08, 0.10, 0.90)
+    bg:SetColorTexture(0.06, 0.12, 0.15, 0.92)
     f.insetBg = bg
+
+    local vignette = f.Inset:CreateTexture(nil, "BORDER")
+    vignette:SetPoint("TOPLEFT", 1, -1)
+    vignette:SetPoint("BOTTOMRIGHT", -1, 1)
+    vignette:SetColorTexture(0.02, 0.04, 0.05, 0.20)
+    f.vignette = vignette
   end
 
   local topGlow = f:CreateTexture(nil, "BORDER")
   topGlow:SetPoint("TOPLEFT", 12, -28)
   topGlow:SetPoint("TOPRIGHT", -12, -28)
-  topGlow:SetHeight(20)
-  topGlow:SetColorTexture(0.20, 0.55, 0.70, 0.06)
+  topGlow:SetHeight(28)
+  topGlow:SetColorTexture(0.18, 0.48, 0.66, 0.07)
   f.glow = topGlow
 
-  local headerLine = CreateDivider(f, "TOPLEFT", f, "TOPLEFT", 18, -31, 394, 1, 0.55, 0.72, 0.82, 0.20)
-  f.headerLine = headerLine
+  local topLine = CreateDivider(f, "TOPLEFT", f, "TOPLEFT", 18, -31, 394, 1, 0.55, 0.72, 0.82, 0.24)
+  local bottomLine = CreateDivider(f, "BOTTOMLEFT", f, "BOTTOMLEFT", 18, 56, 394, 1, 0.55, 0.72, 0.82, 0.14)
+  f.headerLine = topLine
+  f.actionDivider = bottomLine
+  bottomLine:Hide()
 
   local tagBg = f:CreateTexture(nil, "ARTWORK")
-  tagBg:SetPoint("TOPRIGHT", f, "TOPRIGHT", -32, -38)
-  tagBg:SetSize(88, 16)
-  tagBg:SetColorTexture(0.90, 0.28, 0.18, 0.12)
+  tagBg:SetPoint("TOPRIGHT", f, "TOPRIGHT", -34, -37)
+  tagBg:SetSize(92, 16)
+  tagBg:SetColorTexture(0.90, 0.28, 0.18, 0.10)
   f.tagBg = tagBg
 
   local tag = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -66,7 +75,7 @@ local function CreateBanner()
   f.tag = tag
 
   local iconBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
-  iconBox:SetSize(56, 56)
+  iconBox:SetSize(60, 60)
   iconBox:SetPoint("TOP", f, "TOP", 0, -52)
   iconBox:SetBackdrop({
     bgFile = "Interface\Buttons\WHITE8X8",
@@ -75,9 +84,15 @@ local function CreateBanner()
     edgeSize = 12,
     insets = { left = 3, right = 3, top = 3, bottom = 3 },
   })
-  iconBox:SetBackdropColor(0.10, 0.18, 0.20, 0.95)
-  iconBox:SetBackdropBorderColor(0.48, 0.74, 0.82, 0.84)
+  iconBox:SetBackdropColor(0.10, 0.17, 0.20, 0.95)
+  iconBox:SetBackdropBorderColor(0.46, 0.73, 0.82, 0.84)
   f.iconRing = iconBox
+
+  local iconBg = iconBox:CreateTexture(nil, "BACKGROUND")
+  iconBg:SetPoint("TOPLEFT", 4, -4)
+  iconBg:SetPoint("BOTTOMRIGHT", -4, 4)
+  iconBg:SetColorTexture(0.08, 0.14, 0.16, 0.92)
+  f.iconBg = iconBg
 
   local icon = iconBox:CreateTexture(nil, "ARTWORK")
   icon:SetPoint("CENTER", iconBox, "CENTER", 0, 0)
@@ -98,37 +113,33 @@ local function CreateBanner()
   f.primary = primary
 
   local secondary = f:CreateFontString(nil, "ARTWORK")
-  secondary:SetPoint("TOP", primary, "BOTTOM", 0, -4)
-  secondary:SetPoint("LEFT", f, "LEFT", 24, 0)
-  secondary:SetPoint("RIGHT", f, "RIGHT", -24, 0)
+  secondary:SetPoint("TOP", primary, "BOTTOM", 0, -3)
+  secondary:SetPoint("LEFT", f, "LEFT", 26, 0)
+  secondary:SetPoint("RIGHT", f, "RIGHT", -26, 0)
   secondary:SetJustifyH("CENTER")
   secondary:SetFont(SAFE_FONT, 13, "")
-  secondary:SetTextColor(0.86, 0.88, 0.88)
+  secondary:SetTextColor(0.88, 0.90, 0.91)
   secondary:SetShadowColor(0, 0, 0, 0.90)
   secondary:SetShadowOffset(1, -1)
   f.secondary = secondary
 
   local caution = f:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  caution:SetPoint("TOP", secondary, "BOTTOM", 0, -8)
-  caution:SetPoint("LEFT", f, "LEFT", 30, 0)
-  caution:SetPoint("RIGHT", f, "RIGHT", -30, 0)
+  caution:SetPoint("TOP", secondary, "BOTTOM", 0, -7)
+  caution:SetPoint("LEFT", f, "LEFT", 32, 0)
+  caution:SetPoint("RIGHT", f, "RIGHT", -32, 0)
   caution:SetJustifyH("CENTER")
-  caution:SetTextColor(0.82, 0.78, 0.70)
+  caution:SetTextColor(0.80, 0.78, 0.72)
   f.caution = caution
 
-  local footerLine = CreateDivider(f, "BOTTOMLEFT", f, "BOTTOMLEFT", 18, 42, 394, 1, 0.55, 0.72, 0.82, 0.14)
-  footerLine:Hide()
-  f.actionDivider = footerLine
-
   local status = f:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  status:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 22, 18)
+  status:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 22, 20)
   status:SetJustifyH("LEFT")
   status:SetTextColor(0.58, 0.64, 0.67)
   f.status = status
 
   local actionBar = CreateFrame("Frame", nil, f)
-  actionBar:SetSize(320, 24)
-  actionBar:SetPoint("BOTTOM", f, "BOTTOM", 0, 16)
+  actionBar:SetSize(360, 24)
+  actionBar:SetPoint("BOTTOM", f, "BOTTOM", 0, 18)
   f.actionBar = actionBar
 
   addon.Banner = f

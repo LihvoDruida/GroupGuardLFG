@@ -298,9 +298,22 @@ local function CreateHeaderText(parent, text, width, point, rel, relPoint, x, y)
   return fs
 end
 
+
+local PUG_COL = {
+  NUM_X = 8,  NUM_W = 26,
+  NAME_X = 40, NAME_W = 160,
+  CLASS_X = 206, CLASS_W = 84,
+  ROLE_X = 296, ROLE_W = 46,
+  ILVL_X = 348, ILVL_W = 42,
+  GUILD_X = 396, GUILD_W = 126,
+  GROUP_X = 528, GROUP_W = 22,
+  ACTION_X = 548, ACTION_W = 18,
+  ROW_W = 570,
+}
+
 local function CreateRow(parent, index)
   local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
-  row:SetSize(560, 24)
+  row:SetSize(PUG_COL.ROW_W, 24)
   row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -((index - 1) * 26))
   row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
   if index % 2 == 0 then
@@ -311,21 +324,46 @@ local function CreateRow(parent, index)
   row:Hide()
 
   row.num = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  row.num:SetPoint("LEFT", row, "LEFT", 8, 0)
-  row.num:SetWidth(28)
+  row.num:SetPoint("LEFT", row, "LEFT", PUG_COL.NUM_X, 0)
+  row.num:SetWidth(PUG_COL.NUM_W)
   row.num:SetJustifyH("LEFT")
 
   row.name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  row.name:SetPoint("LEFT", row.num, "RIGHT", 4, 0)
-  row.name:SetWidth(132)
+  row.name:SetPoint("LEFT", row, "LEFT", PUG_COL.NAME_X, 0)
+  row.name:SetWidth(PUG_COL.NAME_W)
   row.name:SetJustifyH("LEFT")
 
+  row.class = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  row.class:SetPoint("LEFT", row, "LEFT", PUG_COL.CLASS_X, 0)
+  row.class:SetWidth(PUG_COL.CLASS_W)
+  row.class:SetJustifyH("LEFT")
+
+  row.role = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  row.role:SetPoint("LEFT", row, "LEFT", PUG_COL.ROLE_X, 0)
+  row.role:SetWidth(PUG_COL.ROLE_W)
+  row.role:SetJustifyH("LEFT")
+
+  row.ilvl = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+  row.ilvl:SetPoint("LEFT", row, "LEFT", PUG_COL.ILVL_X, 0)
+  row.ilvl:SetWidth(PUG_COL.ILVL_W)
+  row.ilvl:SetJustifyH("LEFT")
+
+  row.guild = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  row.guild:SetPoint("LEFT", row, "LEFT", PUG_COL.GUILD_X, 0)
+  row.guild:SetWidth(PUG_COL.GUILD_W)
+  row.guild:SetJustifyH("LEFT")
+
+  row.group = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  row.group:SetPoint("LEFT", row, "LEFT", PUG_COL.GROUP_X, 0)
+  row.group:SetWidth(PUG_COL.GROUP_W)
+  row.group:SetJustifyH("LEFT")
+
   row.kick = CreateFrame("Button", nil, row, "UIPanelCloseButton")
-  row.kick:SetSize(18, 18)
-  row.kick:SetPoint("LEFT", row.name, "RIGHT", 2, 0)
+  row.kick:SetSize(PUG_COL.ACTION_W, PUG_COL.ACTION_W)
+  row.kick:SetPoint("LEFT", row, "LEFT", PUG_COL.ACTION_X, 0)
   row.kick:SetScript("OnEnter", function(btn)
     if not GameTooltip then return end
-    GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+    GameTooltip:SetOwner(btn, "ANCHOR_LEFT")
     GameTooltip:AddLine(addon:Tr("PUG_KICK"), 1, 0.82, 0.36)
     GameTooltip:AddLine(addon:Tr("PUG_KICK_TOOLTIP"), 0.86, 0.82, 0.72, true)
     if not addon:CanManagePugRemoval() then
@@ -368,31 +406,6 @@ local function CreateRow(parent, index)
     end
   end)
 
-  row.class = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  row.class:SetPoint("LEFT", row.kick, "RIGHT", 8, 0)
-  row.class:SetWidth(78)
-  row.class:SetJustifyH("LEFT")
-
-  row.role = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  row.role:SetPoint("LEFT", row.class, "RIGHT", 8, 0)
-  row.role:SetWidth(46)
-  row.role:SetJustifyH("LEFT")
-
-  row.ilvl = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  row.ilvl:SetPoint("LEFT", row.role, "RIGHT", 8, 0)
-  row.ilvl:SetWidth(42)
-  row.ilvl:SetJustifyH("LEFT")
-
-  row.guild = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  row.guild:SetPoint("LEFT", row.ilvl, "RIGHT", 8, 0)
-  row.guild:SetWidth(116)
-  row.guild:SetJustifyH("LEFT")
-
-  row.group = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  row.group:SetPoint("LEFT", row.guild, "RIGHT", 8, 0)
-  row.group:SetWidth(32)
-  row.group:SetJustifyH("LEFT")
-
   return row
 end
 
@@ -434,29 +447,31 @@ function addon:CreatePugWindow()
   f.note = note
 
   local header = CreateFrame("Frame", nil, f)
-  header:SetSize(560, 22)
+  header:SetSize(PUG_COL.ROW_W, 22)
   header:SetPoint("TOPLEFT", f, "TOPLEFT", 36, -88)
   f.header = header
 
-  CreateHeaderText(header, "#", 28, "LEFT", header, "LEFT", 8, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), 132, "LEFT", header, "LEFT", 40, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), 78, "LEFT", header, "LEFT", 214, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), 46, "LEFT", header, "LEFT", 300, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_ILVL"), 42, "LEFT", header, "LEFT", 354, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), 116, "LEFT", header, "LEFT", 406, 0)
-  CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), 32, "LEFT", header, "LEFT", 526, 0)
+  CreateHeaderText(header, "#", PUG_COL.NUM_W, "LEFT", header, "LEFT", PUG_COL.NUM_X, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_NAME"), PUG_COL.NAME_W, "LEFT", header, "LEFT", PUG_COL.NAME_X, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_CLASS"), PUG_COL.CLASS_W, "LEFT", header, "LEFT", PUG_COL.CLASS_X, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_ROLE"), PUG_COL.ROLE_W, "LEFT", header, "LEFT", PUG_COL.ROLE_X, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_ILVL"), PUG_COL.ILVL_W, "LEFT", header, "LEFT", PUG_COL.ILVL_X, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GUILD"), PUG_COL.GUILD_W, "LEFT", header, "LEFT", PUG_COL.GUILD_X, 0)
+  CreateHeaderText(header, self:Tr("PUG_COL_GROUP"), PUG_COL.GROUP_W, "LEFT", header, "LEFT", PUG_COL.GROUP_X, 0)
+  local actionHeader = CreateHeaderText(header, "", PUG_COL.ACTION_W, "LEFT", header, "LEFT", PUG_COL.ACTION_X, 0)
+  actionHeader:SetTextColor(1, 0.82, 0.36)
 
   local line = header:CreateTexture(nil, "BORDER")
   line:SetColorTexture(1, 0.82, 0.36, 0.16)
   line:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, -2)
-  line:SetSize(560, 1)
+  line:SetSize(PUG_COL.ROW_W, 1)
 
   local scroll = CreateFrame("ScrollFrame", "GroupGuardLFG_PugScroll", f, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
   scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -46, 62)
 
   local child = CreateFrame("Frame", nil, scroll)
-  child:SetSize(560, 260)
+  child:SetSize(PUG_COL.ROW_W, 260)
   scroll:SetScrollChild(child)
   f.scroll = scroll
   f.child = child
@@ -464,7 +479,7 @@ function addon:CreatePugWindow()
 
   local empty = f:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   empty:SetPoint("CENTER", scroll, "CENTER", 0, 6)
-  empty:SetWidth(520)
+  empty:SetWidth(PUG_COL.ROW_W - 20)
   empty:SetJustifyH("CENTER")
   empty:SetText("")
   empty:Hide()
@@ -518,6 +533,7 @@ function addon:RefreshPugWindow()
   end
 
   f.empty:Hide()
+  f.child:SetWidth(PUG_COL.ROW_W)
   f.child:SetHeight(math.max(260, #pugs * 26))
 
   for i, pug in ipairs(pugs) do

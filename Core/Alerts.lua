@@ -79,12 +79,13 @@ function addon:ApplyBannerKind(kind)
     self.Banner.tag:SetText(tagText)
     self.Banner.tag:SetTextColor(r, g, b)
   end
-  if self.Banner.glow then self.Banner.glow:SetColorTexture(r * 0.20, g * 0.28, b * 0.34, 0.08) end
+  if self.Banner.glow then self.Banner.glow:SetColorTexture(r * 0.16, g * 0.24, b * 0.30, 0.08) end
   if self.Banner.softTop then self.Banner.softTop:SetColorTexture(r, g, b, 0.05) end
   if self.Banner.severityStrip then self.Banner.severityStrip:SetColorTexture(r * 0.80, g * 0.76, b * 0.78, 0.26) end
-  if self.Banner.tagBg then self.Banner.tagBg:SetColorTexture(r, g * 0.55, b * 0.45, 0.12) end
-  if self.Banner.headerLine then self.Banner.headerLine:SetColorTexture(r * 0.70, g * 0.78, b * 0.86, 0.18) end
-  if self.Banner.iconBg then self.Banner.iconBg:SetColorTexture(r * 0.10, g * 0.12, b * 0.14, 0.82) end
+  if self.Banner.tagBg then self.Banner.tagBg:SetColorTexture(r, g * 0.55, b * 0.45, 0.10) end
+  if self.Banner.headerLine then self.Banner.headerLine:SetColorTexture(r * 0.64, g * 0.74, b * 0.82, 0.18) end
+  if self.Banner.actionDivider then self.Banner.actionDivider:SetColorTexture(r * 0.64, g * 0.74, b * 0.82, 0.12) end
+  if self.Banner.iconBg then self.Banner.iconBg:SetColorTexture(r * 0.08, g * 0.12, b * 0.14, 0.84) end
   if self.Banner.icon then self.Banner.icon:SetVertexColor(1, 1, 1, 1) end
   if self.Banner.iconRing and self.Banner.iconRing.SetBackdropBorderColor then self.Banner.iconRing:SetBackdropBorderColor(r * 0.74, g * 0.76, b * 0.82, 0.88) end
 end
@@ -100,7 +101,7 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
   local fontSecondary = self:GetFontForText(secondaryText)
 
   if self.Banner.primary then
-    self.Banner.primary:SetFont(fontPrimary, 16, "")
+    self.Banner.primary:SetFont(fontPrimary, 17, "")
     self.Banner.primary:SetText(primaryText or "")
   end
   if self.Banner.secondary then
@@ -161,7 +162,7 @@ function addon:LayoutBannerActionButtons()
 
   local function prepare(btn)
     if not btn then return end
-    btn:SetParent(self.Banner)
+    btn:SetParent(actionBar)
     btn:SetFrameStrata(self.Banner:GetFrameStrata() or "DIALOG")
     btn:SetFrameLevel((self.Banner:GetFrameLevel() or 260) + 12)
     btn:ClearAllPoints()
