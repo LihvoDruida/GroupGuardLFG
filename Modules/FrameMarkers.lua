@@ -34,11 +34,6 @@ end
 -- Non-invasive party/raid frame markers
 --------------------------------------------------
 
-local function NameKey(name)
-  if type(name) ~= "string" or name == "" then return nil end
-  return (name:match("^([^-]+)") or name)
-end
-
 local FRAME_MARKER_ICON = "Interface\\AddOns\\GroupGuardLFG\\Media\\warning_marker.tga"
 
 local function SafeUnitName(unit)
@@ -59,6 +54,19 @@ local function IsUsableFrame(frame)
      and type(frame.GetHeight) == "function"
 end
 
+local function ShouldSuppressFrameMarkers()
+  if addon and addon.IsDisabledNow and addon:IsDisabledNow() then return true end
+  if type(InCombatLockdown) == "function" then
+    local ok, locked = pcall(InCombatLockdown)
+    if ok and locked then return true end
+  end
+  if type(UnitAffectingCombat) == "function" then
+    local ok, inCombat = pcall(UnitAffectingCombat, "player")
+    if ok and inCombat then return true end
+  end
+  return false
+end
+
 local function ComputeMarkerSize(frame, scaleSetting)
   local h = 0
   local ok, value = pcall(frame.GetHeight, frame)
@@ -68,9 +76,9 @@ local function ComputeMarkerSize(frame, scaleSetting)
   local scale = tonumber(scaleSetting) or 1
   if scale < 0.5 then scale = 0.5 elseif scale > 1.75 then scale = 1.75 end
 
-  -- Centered raid-frame indicator: visible, but not huge.
-  local size = math.floor((h * 0.66 * scale) + 0.5)
-  if size < 16 then size = 16 elseif size > 34 then size = 34 end
+  -- Corner raid-frame indicator: intentionally compact.
+  local size = math.floor((h * 0.36 * scale) + 0.5)
+  if size < 10 then size = 10 elseif size > 18 then size = 18 end
   return size
 end
 
@@ -102,11 +110,16 @@ local function EnsureFrameMarker(frame)
   if frame.GroupGuardLFGMarker then return frame.GroupGuardLFGMarker end
 
   local marker = CreateFrame("Frame", nil, frame)
-  marker:SetFrameStrata("HIGH")
+  local strata = "MEDIUM"
+  if type(frame.GetFrameStrata) == "function" then
+    local okStrata, value = pcall(frame.GetFrameStrata, frame)
+    if okStrata and type(value) == "string" and value ~= "" then strata = value end
+  end
+  marker:SetFrameStrata(strata)
   local frameLevel = 1
   local okLevel, level = pcall(frame.GetFrameLevel, frame)
   if okLevel and type(level) == "number" then frameLevel = level end
-  marker:SetFrameLevel(frameLevel + 35)
+  marker:SetFrameLevel(frameLevel + 2)
   marker:EnableMouse(false)
   marker:SetAlpha(1)
   marker:Hide()
@@ -121,7 +134,7 @@ local function EnsureFrameMarker(frame)
   marker.glow:SetAllPoints()
   marker.glow:SetTexture(FRAME_MARKER_ICON)
   marker.glow:SetBlendMode("ADD")
-  marker.glow:SetVertexColor(1, 0.82, 0.35, 0.35)
+  marker.glow:SetVertexColor(1, 0.82, 0.35, 0.16)
 
   EnsurePulseAnimation(marker)
 
@@ -137,15 +150,14 @@ local function LayoutFrameMarker(frame, marker)
   marker:SetSize(size, size)
   marker:ClearAllPoints()
 
-  -- The marker is intentionally centered on the character frame.
-  -- This works better for compact raid frames than the old right-side offset.
-  marker:SetPoint("CENTER", frame, "CENTER", 0, 0)
+  -- Keep the marker small and tucked into the top-left corner.
+  marker:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
 end
 
 local MARKER_COLORS = {
-  FLAG = { 1.00, 0.28, 0.10, 1.00, 0.45, 0.08, 0.02, 0.42 },
-  FRIEND = { 0.20, 0.70, 1.00, 1.00, 0.04, 0.38, 0.95, 0.42 },
-  GUILD = { 0.15, 1.00, 0.42, 1.00, 0.02, 0.70, 0.18, 0.42 },
+  FLAG = { 1.00, 0.34, 0.16, 0.96, 0.45, 0.08, 0.02, 0.22 },
+  FRIEND = { 0.28, 0.74, 1.00, 0.96, 0.04, 0.38, 0.95, 0.20 },
+  GUILD = { 0.20, 0.96, 0.46, 0.96, 0.02, 0.70, 0.18, 0.20 },
 }
 
 local function ApplyMarkerMode(marker, mode)
@@ -155,7 +167,10 @@ local function ApplyMarkerMode(marker, mode)
 end
 
 local function ShowFrameMarker(frame, marker, mode)
-  if not marker then return end
+  if not marker or ShouldSuppressFrameMarkers() then
+    if marker then HideFrameMarker(marker) end
+    return
+  end
   LayoutFrameMarker(frame, marker)
   ApplyMarkerMode(marker, mode)
   marker:Show()
@@ -221,7 +236,7 @@ function addon:ClearFrameMarkers()
 end
 
 function addon:UpdateFrameMarkers()
-  if not (self.db and self.db.frame_markers_enabled) then
+  if not (self.db and self.db.frame_markers_enabled) or ShouldSuppressFrameMarkers() then
     self:ClearFrameMarkers()
     return
   end
@@ -262,6 +277,7 @@ end
 
 function addon:ScheduleFrameMarkerUpdate(delay)
   delay = tonumber(delay) or 0.05
+  if delay < 0.03 then delay = 0.03 end
   if self.RunDebounced then
     return self:RunDebounced("frame_marker_update", delay, function()
       if addon.UpdateFrameMarkers then addon:UpdateFrameMarkers() end

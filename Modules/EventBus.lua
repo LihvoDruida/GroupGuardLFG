@@ -32,6 +32,7 @@ SafeRegisterEvent("GROUP_ROSTER_UPDATE")
 SafeRegisterEvent("GROUP_JOINED")
 SafeRegisterEvent("PLAYER_ENTERING_WORLD")
 SafeRegisterEvent("PLAYER_REGEN_ENABLED")
+SafeRegisterEvent("PLAYER_REGEN_DISABLED")
 SafeRegisterEvent("LFG_LIST_APPLICANT_LIST_UPDATED")
 SafeRegisterEvent("LFG_LIST_APPLICANT_UPDATED")
 SafeRegisterEvent("LFG_LIST_APPLICATION_STATUS_UPDATED")
@@ -117,7 +118,7 @@ function addon:RequestGroupRefresh(delay)
     if not addon.db then return end
     EvaluateGroupState()
     if addon.ScanGroupOffenders then addon:ScanGroupOffenders() end
-    if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
+    if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
   end
 
   if delay <= 0.01 then
@@ -222,7 +223,7 @@ local function OnEvent(self, event, arg1, ...)
       addon:CreateKickButton()
       wasInGroup = SafeInGroupOrRaid()
       addon:RequestGroupRefresh(0)
-      if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
+      if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
       addon:RequestLFGRefresh(nil, true, true)
       if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
       if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
@@ -249,12 +250,12 @@ local function OnEvent(self, event, arg1, ...)
     wasInGroup = SafeInGroupOrRaid()
     -- Immediate UI refresh, plus a delayed pass after Blizzard finishes rebuilding frames.
     addon:RequestGroupRefresh(0)
-    if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
+    if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
     addon:RequestLFGRefresh(nil, true, true)
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, event) end
     local function delayedWorldRefresh()
       addon:RequestGroupRefresh(0)
-      if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.01) end
+      if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
       addon:RequestLFGRefresh(nil, false, true)
       if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0, "delayed_world") end
     end
@@ -282,6 +283,9 @@ local function OnEvent(self, event, arg1, ...)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
 
+  elseif event == "PLAYER_REGEN_DISABLED" then
+    if addon.ClearFrameMarkers then addon:ClearFrameMarkers() end
+
   elseif event == "PLAYER_REGEN_ENABLED" then
     addon:ProcessKickQueue()
     if addon._raidAssistQueued and addon.ScheduleRaidAssist then
@@ -289,6 +293,7 @@ local function OnEvent(self, event, arg1, ...)
       addon:ScheduleRaidAssist(0, "combat_end")
     end
     addon:RequestGroupRefresh(0)
+    if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.06) end
     addon:RequestLFGRefresh(nil, true, true)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
 

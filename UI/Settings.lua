@@ -129,15 +129,15 @@ local SETTINGS_UK = {
 
   ["Notifications and appearance"] = "Сповіщення та вигляд",
   ["5. Notifications"] = "5. Сповіщення",
-  ["Banner, sound, screen flash and red marker on party/raid frames."] =
-    "Банер, звук, спалах екрана та червона мітка на party/raid фреймах.",
+  ["Banner, sound, screen flash and corner marker on party/raid frames."] =
+    "Банер, звук, спалах екрана та кутова мітка на party/raid фреймах.",
   ["Banner and visuals"] = "Банер і візуал",
   ["Show compact notification"] = "Показувати компактне сповіщення",
   ["Screen flash"] = "Спалах екрана",
   ["Play sound"] = "Відтворювати звук",
-  ["Show centered red marker on party/raid frames"] = "Показувати червону мітку по центру party/raid фреймів",
-  ["Marker is centered on the character frame and shows only real filter matches. Friends/guild are not highlighted on party/raid frames."] =
-    "Мітка ставиться по центру фрейма персонажа і показує тільки реальний фільтр-збіг. Друзі/гільдія на party/raid фреймах не підсвічуються.",
+  ["Show compact corner marker on party/raid frames"] = "Показувати компактну кутову мітку на party/raid фреймах",
+  ["Marker is shown in the frame corner, hidden during combat, and appears only for real filter matches. Friends/guild are not highlighted on party/raid frames."] =
+    "Мітка показується в куті фрейма, ховається в бою і з’являється тільки для реального збігу фільтра. Друзі/гільдія на party/raid фреймах не підсвічуються.",
   ["Banner duration (sec):"] = "Тривалість банера (сек):",
   ["Sound cooldown (sec):"] = "Cooldown звуку (сек):",
   ["Flash cooldown (sec):"] = "Cooldown спалаху (сек):",
@@ -885,7 +885,7 @@ function addon:InitSettingsPages()
   local visualPage, visualChild, visualTitle = RegisterPage("GroupGuardLFGConfigVisual", "Notifications and appearance", "5. Notifications")
 
   local visualNote = FS(visualChild, "GameFontHighlightSmall",
-    "Banner, sound, screen flash and red marker on party/raid frames.")
+    "Banner, sound, screen flash and corner marker on party/raid frames.")
   visualNote:SetPoint("TOPLEFT", visualTitle, "BOTTOMLEFT", 0, -10)
   visualNote:SetPoint("RIGHT", visualChild, "RIGHT", -24, 0)
   visualNote:SetJustifyH("LEFT")
@@ -894,13 +894,13 @@ function addon:InitSettingsPages()
   local v1 = AddCheck(visualChild, vSec, "Show compact notification", "show_banner", function() SyncAll("show_banner") end)
   local v2 = AddCheck(visualChild, v1, "Screen flash", "screen_flash", function() SyncAll("screen_flash") end)
   local v3 = AddCheck(visualChild, v2, "Play sound", "play_sound", function() SyncAll("play_sound") end)
-  local v4 = AddCheck(visualChild, v3, "Show centered red marker on party/raid frames", "frame_markers_enabled", function()
+  local v4 = AddCheck(visualChild, v3, "Show compact corner marker on party/raid frames", "frame_markers_enabled", function()
     if addon.UpdateFrameMarkers then addon:UpdateFrameMarkers() end
     SyncAll("frame_markers_enabled")
   end)
 
   local markerNote = AddNote(visualChild, v4,
-    "Marker is centered on the character frame and shows only real filter matches. Friends/guild are not highlighted on party/raid frames.")
+    "Marker is shown in the frame corner, hidden during combat, and appears only for real filter matches. Friends/guild are not highlighted on party/raid frames.")
 
   local durRow = AddEdit(
     visualChild, markerNote, "Banner duration (sec):",
