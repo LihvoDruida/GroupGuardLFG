@@ -485,23 +485,28 @@ function addon:CreatePugWindow()
   empty:Hide()
   f.empty = empty
 
-  local refresh = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  refresh:SetSize(110, 24)
-  refresh:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -142, 22)
-  refresh:SetText(self:Tr("PUG_REFRESH"))
-  refresh:SetScript("OnClick", function() addon:RefreshPugWindow() end)
-  f.refresh = refresh
+  local actionBar = CreateFrame("Frame", nil, f)
+  actionBar:SetSize(340, 24)
+  actionBar:SetPoint("BOTTOM", f, "BOTTOM", 0, 22)
+  f.actionBar = actionBar
 
-  local printBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  printBtn:SetSize(110, 24)
-  printBtn:SetPoint("RIGHT", refresh, "LEFT", -8, 0)
+  local printBtn = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
+  printBtn:SetSize(104, 24)
+  printBtn:SetPoint("LEFT", actionBar, "LEFT", 0, 0)
   printBtn:SetText(self:Tr("PUG_PRINT"))
   printBtn:SetScript("OnClick", function() addon:PrintRaidPugs() end)
   f.printBtn = printBtn
 
-  local close = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  close:SetSize(96, 24)
-  close:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -34, 22)
+  local refresh = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
+  refresh:SetSize(104, 24)
+  refresh:SetPoint("LEFT", printBtn, "RIGHT", 10, 0)
+  refresh:SetText(self:Tr("PUG_REFRESH"))
+  refresh:SetScript("OnClick", function() addon:RefreshPugWindow() end)
+  f.refresh = refresh
+
+  local close = CreateFrame("Button", nil, actionBar, "UIPanelButtonTemplate")
+  close:SetSize(102, 24)
+  close:SetPoint("LEFT", refresh, "RIGHT", 10, 0)
   close:SetText(CLOSE or "Close")
   close:SetScript("OnClick", function() f:Hide() end)
   f.close = close
