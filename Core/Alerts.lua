@@ -100,11 +100,11 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
   local fontSecondary = self:GetFontForText(secondaryText)
 
   if self.Banner.primary then
-    self.Banner.primary:SetFont(fontPrimary, 18, "OUTLINE")
+    self.Banner.primary:SetFont(fontPrimary, 16, "")
     self.Banner.primary:SetText(primaryText or "")
   end
   if self.Banner.secondary then
-    self.Banner.secondary:SetFont(fontSecondary, 12, "OUTLINE")
+    self.Banner.secondary:SetFont(fontSecondary, 12, "")
     self.Banner.secondary:SetText(secondaryText or "")
     self.Banner.secondary:SetShown((secondaryText or "") ~= "")
   end
@@ -179,7 +179,7 @@ function addon:LayoutBannerActionButtons()
     if not prev then
       btn:SetPoint("RIGHT", actionBar, "RIGHT", 0, 0)
     else
-      btn:SetPoint("RIGHT", prev, "LEFT", -8, 0)
+      btn:SetPoint("RIGHT", prev, "LEFT", -6, 0)
     end
     prev = btn
   end
