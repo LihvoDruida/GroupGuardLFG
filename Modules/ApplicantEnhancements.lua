@@ -17,7 +17,7 @@ local APPLICATION_DONE = {
   declined_full = true,
 }
 
-local GG_CONTEXT_COLUMN_WIDTH = 38
+local GG_CONTEXT_COLUMN_WIDTH = 34
 local GG_ROLE_ICON_SIZE = 14
 local GG_ROLE_ICON_GAP = 1
 local GG_ROLE_ICON_MAX_COUNT = 3
@@ -26,7 +26,8 @@ local GG_ILVL_MIN_WIDTH = 32
 local GG_ILVL_MAX_WIDTH = 42
 local GG_RATING_MIN_WIDTH = 44
 local GG_RATING_MAX_WIDTH = 58
-local GG_MIN_NAME_COLUMN_WIDTH = 80
+local GG_MIN_NAME_COLUMN_WIDTH = 56
+local GG_ABSOLUTE_MIN_NAME_COLUMN_WIDTH = 36
 local GG_CONTEXT_HEADER_TEXT = "GG"
 local GG_CONTEXT_EMPTY = ""
 
@@ -916,7 +917,7 @@ local function ResolveApplicantColumnHeaders(viewer)
 
   local refs = {
     name = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { NAME, "Name", "Ім'я", "Ім’я", "Імя" })),
-    role = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ROLE, "Role", "Роль" })),
+    role = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ROLE, "Role", "R", "Роль" })),
     ilvl = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ITEM_LEVEL_ABBR, "iLvl", "ilvl", "ILvl", "Item Level", "Рівень предметів" })),
     rating = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { RATING, "Rating", "Score", "Рейтинг" })),
   }
@@ -1013,15 +1014,36 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
 
   local ilvlMeasured = SafeGetWidthValue(ilvlOwner) or ((SafeGetRight(ilvlOwner) or 0) - (SafeGetLeft(ilvlOwner) or 0))
   local ratingMeasured = ratingOwner and (SafeGetWidthValue(ratingOwner) or ((SafeGetRight(ratingOwner) or 0) - (SafeGetLeft(ratingOwner) or 0))) or nil
-  local ilvlWidth = ClampNumber(ilvlMeasured, GG_ILVL_MIN_WIDTH, GG_ILVL_MAX_WIDTH, 38)
-  local ratingWidth = ratingOwner and ClampNumber(ratingMeasured, GG_RATING_MIN_WIDTH, GG_RATING_MAX_WIDTH, 50) or 0
+  local ilvlWidth = ClampNumber(ilvlMeasured, GG_ILVL_MIN_WIDTH, GG_ILVL_MAX_WIDTH, 36)
+  local ratingWidth = ratingOwner and ClampNumber(ratingMeasured, GG_RATING_MIN_WIDTH, GG_RATING_MAX_WIDTH, 48) or 0
   local roleWidth = GG_ROLE_COLUMN_WIDTH
   local ggWidth = GG_CONTEXT_COLUMN_WIDTH
   local available = lastRight - nameLeft
   local fixedWidth = roleWidth + ggWidth + ilvlWidth + ratingWidth
   local nameWidth = math_floor(available - fixedWidth)
 
+  -- The GG column is part of the requested core applicant grid, not an optional
+  -- decoration that should disappear on narrow Blizzard headers.  Compact the
+  -- numeric columns first, then drop only optional Rating, and only disable the
+  -- layout when the measured header strip is physically too small to keep
+  -- Name/R/GG/iLvl separate.
   if nameWidth < GG_MIN_NAME_COLUMN_WIDTH then
+    ilvlWidth = GG_ILVL_MIN_WIDTH
+    ggWidth = math.min(ggWidth, 32)
+    ratingWidth = ratingOwner and GG_RATING_MIN_WIDTH or 0
+    fixedWidth = roleWidth + ggWidth + ilvlWidth + ratingWidth
+    nameWidth = math_floor(available - fixedWidth)
+  end
+
+  if ratingOwner and nameWidth < GG_MIN_NAME_COLUMN_WIDTH then
+    ratingOwner = nil
+    if refs.rating then refs.rating = nil end
+    ratingWidth = 0
+    fixedWidth = roleWidth + ggWidth + ilvlWidth
+    nameWidth = math_floor(available - fixedWidth)
+  end
+
+  if nameWidth < GG_ABSOLUTE_MIN_NAME_COLUMN_WIDTH then
     HideApplicantContextHeader(viewer, GG_LAYOUT_REASONS.INSUFFICIENT)
     return false
   end
