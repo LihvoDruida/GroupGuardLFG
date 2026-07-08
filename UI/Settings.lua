@@ -1073,7 +1073,10 @@ local function PrintDebugInfo(mode)
     print(addon:Tr("CMD_LFG_FRAME_STATE", "GG found Name/Role/iLvl/Rating", tostring(found.name == true) .. "/" .. tostring(found.role == true) .. "/" .. tostring(found.ilvl == true) .. "/" .. tostring(found.rating == true)))
     local layout = viewer._ggApplicantColumnLayout
     local widths = layout and layout.widths or {}
-    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG widths R/GG/iLvl/Rating", tostring(widths.role or "nil") .. "/" .. tostring(widths.gg or "nil") .. "/" .. tostring(widths.ilvl or "nil") .. "/" .. tostring(widths.rating or "nil")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG widths Name/R/GG/iLvl/Rating", tostring(widths.name or "nil") .. "/" .. tostring(widths.role or "nil") .. "/" .. tostring(widths.gg or "nil") .. "/" .. tostring(widths.ilvl or "nil") .. "/" .. tostring(widths.rating or "nil")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG role stack", viewer._ggRoleStackEnabled and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG role icon rows/max", tostring(viewer._ggRoleIconRows or 0) .. "/" .. tostring(viewer._ggMaxRoleIconsDetected or 0)))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG role fallback", tostring(viewer._ggRoleStackFallbackReason or "nil")))
     print(addon:Tr("CMD_BUTTON_COUNT", "viewer.ScrollFrame", tostring(viewer.ScrollFrame and viewer.ScrollFrame.buttons and #viewer.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
   end
 

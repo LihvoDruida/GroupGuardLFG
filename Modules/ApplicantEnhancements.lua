@@ -18,12 +18,15 @@ local APPLICATION_DONE = {
 }
 
 local GG_CONTEXT_COLUMN_WIDTH = 38
-local GG_ROLE_COLUMN_WIDTH = 24
+local GG_ROLE_ICON_SIZE = 14
+local GG_ROLE_ICON_GAP = 1
+local GG_ROLE_ICON_MAX_COUNT = 3
+local GG_ROLE_COLUMN_WIDTH = (GG_ROLE_ICON_MAX_COUNT * GG_ROLE_ICON_SIZE) + ((GG_ROLE_ICON_MAX_COUNT - 1) * GG_ROLE_ICON_GAP) + 4
 local GG_ILVL_MIN_WIDTH = 32
 local GG_ILVL_MAX_WIDTH = 42
 local GG_RATING_MIN_WIDTH = 44
 local GG_RATING_MAX_WIDTH = 58
-local GG_MIN_NAME_COLUMN_WIDTH = 72
+local GG_MIN_NAME_COLUMN_WIDTH = 80
 local GG_CONTEXT_HEADER_TEXT = "GG"
 local GG_CONTEXT_EMPTY = ""
 
@@ -33,6 +36,8 @@ local GG_LAYOUT_REASONS = {
   MISSING_NAME = "missing-name-header",
   MISSING_ROLE = "missing-role-header",
   MISSING_ILVL = "missing-ilvl-header",
+  MISSING_ROW_ROLE_ICONS = "missing-row-role-icons",
+  UNRECOGNIZED_ROLE_ICONS = "unrecognized-role-icons",
   UNMEASURABLE = "unmeasurable-header-grid",
   INSUFFICIENT = "insufficient-header-width",
 }
@@ -420,6 +425,7 @@ local function SafeCreateFrame(kind, name, parent, template)
 end
 
 local FindItemLevelFontString
+local SafeGetHeightValue
 
 local function CanPositionObject(obj)
   return type(obj) == "table" and type(obj.GetLeft) == "function" and type(obj.GetRight) == "function"
@@ -461,53 +467,158 @@ local function SafeGetObjectType(obj)
   return nil
 end
 
+local function SafeGetName(obj)
+  if obj and type(obj.GetName) == "function" then
+    local ok, name = pcall(obj.GetName, obj)
+    if ok then return SafeText(name) end
+  end
+  return nil
+end
+
+local function IsRegionShown(obj)
+  if obj and type(obj.IsShown) == "function" then
+    local ok, shown = pcall(obj.IsShown, obj)
+    if ok then return shown and true or false end
+  end
+  return true
+end
+
+local function GetRegionTextureHint(obj)
+  if not obj then return nil end
+  local parts = {}
+  if type(obj.GetAtlas) == "function" then
+    local ok, atlas = pcall(obj.GetAtlas, obj)
+    atlas = ok and SafeText(atlas) or nil
+    if atlas then parts[#parts + 1] = atlas end
+  end
+  if type(obj.GetTexture) == "function" then
+    local ok, texture = pcall(obj.GetTexture, obj)
+    texture = ok and SafeText(texture) or nil
+    if texture then parts[#parts + 1] = texture end
+  end
+  local name = SafeGetName(obj)
+  if name then parts[#parts + 1] = name end
+  return #parts > 0 and table_concat(parts, " "):lower() or nil
+end
+
+local function GuessRolePriorityFromText(text)
+  text = SafeText(text)
+  if not text then return nil end
+  text = text:lower()
+  if text:find("tank", 1, true) then return 1 end
+  if text:find("heal", 1, true) or text:find("healer", 1, true) then return 2 end
+  if text:find("damage", 1, true) or text:find("damager", 1, true) or text:find("dps", 1, true) then return 3 end
+  return nil
+end
+
 local function IsLikelyRoleRegion(obj)
-  if not CanPositionObject(obj) or IsFontString(obj) then return false end
+  if not CanPositionObject(obj) or IsFontString(obj) or not IsRegionShown(obj) then return false end
+  local width = SafeGetWidthValue(obj)
+  local height = SafeGetHeightValue(obj)
+  if width and (width < 8 or width > 32) then return false end
+  if height and (height < 8 or height > 32) then return false end
+
   local kind = SafeGetObjectType(obj)
+  local hint = GetRegionTextureHint(obj)
+  if hint then
+    if hint:find("role", 1, true) or hint:find("tank", 1, true) or hint:find("heal", 1, true) or hint:find("dps", 1, true) or hint:find("damager", 1, true) or hint:find("lfgrole", 1, true) or hint:find("ui%-lfg%-icon%-roles") then
+      return true
+    end
+  end
   if kind == "Texture" then return true end
   if type(obj.GetNormalTexture) == "function" or type(obj.GetTexture) == "function" then return true end
   return false
 end
 
-local function FindRoleRegion(frame)
-  if not frame then return nil end
-  local candidates = {
-    frame.Role, frame.RoleIcon, frame.RoleTexture, frame.RoleIconTexture,
-    frame.role, frame.roleIcon, frame.roleTexture, frame.Icon, frame.IconTexture,
+local function AddRoleIconCandidate(list, seen, obj, priority, source)
+  if not IsLikelyRoleRegion(obj) or seen[obj] then return end
+  local width = SafeGetWidthValue(obj)
+  local height = SafeGetHeightValue(obj)
+  if width and (width < 8 or width > 32) then return end
+  if height and (height < 8 or height > 32) then return end
+  seen[obj] = true
+  list[#list + 1] = {
+    region = obj,
+    priority = priority or GuessRolePriorityFromText(source) or GuessRolePriorityFromText(GetRegionTextureHint(obj)) or 50,
+    source = source,
+    left = SafeGetLeft(obj) or 0,
   }
-  for _, obj in ipairs(candidates) do
-    if IsLikelyRoleRegion(obj) then return obj end
+end
+
+local function DetectRoleIconsForApplicantRow(frame)
+  if not frame then return nil, GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS end
+  local icons, seen = {}, {}
+
+  local orderedKeys = {
+    { "TankIcon", 1 }, { "TankRoleIcon", 1 }, { "RoleIconTank", 1 }, { "tankIcon", 1 },
+    { "HealerIcon", 2 }, { "HealIcon", 2 }, { "HealerRoleIcon", 2 }, { "RoleIconHealer", 2 }, { "healerIcon", 2 },
+    { "DamagerIcon", 3 }, { "DamageIcon", 3 }, { "DPSIcon", 3 }, { "DpsIcon", 3 }, { "RoleIconDamager", 3 }, { "damagerIcon", 3 }, { "dpsIcon", 3 },
+    { "Role", 50 }, { "RoleIcon", 50 }, { "RoleTexture", 50 }, { "RoleIconTexture", 50 }, { "role", 50 }, { "roleIcon", 50 }, { "Icon", 50 }, { "IconTexture", 50 },
+  }
+  for _, item in ipairs(orderedKeys) do
+    local obj = frame[item[1]]
+    AddRoleIconCandidate(icons, seen, obj, item[2], item[1])
+  end
+
+  -- Some Blizzard rows expose role textures with generated field names. Prefer explicit role/tank/heal/dps keys.
+  if type(frame) == "table" then
+    for key, value in pairs(frame) do
+      if type(key) == "string" and type(value) == "table" then
+        local priority = GuessRolePriorityFromText(key)
+        if priority or key:lower():find("role", 1, true) then
+          AddRoleIconCandidate(icons, seen, value, priority or 50, key)
+        end
+      end
+    end
   end
 
   local ilvl = FindItemLevelFontString(frame)
   local ilvlLeft = SafeGetLeft(ilvl)
   local frameLeft = SafeGetLeft(frame)
-  local best, bestRight
-  local function consider(obj)
-    if not IsLikelyRoleRegion(obj) then return end
+  local frameRight = SafeGetRight(frame)
+
+  local function considerGeometry(obj)
+    if not IsLikelyRoleRegion(obj) or seen[obj] then return end
     local left, right = SafeGetLeft(obj), SafeGetRight(obj)
     local width = SafeGetWidthValue(obj)
     if not left or not right or not width or width < 8 or width > 32 then return end
     if ilvlLeft and right >= ilvlLeft then return end
     if frameLeft and left < frameLeft then return end
-    if not bestRight or right > bestRight then
-      best, bestRight = obj, right
-    end
+    if frameRight and right > frameRight then return end
+    -- Avoid very-left name/class art; role icons sit close to the stock role/iLvl band.
+    if ilvlLeft and (ilvlLeft - right) > 76 then return end
+    AddRoleIconCandidate(icons, seen, obj, GuessRolePriorityFromText(GetRegionTextureHint(obj)) or 50, "geometry")
   end
 
   if type(frame.GetRegions) == "function" then
     local ok, regions = pcall(function() return { frame:GetRegions() } end)
     if ok then
-      for _, region in ipairs(regions) do consider(region) end
+      for _, region in ipairs(regions) do considerGeometry(region) end
     end
   end
   if type(frame.GetChildren) == "function" then
     local ok, children = pcall(function() return { frame:GetChildren() } end)
     if ok then
-      for _, child in ipairs(children) do consider(child) end
+      for _, child in ipairs(children) do considerGeometry(child) end
     end
   end
-  return best
+
+  if #icons == 0 then return nil, GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS end
+  if #icons > GG_ROLE_ICON_MAX_COUNT then return nil, GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS end
+
+  table.sort(icons, function(a, b)
+    if a.priority ~= b.priority then return a.priority < b.priority end
+    return (a.left or 0) < (b.left or 0)
+  end)
+
+  local result = {}
+  for i = 1, #icons do result[i] = icons[i].region end
+  return result, nil
+end
+
+local function FindRoleRegion(frame)
+  local icons = DetectRoleIconsForApplicantRow(frame)
+  return type(icons) == "table" and icons[1] or nil
 end
 
 local function FindNumericFontString(frame, minValue, maxValue, preferSmall)
@@ -615,7 +726,7 @@ local function ClampNumber(value, minValue, maxValue, fallback)
   return value
 end
 
-local function SafeGetHeightValue(obj)
+SafeGetHeightValue = function(obj)
   if not obj or type(obj.GetHeight) ~= "function" then return nil end
   local ok, value = pcall(obj.GetHeight, obj)
   return (ok and type(value) == "number") and value or nil
@@ -633,7 +744,12 @@ local function SaveObjectLayout(obj)
     width = SafeGetWidthValue(obj),
     height = SafeGetHeightValue(obj),
     points = {},
+    shown = nil,
   }
+  if type(obj.IsShown) == "function" then
+    local okShown, shown = pcall(obj.IsShown, obj)
+    if okShown then state.shown = shown and true or false end
+  end
   if type(obj.GetPoint) == "function" then
     local count = SafeGetNumPoints(obj)
     for i = 1, count do
@@ -670,6 +786,13 @@ local function RestoreObjectLayout(obj)
       SafeSetText(obj, state.text)
     elseif type(obj.SetText) == "function" then
       pcall(obj.SetText, obj, state.text)
+    end
+  end
+  if state.shown ~= nil then
+    if state.shown and type(obj.Show) == "function" then
+      pcall(obj.Show, obj)
+    elseif not state.shown and type(obj.Hide) == "function" then
+      pcall(obj.Hide, obj)
     end
   end
   APPLICANT_LAYOUT_RESTORE[obj] = nil
@@ -844,6 +967,10 @@ local function RestoreApplicantHeaderGrid(viewer)
     RestoreHeaderRecord(refs.rating)
   end
   viewer._ggApplicantColumnLayout = nil
+  viewer._ggRoleStackEnabled = nil
+  viewer._ggRoleIconRows = nil
+  viewer._ggMaxRoleIconsDetected = nil
+  viewer._ggRoleStackFallbackReason = nil
   RestoreObjectLayout(viewer._ggContextHeader)
   RestoreObjectLayout(viewer._ggContextHeaderFrame)
   if viewer._ggContextHeader and type(viewer._ggContextHeader.Hide) == "function" then pcall(viewer._ggContextHeader.Hide, viewer._ggContextHeader) end
@@ -853,8 +980,12 @@ end
 local function HideApplicantContextHeader(viewer, reason)
   viewer = viewer or (LFGListFrame and LFGListFrame.ApplicationViewer)
   if not viewer then return end
-  SetApplicantLayoutReason(viewer, reason or GG_LAYOUT_REASONS.DISABLED)
+  reason = reason or GG_LAYOUT_REASONS.DISABLED
   RestoreApplicantHeaderGrid(viewer)
+  SetApplicantLayoutReason(viewer, reason)
+  if reason == GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS or reason == GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS then
+    viewer._ggRoleStackFallbackReason = reason
+  end
 end
 
 local function ReflowApplicantColumnHeaders(viewer, headerFrame)
@@ -951,6 +1082,10 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
   }
   viewer._ggApplicantColumnLayoutReason = GG_LAYOUT_REASONS.OK
   viewer._ggApplicantColumnFound = { name = true, role = true, ilvl = true, rating = ratingOwner ~= nil }
+  viewer._ggRoleStackEnabled = nil
+  viewer._ggRoleIconRows = 0
+  viewer._ggMaxRoleIconsDetected = 0
+  viewer._ggRoleStackFallbackReason = nil
   return true
 end
 
@@ -978,8 +1113,75 @@ local function PositionFontStringUnderColumn(fs, row, column, padding)
   return ok
 end
 
+local function EnsureRoleIconStack(row, layout)
+  if not (row and layout and layout.columns and layout.columns.role) then return nil end
+  local stack = row._ggRoleStack
+  if not stack then
+    stack = SafeCreateFrame("Frame", nil, row, nil)
+    if not stack then return nil end
+    row._ggRoleStack = stack
+    SafeEnableMouse(stack, false)
+  end
+
+  local rowLeft = SafeGetLeft(row)
+  if not rowLeft then return nil end
+  local height = SafeGetHeightValue(row) or 18
+  SaveObjectLayout(stack)
+  SafeSetSize(stack, GG_ROLE_COLUMN_WIDTH, height)
+  SafeClearAllPoints(stack)
+  local center = ((layout.columns.role.left + layout.columns.role.right) / 2) - rowLeft
+  SafeSetPoint(stack, "CENTER", row, "LEFT", center, 0)
+  local baseLevel = SafeGetFrameLevel(row) or 1
+  SafeSetFrameLevel(stack, baseLevel + 2)
+  SafeShow(stack)
+  return stack
+end
+
+local function RestoreRoleIconStack(row)
+  if not row then return end
+  if type(row._ggRoleIcons) == "table" then
+    for _, icon in ipairs(row._ggRoleIcons) do
+      RestoreObjectLayout(icon)
+    end
+  end
+  RestoreObjectLayout(row._ggRoleStack)
+  if row._ggRoleStack and type(row._ggRoleStack.Hide) == "function" then pcall(row._ggRoleStack.Hide, row._ggRoleStack) end
+  row._ggRoleStack = nil
+  row._ggRoleIcons = nil
+  row._ggRoleIconCount = nil
+end
+
+local function PositionRoleIconStack(row, icons, layout)
+  if not (row and type(icons) == "table" and #icons > 0 and layout and layout.columns and layout.columns.role) then
+    return false, GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS
+  end
+  if #icons > GG_ROLE_ICON_MAX_COUNT then return false, GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS end
+
+  local stack = EnsureRoleIconStack(row, layout)
+  if not stack then return false, GG_LAYOUT_REASONS.UNMEASURABLE end
+
+  local count = #icons
+  local totalWidth = (count * GG_ROLE_ICON_SIZE) + ((count - 1) * GG_ROLE_ICON_GAP)
+  if totalWidth > GG_ROLE_COLUMN_WIDTH - 4 then return false, GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS end
+  local startX = -(totalWidth / 2) + (GG_ROLE_ICON_SIZE / 2)
+
+  row._ggRoleIcons = {}
+  for index, icon in ipairs(icons) do
+    SaveObjectLayout(icon)
+    row._ggRoleIcons[#row._ggRoleIcons + 1] = icon
+    SafeSetSize(icon, GG_ROLE_ICON_SIZE, GG_ROLE_ICON_SIZE)
+    SafeClearAllPoints(icon)
+    SafeSetPoint(icon, "CENTER", stack, "CENTER", startX + ((index - 1) * (GG_ROLE_ICON_SIZE + GG_ROLE_ICON_GAP)), 0)
+    SafeSetDrawLayer(icon, "OVERLAY", 5)
+    SafeShow(icon)
+  end
+  row._ggRoleIconCount = count
+  return true, nil
+end
+
 local function RestoreRowColumnLayout(row)
   if not row then return end
+  RestoreRoleIconStack(row)
   RestoreObjectLayout(row._ggRoleRegion)
   RestoreObjectLayout(row._ggStockIlvlFS)
   RestoreObjectLayout(row._ggStockRatingFS)
@@ -993,15 +1195,35 @@ local function PositionApplicantRowColumns(row, contextFS)
   local layout = viewer and viewer._ggApplicantColumnLayout
   if not (row and layout and layout.reason == GG_LAYOUT_REASONS.OK and layout.columns and IsFontString(contextFS)) then return false end
 
-  local roleRegion = FindRoleRegion(row)
+  local roleIcons, roleReason = DetectRoleIconsForApplicantRow(row)
   local ilvlFS = FindItemLevelFontString(row)
   local ratingFS = FindRatingFontString(row)
   local ok = true
 
-  if roleRegion then
-    row._ggRoleRegion = roleRegion
-    ok = PositionRegionUnderColumn(roleRegion, row, layout.columns.role) and ok
+  if not roleIcons then
+    if viewer then
+      viewer._ggRoleStackFallbackReason = roleReason or GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS
+      HideApplicantContextHeader(viewer, viewer._ggRoleStackFallbackReason)
+    end
+    return false
   end
+
+  local stackOk, stackReason = PositionRoleIconStack(row, roleIcons, layout)
+  if not stackOk then
+    if viewer then
+      viewer._ggRoleStackFallbackReason = stackReason or GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS
+      HideApplicantContextHeader(viewer, viewer._ggRoleStackFallbackReason)
+    end
+    return false
+  end
+
+  if viewer then
+    viewer._ggRoleStackEnabled = true
+    viewer._ggRoleIconRows = (viewer._ggRoleIconRows or 0) + 1
+    if (row._ggRoleIconCount or 0) > (viewer._ggMaxRoleIconsDetected or 0) then viewer._ggMaxRoleIconsDetected = row._ggRoleIconCount or 0 end
+    viewer._ggRoleStackFallbackReason = nil
+  end
+
   ok = PositionFontStringUnderColumn(contextFS, row, layout.columns.gg, 2) and ok
   if ilvlFS then
     row._ggStockIlvlFS = ilvlFS
