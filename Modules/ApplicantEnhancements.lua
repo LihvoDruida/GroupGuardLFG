@@ -153,24 +153,67 @@ end
 local function GetActiveActivityIDs()
   local entry = GetActiveEntryInfoSafe()
   if type(entry) ~= "table" then return {}, nil end
-  local ids = {}
-  if type(entry.activityIDs) == "table" then
-    for _, activityID in ipairs(entry.activityIDs) do
-      local id = SafeNumber(activityID, nil)
-      if id then ids[#ids + 1] = id end
+  local ids, seen = {}, {}
+  local function add(value)
+    local id = SafeNumber(value, nil)
+    if id and not seen[id] then
+      seen[id] = true
+      ids[#ids + 1] = id
     end
   end
-  local single = SafeNumber(entry.activityID or entry.activityId, nil)
-  if single and #ids == 0 then ids[#ids + 1] = single end
+  local function scan(value, depth)
+    if value == nil or (depth or 0) > 2 then return end
+    if type(value) == "number" or type(value) == "string" then
+      add(value)
+    elseif type(value) == "table" then
+      add(value.activityID or value.activityId or value.id or value.ID)
+      for _, child in pairs(value) do scan(child, (depth or 0) + 1) end
+    end
+  end
+  scan(entry.activityIDs, 0)
+  scan(entry.activityIds, 0)
+  scan(entry.activities, 0)
+  scan(entry.activityInfo, 0)
+  add(entry.activityID or entry.activityId)
   return ids, entry
+end
+
+local function GetActivityCategoryID(activityID, entry)
+  local entryCat = SafeNumber(entry and entry.categoryID, nil)
+  if entryCat ~= nil then return entryCat end
+  activityID = SafeNumber(activityID, nil)
+  local info = activityID and GetActivityInfoSafe(activityID) or nil
+  return SafeNumber(info and info.categoryID, nil)
+end
+
+local function ActivityTextLooksLikeDungeon(text)
+  text = SafeText(text)
+  if not text then return false end
+  local lower = text:lower()
+  return lower:find("dungeon", 1, true) ~= nil
+      or lower:find("mythic+", 1, true) ~= nil
+      or lower:find("mythic plus", 1, true) ~= nil
+      or lower:find("keystone", 1, true) ~= nil
+      or lower:find("підзем", 1, true) ~= nil
+      or lower:find("ключ", 1, true) ~= nil
+end
+
+local function ActivityTextLooksLikeRaid(text)
+  text = SafeText(text)
+  if not text then return false end
+  local lower = text:lower()
+  return lower:find("raid", 1, true) ~= nil
+      or lower:find("рейд", 1, true) ~= nil
 end
 
 local function IsDungeonActivity(activityID, entry)
   activityID = SafeNumber(activityID, nil)
   local info = activityID and GetActivityInfoSafe(activityID) or nil
   if type(info) == "table" and SafeBool(info.isMythicPlusActivity) then return true end
-  local cat = SafeNumber(entry and entry.categoryID, nil)
-  return cat ~= nil and GROUP_FINDER_CATEGORY_ID_DUNGEONS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_DUNGEONS
+  local cat = GetActivityCategoryID(activityID, entry)
+  if cat ~= nil and GROUP_FINDER_CATEGORY_ID_DUNGEONS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_DUNGEONS then return true end
+  local text = info and (SafeText(info.fullName) or SafeText(info.shortName) or SafeText(info.name))
+  return ActivityTextLooksLikeDungeon(text)
 end
 
 local function IsRaidActivity(activityID, entry)
@@ -179,28 +222,70 @@ local function IsRaidActivity(activityID, entry)
   -- applicants to show raid-like values such as 1/1 in the GG column.
   activityID = SafeNumber(activityID, nil)
   local info = activityID and GetActivityInfoSafe(activityID) or nil
-  local cat = SafeNumber(entry and entry.categoryID, nil)
-  if (type(info) == "table" and SafeBool(info.isMythicPlusActivity)) or (cat ~= nil and GROUP_FINDER_CATEGORY_ID_DUNGEONS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_DUNGEONS) then
-    return false
-  end
+  local cat = GetActivityCategoryID(activityID, entry)
+  if IsDungeonActivity(activityID, entry) then return false end
   if type(info) == "table" and SafeBool(info.isCurrentRaidActivity) then return true end
   if cat ~= nil and GROUP_FINDER_CATEGORY_ID_RAIDS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_RAIDS then return true end
+  local text = info and (SafeText(info.fullName) or SafeText(info.shortName) or SafeText(info.name))
+  if ActivityTextLooksLikeRaid(text) then return true end
   return activityID ~= nil and RAID_ACTIVITY_MAP[activityID] ~= nil
+end
+
+local DUNGEON_RUN_LEVEL_KEYS = {
+  "bestRunLevel", "runLevel", "level", "bestLevel", "keystoneLevel", "mythicLevel", "bestKeystoneLevel", "bestMythicLevel"
+}
+local DUNGEON_MAP_SCORE_KEYS = {
+  "mapScore", "dungeonScore", "score", "bestRunScore", "bestScore"
+}
+local DUNGEON_INCREMENT_KEYS = {
+  "bestLevelIncrement", "levelIncrement", "increment"
+}
+
+local function ReadNumberDeep(t, keys, depth)
+  if type(t) ~= "table" or (depth or 0) > 3 then return nil end
+  for _, key in ipairs(keys or {}) do
+    local value = SafeNumber(t[key], nil)
+    if value ~= nil then return value end
+  end
+  for _, value in pairs(t) do
+    if type(value) == "table" then
+      local nested = ReadNumberDeep(value, keys, (depth or 0) + 1)
+      if nested ~= nil then return nested end
+    end
+  end
+  return nil
+end
+
+local function ReadTextDeep(t, keys, depth)
+  if type(t) ~= "table" or (depth or 0) > 2 then return nil end
+  for _, key in ipairs(keys or {}) do
+    local value = SafeText(t[key])
+    if value and value ~= "" then return value end
+  end
+  for _, value in pairs(t) do
+    if type(value) == "table" then
+      local nested = ReadTextDeep(value, keys, (depth or 0) + 1)
+      if nested then return nested end
+    end
+  end
+  return nil
 end
 
 local function NormalizeDungeonScoreInfo(scoreInfo, activityID, source)
   if type(scoreInfo) ~= "table" then return nil end
-  local runLevel = SafeNumber(scoreInfo.bestRunLevel or scoreInfo.level or scoreInfo.bestLevel, 0) or 0
-  local mapScore = SafeNumber(scoreInfo.mapScore, 0) or 0
+  local raw = type(scoreInfo.raw) == "table" and scoreInfo.raw or scoreInfo
+  local runLevel = SafeNumber(scoreInfo.bestRunLevel, nil) or ReadNumberDeep(raw, DUNGEON_RUN_LEVEL_KEYS, 0) or 0
+  local mapScore = SafeNumber(scoreInfo.mapScore, nil) or ReadNumberDeep(raw, DUNGEON_MAP_SCORE_KEYS, 0) or 0
   if runLevel <= 0 and mapScore <= 0 then return nil end
   return {
     mapScore = mapScore,
-    mapName = SafeText(scoreInfo.mapName),
+    mapName = SafeText(scoreInfo.mapName) or ReadTextDeep(raw, { "mapName", "dungeonName", "name" }, 0),
     bestRunLevel = runLevel,
-    finishedSuccess = SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed),
-    bestLevelIncrement = SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, 0) or 0,
-    activityID = activityID,
-    source = source or "blizzard",
+    finishedSuccess = SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed or raw.finishedSuccess or raw.wasTimed),
+    bestLevelIncrement = SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, nil) or ReadNumberDeep(raw, DUNGEON_INCREMENT_KEYS, 0) or 0,
+    activityID = SafeNumber(scoreInfo.activityID or scoreInfo.activityId, nil) or activityID,
+    source = source or SafeText(scoreInfo.source) or "blizzard",
+    raw = raw,
   }
 end
 
@@ -227,7 +312,7 @@ local function ReadApplicantDungeonListingScore(applicantID, memberIndex)
       local ok, result = pcall(C_LFGList.GetApplicantDungeonScoreForListing, applicantID, memberIndex, activityID)
       if ok then scoreInfo = NormalizeDungeonScoreInfo(result, activityID, "blizzard") end
     end
-    scoreInfo = NormalizeDungeonScoreInfo(scoreInfo, activityID, "blizzard") or scoreInfo
+    scoreInfo = NormalizeDungeonScoreInfo(scoreInfo, activityID, "blizzard-listing") or scoreInfo
     if type(scoreInfo) == "table" then
       local run = SafeNumber(scoreInfo.bestRunLevel, 0) or 0
       local mapScore = SafeNumber(scoreInfo.mapScore, 0) or 0
@@ -1535,19 +1620,17 @@ local function GetActiveRaidContext()
   local activityIDs, entry = GetActiveActivityIDs()
   local context = { difficulty = nil, nameKey = nil, zone = nil }
   for _, activityID in ipairs(activityIDs) do
-    local mapped = RAID_ACTIVITY_MAP[activityID]
-    if mapped then
-      context.zone = mapped
-      context.difficulty = mapped.difficulty
-      return context
-    end
-  end
-  for _, activityID in ipairs(activityIDs) do
+    if IsDungeonActivity(activityID, entry) then return context end
     local info = GetActivityInfoSafe(activityID)
     local text = info and (SafeText(info.fullName) or SafeText(info.shortName) or SafeText(info.name))
     if text then
       context.difficulty = context.difficulty or DetectDifficultyFromText(text)
       context.nameKey = context.nameKey or NormalizeNameKey(text)
+    end
+    local mapped = RAID_ACTIVITY_MAP[activityID]
+    if mapped and IsRaidActivity(activityID, entry) then
+      context.zone = mapped
+      context.difficulty = context.difficulty or mapped.difficulty
     end
   end
   local title = entry and (SafeText(entry.name) or SafeText(entry.questName) or SafeText(entry.comment))
@@ -1620,9 +1703,15 @@ local function BuildApplicantContextMetric(applicantID, memberIdx)
 
   local raidMode = false
   local dungeonMode = false
-  for _, activityID in ipairs(activityIDs) do
-    if IsRaidActivity(activityID, entry) then raidMode = true end
-    if IsDungeonActivity(activityID, entry) then dungeonMode = true end
+  if #activityIDs == 0 then
+    local cat = SafeNumber(entry and entry.categoryID, nil)
+    dungeonMode = cat ~= nil and GROUP_FINDER_CATEGORY_ID_DUNGEONS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_DUNGEONS
+    raidMode = cat ~= nil and GROUP_FINDER_CATEGORY_ID_RAIDS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_RAIDS
+  else
+    for _, activityID in ipairs(activityIDs) do
+      if IsDungeonActivity(activityID, entry) then dungeonMode = true end
+      if IsRaidActivity(activityID, entry) then raidMode = true end
+    end
   end
 
   if dungeonMode then
@@ -1638,17 +1727,20 @@ local function BuildApplicantContextMetric(applicantID, memberIdx)
       end
     end
 
-    local overallRating = SafeNumber(member.dungeonScore, 0) or 0
+    -- In dungeon/keystone listings the GG column is meant to answer: "what has
+    -- this applicant done for the dungeon we are listing?"  Do not show the
+    -- generic overall M+ rating here; it made the column misleading and still
+    -- failed to show the requested +key value.  Prefer the run level for the
+    -- active activity, then map score, then best run fallback if Blizzard does
+    -- not expose the exact listing value yet.
     local mapScore = type(score) == "table" and (SafeNumber(score.mapScore, 0) or 0) or 0
     local run = type(score) == "table" and (SafeNumber(score.bestRunLevel, 0) or 0) or 0
-    if overallRating > 0 then
-      return { text = FormatNumberCompact(overallRating), rating = overallRating, level = run, source = "blizzard-rating" }, member
+    local source = type(score) == "table" and (SafeText(score.source) or "blizzard-key") or "blizzard-key"
+    if run > 0 then
+      return { text = "+" .. tostring(math_floor(run)), level = run, rating = mapScore, source = source }, member
     end
     if mapScore > 0 then
-      return { text = FormatNumberCompact(mapScore), rating = mapScore, level = run, source = "blizzard-map-score" }, member
-    end
-    if run > 0 then
-      return { text = "+" .. tostring(math_floor(run)), level = run, source = "blizzard-key" }, member
+      return { text = FormatNumberCompact(mapScore), rating = mapScore, source = source .. "-score" }, member
     end
   end
 
