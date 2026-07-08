@@ -17,17 +17,18 @@ local APPLICATION_DONE = {
   declined_full = true,
 }
 
-local GG_CONTEXT_COLUMN_WIDTH = 34
+local GG_CONTEXT_COLUMN_WIDTH = 32
 local GG_ROLE_ICON_SIZE = 14
 local GG_ROLE_ICON_GAP = 1
 local GG_ROLE_ICON_MAX_COUNT = 3
 local GG_ROLE_COLUMN_WIDTH = (GG_ROLE_ICON_MAX_COUNT * GG_ROLE_ICON_SIZE) + ((GG_ROLE_ICON_MAX_COUNT - 1) * GG_ROLE_ICON_GAP) + 4
-local GG_ILVL_MIN_WIDTH = 32
-local GG_ILVL_MAX_WIDTH = 42
+local GG_ILVL_MIN_WIDTH = 34
+local GG_ILVL_MAX_WIDTH = 38
 local GG_RATING_MIN_WIDTH = 44
-local GG_RATING_MAX_WIDTH = 58
-local GG_MIN_NAME_COLUMN_WIDTH = 56
-local GG_ABSOLUTE_MIN_NAME_COLUMN_WIDTH = 36
+local GG_RATING_MAX_WIDTH = 52
+local GG_MIN_NAME_COLUMN_WIDTH = 72
+local GG_ABSOLUTE_MIN_NAME_COLUMN_WIDTH = 48
+local GG_ROLE_HEADER_TEXT = "Role"
 local GG_CONTEXT_HEADER_TEXT = "GG"
 local GG_CONTEXT_EMPTY = ""
 
@@ -164,20 +165,27 @@ local function GetActiveActivityIDs()
   return ids, entry
 end
 
-local function IsRaidActivity(activityID, entry)
-  activityID = SafeNumber(activityID, nil)
-  if activityID and RAID_ACTIVITY_MAP[activityID] then return true end
-  local info = activityID and GetActivityInfoSafe(activityID) or nil
-  if type(info) == "table" and SafeBool(info.isCurrentRaidActivity) then return true end
-  local cat = SafeNumber(entry and entry.categoryID, nil)
-  return cat ~= nil and GROUP_FINDER_CATEGORY_ID_RAIDS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_RAIDS
-end
-
 local function IsDungeonActivity(activityID, entry)
+  activityID = SafeNumber(activityID, nil)
   local info = activityID and GetActivityInfoSafe(activityID) or nil
   if type(info) == "table" and SafeBool(info.isMythicPlusActivity) then return true end
   local cat = SafeNumber(entry and entry.categoryID, nil)
   return cat ~= nil and GROUP_FINDER_CATEGORY_ID_DUNGEONS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_DUNGEONS
+end
+
+local function IsRaidActivity(activityID, entry)
+  -- Prefer Blizzard's current activity metadata over the static Raider.IO map.  The
+  -- map can go stale between seasons/PTR builds and previously caused Mythic+
+  -- applicants to show raid-like values such as 1/1 in the GG column.
+  activityID = SafeNumber(activityID, nil)
+  local info = activityID and GetActivityInfoSafe(activityID) or nil
+  local cat = SafeNumber(entry and entry.categoryID, nil)
+  if (type(info) == "table" and SafeBool(info.isMythicPlusActivity)) or (cat ~= nil and GROUP_FINDER_CATEGORY_ID_DUNGEONS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_DUNGEONS) then
+    return false
+  end
+  if type(info) == "table" and SafeBool(info.isCurrentRaidActivity) then return true end
+  if cat ~= nil and GROUP_FINDER_CATEGORY_ID_RAIDS ~= nil and cat == GROUP_FINDER_CATEGORY_ID_RAIDS then return true end
+  return activityID ~= nil and RAID_ACTIVITY_MAP[activityID] ~= nil
 end
 
 local function NormalizeDungeonScoreInfo(scoreInfo, activityID, source)
@@ -244,6 +252,41 @@ local function ReadApplicantMemberStats(applicantID, memberIndex)
   if not (C_LFGList and C_LFGList.GetApplicantMemberStats) then return nil end
   local ok, stats = pcall(C_LFGList.GetApplicantMemberStats, applicantID, memberIndex)
   if ok and type(stats) == "table" then return stats end
+  return nil
+end
+
+local RAID_PROGRESS_KILL_KEYS = { "kills", "killed", "numKilled", "numBossesKilled", "bossesKilled", "encountersKilled", "numEncountersDefeated", "encountersDefeated", "defeated" }
+local RAID_PROGRESS_TOTAL_KEYS = { "total", "bossCount", "numBosses", "totalBosses", "encounterCount", "numEncounters", "totalEncounters", "max", "required" }
+
+local function ReadFirstNumberField(t, keys)
+  if type(t) ~= "table" then return nil end
+  for _, key in ipairs(keys or {}) do
+    local value = SafeNumber(t[key], nil)
+    if value ~= nil then return value end
+  end
+  return nil
+end
+
+local function ExtractRaidProgressFromStats(stats, depth)
+  if type(stats) ~= "table" or (depth or 0) > 3 then return nil end
+  local kills = ReadFirstNumberField(stats, RAID_PROGRESS_KILL_KEYS)
+  local total = ReadFirstNumberField(stats, RAID_PROGRESS_TOTAL_KEYS)
+  if kills ~= nil and total ~= nil and total > 0 and kills >= 0 and kills <= total then
+    return { text = string_format("%d/%d", math_floor(kills), math_floor(total)), kills = kills, total = total, source = "blizzard-stats" }
+  end
+  for _, value in pairs(stats) do
+    if type(value) == "table" then
+      local nested = ExtractRaidProgressFromStats(value, (depth or 0) + 1)
+      if nested then return nested end
+    end
+  end
+  return nil
+end
+
+local function ReadBlizzardRaidProgress(applicantID, memberIndex)
+  local stats = ReadApplicantMemberStats(applicantID, memberIndex)
+  local progress = ExtractRaidProgressFromStats(stats, 0)
+  if progress and progress.text then return progress end
   return nil
 end
 
@@ -872,12 +915,19 @@ local function SetHeaderText(header, owner, text)
   text = text or ""
   if IsFontString(header) then
     SafeSetText(header, text)
+    if type(header.SetJustifyH) == "function" then pcall(header.SetJustifyH, header, "CENTER") end
   elseif header and type(header.SetText) == "function" then
     pcall(header.SetText, header, text)
   end
   if owner then
-    if owner.Text and IsFontString(owner.Text) then SafeSetText(owner.Text, text) end
-    if owner.Label and IsFontString(owner.Label) then SafeSetText(owner.Label, text) end
+    if owner.Text and IsFontString(owner.Text) then
+      SafeSetText(owner.Text, text)
+      if type(owner.Text.SetJustifyH) == "function" then pcall(owner.Text.SetJustifyH, owner.Text, "CENTER") end
+    end
+    if owner.Label and IsFontString(owner.Label) then
+      SafeSetText(owner.Label, text)
+      if type(owner.Label.SetJustifyH) == "function" then pcall(owner.Label.SetJustifyH, owner.Label, "CENTER") end
+    end
     if type(owner.SetText) == "function" then pcall(owner.SetText, owner, text) end
   end
 end
@@ -1074,7 +1124,7 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
     ok = SafeSetPoint(ratingOwner, "LEFT", ilvlOwner, "RIGHT", 0, 0) and ok
   end
 
-  SetHeaderText(refs.role.text, roleOwner, "R")
+  SetHeaderText(refs.role.text, roleOwner, GG_ROLE_HEADER_TEXT)
   SetHeaderText(viewer._ggContextHeader, headerFrame, GG_CONTEXT_HEADER_TEXT)
 
   if not ok then
@@ -1575,30 +1625,39 @@ local function BuildApplicantContextMetric(applicantID, memberIdx)
     if IsDungeonActivity(activityID, entry) then dungeonMode = true end
   end
 
+  if dungeonMode then
+    local score = nil
+    local tried = {}
+    local candidates = { memberIdx, 1 }
+    for _, idx in ipairs(candidates) do
+      idx = SafeNumber(idx, nil)
+      if idx ~= nil and not tried[idx] then
+        tried[idx] = true
+        score = ReadApplicantDungeonListingScore(applicantID, idx)
+        if type(score) == "table" and ((SafeNumber(score.bestRunLevel, 0) or 0) > 0 or (SafeNumber(score.mapScore, 0) or 0) > 0) then break end
+      end
+    end
+
+    local overallRating = SafeNumber(member.dungeonScore, 0) or 0
+    local mapScore = type(score) == "table" and (SafeNumber(score.mapScore, 0) or 0) or 0
+    local run = type(score) == "table" and (SafeNumber(score.bestRunLevel, 0) or 0) or 0
+    if overallRating > 0 then
+      return { text = FormatNumberCompact(overallRating), rating = overallRating, level = run, source = "blizzard-rating" }, member
+    end
+    if mapScore > 0 then
+      return { text = FormatNumberCompact(mapScore), rating = mapScore, level = run, source = "blizzard-map-score" }, member
+    end
+    if run > 0 then
+      return { text = "+" .. tostring(math_floor(run)), level = run, source = "blizzard-key" }, member
+    end
+  end
+
   if raidMode then
+    local blizzardProgress = ReadBlizzardRaidProgress(applicantID, memberIdx) or (memberIdx ~= 1 and ReadBlizzardRaidProgress(applicantID, 1) or nil)
+    if blizzardProgress and blizzardProgress.text then return blizzardProgress, member end
     local raidProgress = ReadRaiderIORaidProgress(member)
     if raidProgress and raidProgress.text then return raidProgress, member end
     return nil, member
-  end
-
-  if dungeonMode then
-    local score = nil
-    if not score then
-      local tried = {}
-      local candidates = { memberIdx, 1 }
-      for _, idx in ipairs(candidates) do
-        idx = SafeNumber(idx, nil)
-        if idx ~= nil and not tried[idx] then
-          tried[idx] = true
-          score = ReadApplicantDungeonListingScore(applicantID, idx)
-          if type(score) == "table" and (SafeNumber(score.bestRunLevel, 0) or 0) > 0 then break end
-        end
-      end
-    end
-    local run = type(score) == "table" and SafeNumber(score.bestRunLevel, 0) or 0
-    if run and run > 0 then
-      return { text = "+" .. tostring(math_floor(run)), level = run, source = "blizzard" }, member
-    end
   end
 
   return nil, member
