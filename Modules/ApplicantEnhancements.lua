@@ -1200,28 +1200,31 @@ local function PositionApplicantRowColumns(row, contextFS)
   local ratingFS = FindRatingFontString(row)
   local ok = true
 
-  if not roleIcons then
+  -- Role-icon stacking is an enhancement, not a hard requirement for the GG column.
+  -- Some Blizzard rows expose the role texture through unnamed regions or move it after
+  -- the first layout pass; disabling the whole GG grid in that case restores the stock
+  -- Name/Role/iLvl layout and makes the GG column disappear. Keep the measured header
+  -- grid active and only skip the stack when icons cannot be detected safely.
+  if roleIcons then
+    local stackOk, stackReason = PositionRoleIconStack(row, roleIcons, layout)
+    if stackOk then
+      if viewer then
+        viewer._ggRoleStackEnabled = true
+        viewer._ggRoleIconRows = (viewer._ggRoleIconRows or 0) + 1
+        if (row._ggRoleIconCount or 0) > (viewer._ggMaxRoleIconsDetected or 0) then viewer._ggMaxRoleIconsDetected = row._ggRoleIconCount or 0 end
+        viewer._ggRoleStackFallbackReason = nil
+      end
+    else
+      RestoreRoleIconStack(row)
+      if viewer then
+        viewer._ggRoleStackFallbackReason = stackReason or GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS
+      end
+    end
+  else
+    RestoreRoleIconStack(row)
     if viewer then
       viewer._ggRoleStackFallbackReason = roleReason or GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS
-      HideApplicantContextHeader(viewer, viewer._ggRoleStackFallbackReason)
     end
-    return false
-  end
-
-  local stackOk, stackReason = PositionRoleIconStack(row, roleIcons, layout)
-  if not stackOk then
-    if viewer then
-      viewer._ggRoleStackFallbackReason = stackReason or GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS
-      HideApplicantContextHeader(viewer, viewer._ggRoleStackFallbackReason)
-    end
-    return false
-  end
-
-  if viewer then
-    viewer._ggRoleStackEnabled = true
-    viewer._ggRoleIconRows = (viewer._ggRoleIconRows or 0) + 1
-    if (row._ggRoleIconCount or 0) > (viewer._ggMaxRoleIconsDetected or 0) then viewer._ggMaxRoleIconsDetected = row._ggRoleIconCount or 0 end
-    viewer._ggRoleStackFallbackReason = nil
   end
 
   ok = PositionFontStringUnderColumn(contextFS, row, layout.columns.gg, 2) and ok
