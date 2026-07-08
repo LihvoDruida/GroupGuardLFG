@@ -18,8 +18,24 @@ local APPLICATION_DONE = {
 }
 
 local GG_CONTEXT_COLUMN_WIDTH = 38
+local GG_ROLE_COLUMN_WIDTH = 24
+local GG_ILVL_MIN_WIDTH = 32
+local GG_ILVL_MAX_WIDTH = 42
+local GG_RATING_MIN_WIDTH = 44
+local GG_RATING_MAX_WIDTH = 58
+local GG_MIN_NAME_COLUMN_WIDTH = 72
 local GG_CONTEXT_HEADER_TEXT = "GG"
 local GG_CONTEXT_EMPTY = ""
+
+local GG_LAYOUT_REASONS = {
+  OK = "ok",
+  DISABLED = "disabled",
+  MISSING_NAME = "missing-name-header",
+  MISSING_ROLE = "missing-role-header",
+  MISSING_ILVL = "missing-ilvl-header",
+  UNMEASURABLE = "unmeasurable-header-grid",
+  INSUFFICIENT = "insufficient-header-width",
+}
 
 -- ActivityID -> Raider.IO raid id/difficulty.
 -- Difficulty follows Raider.IO progress values: 1 normal, 2 heroic, 3 mythic.
@@ -500,9 +516,10 @@ local function FindNumericFontString(frame, minValue, maxValue, preferSmall)
   if not ok or type(regions) ~= "table" then return nil end
   local best
   for _, region in ipairs(regions) do
-    if IsFontString(region) then
+    if IsFontString(region) and region ~= frame._ggContextColumnFS then
       local text = SafeGetText(region)
-      local n = text and tonumber((text:gsub("[^%d]", ""))) or nil
+      local isContextLike = text and (text:find("/", 1, true) or text:find("+", 1, true) or text:find("⚠", 1, true))
+      local n = (text and not isContextLike) and tonumber((text:gsub("[^%d]", ""))) or nil
       if n and n >= minValue and n <= maxValue then
         if not best then best = region end
         if preferSmall then return region end
@@ -588,11 +605,78 @@ local function GetHeaderOwner(fs)
   return nil
 end
 
-local function HideApplicantContextHeader(viewer)
-  viewer = viewer or (LFGListFrame and LFGListFrame.ApplicationViewer)
-  if not viewer then return end
-  if viewer._ggContextHeader and type(viewer._ggContextHeader.Hide) == "function" then pcall(viewer._ggContextHeader.Hide, viewer._ggContextHeader) end
-  if viewer._ggContextHeaderFrame and type(viewer._ggContextHeaderFrame.Hide) == "function" then pcall(viewer._ggContextHeaderFrame.Hide, viewer._ggContextHeaderFrame) end
+local APPLICANT_LAYOUT_RESTORE = setmetatable({}, { __mode = "k" })
+
+local function ClampNumber(value, minValue, maxValue, fallback)
+  value = SafeNumber(value, fallback)
+  if value == nil then value = fallback or minValue end
+  if minValue and value < minValue then return minValue end
+  if maxValue and value > maxValue then return maxValue end
+  return value
+end
+
+local function SafeGetHeightValue(obj)
+  if not obj or type(obj.GetHeight) ~= "function" then return nil end
+  local ok, value = pcall(obj.GetHeight, obj)
+  return (ok and type(value) == "number") and value or nil
+end
+
+local function SafeGetNumPoints(obj)
+  if not obj or type(obj.GetNumPoints) ~= "function" then return 0 end
+  local ok, value = pcall(obj.GetNumPoints, obj)
+  return (ok and type(value) == "number") and value or 0
+end
+
+local function SaveObjectLayout(obj)
+  if not obj or APPLICANT_LAYOUT_RESTORE[obj] then return end
+  local state = {
+    width = SafeGetWidthValue(obj),
+    height = SafeGetHeightValue(obj),
+    points = {},
+  }
+  if type(obj.GetPoint) == "function" then
+    local count = SafeGetNumPoints(obj)
+    for i = 1, count do
+      local ok, point, relativeTo, relativePoint, xOfs, yOfs = pcall(obj.GetPoint, obj, i)
+      if ok and point then
+        state.points[#state.points + 1] = { point, relativeTo, relativePoint, xOfs or 0, yOfs or 0 }
+      end
+    end
+  end
+  if IsFontString(obj) then
+    state.text = SafeGetText(obj)
+  elseif type(obj.GetText) == "function" then
+    local ok, text = pcall(obj.GetText, obj)
+    if ok then state.text = SafeText(text) end
+  end
+  APPLICANT_LAYOUT_RESTORE[obj] = state
+end
+
+local function RestoreObjectLayout(obj)
+  local state = obj and APPLICANT_LAYOUT_RESTORE[obj]
+  if not state then return end
+  SafeClearAllPoints(obj)
+  if state.width and state.height and type(obj.SetSize) == "function" then
+    SafeSetSize(obj, state.width, state.height)
+  else
+    if state.width then SafeSetWidth(obj, state.width) end
+    if state.height then SafeSetHeight(obj, state.height) end
+  end
+  for _, point in ipairs(state.points or {}) do
+    SafeSetPoint(obj, point[1], point[2], point[3], point[4], point[5])
+  end
+  if state.text ~= nil then
+    if IsFontString(obj) then
+      SafeSetText(obj, state.text)
+    elseif type(obj.SetText) == "function" then
+      pcall(obj.SetText, obj, state.text)
+    end
+  end
+  APPLICANT_LAYOUT_RESTORE[obj] = nil
+end
+
+local function SetApplicantLayoutReason(viewer, reason)
+  if viewer then viewer._ggApplicantColumnLayoutReason = reason or GG_LAYOUT_REASONS.DISABLED end
 end
 
 local function StyleApplicantContextHeaderFrame(frame, templateUsed)
@@ -682,63 +766,253 @@ local function GetHeaderHeight(owner, fallback)
   return fallback or 18
 end
 
+local function CanUseHeaderOwner(owner, viewer)
+  if not owner or owner == viewer then return false end
+  if type(owner.SetPoint) ~= "function" or type(owner.ClearAllPoints) ~= "function" or type(owner.SetWidth) ~= "function" then return false end
+  local left, right = SafeGetLeft(owner), SafeGetRight(owner)
+  return left ~= nil and right ~= nil and right > left
+end
+
+local function MakeHeaderRecord(viewer, header)
+  local owner = GetHeaderOwner(header)
+  if owner == viewer then owner = nil end
+  return { text = header, owner = owner }
+end
+
+local function HeaderRecordIsValid(record, viewer, required)
+  if not record or not CanUseHeaderOwner(record.owner, viewer) then return not required end
+  return true
+end
+
+local function ResolveApplicantColumnHeaders(viewer)
+  if not viewer then return nil, GG_LAYOUT_REASONS.UNMEASURABLE end
+  local cached = viewer._ggApplicantHeaderRefs
+  if cached and HeaderRecordIsValid(cached.name, viewer, true) and HeaderRecordIsValid(cached.role, viewer, true) and HeaderRecordIsValid(cached.ilvl, viewer, true) and HeaderRecordIsValid(cached.rating, viewer, false) then
+    return cached, nil
+  end
+
+  local refs = {
+    name = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { NAME, "Name", "Ім'я", "Ім’я", "Імя" })),
+    role = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ROLE, "Role", "Роль" })),
+    ilvl = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ITEM_LEVEL_ABBR, "iLvl", "ilvl", "ILvl", "Item Level", "Рівень предметів" })),
+    rating = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { RATING, "Rating", "Score", "Рейтинг" })),
+  }
+
+  viewer._ggApplicantColumnFound = {
+    name = refs.name and refs.name.owner ~= nil,
+    role = refs.role and refs.role.owner ~= nil,
+    ilvl = refs.ilvl and refs.ilvl.owner ~= nil,
+    rating = refs.rating and refs.rating.owner ~= nil,
+  }
+
+  if not HeaderRecordIsValid(refs.name, viewer, true) then return nil, GG_LAYOUT_REASONS.MISSING_NAME end
+  if not HeaderRecordIsValid(refs.role, viewer, true) then return nil, GG_LAYOUT_REASONS.MISSING_ROLE end
+  if not HeaderRecordIsValid(refs.ilvl, viewer, true) then return nil, GG_LAYOUT_REASONS.MISSING_ILVL end
+  if not HeaderRecordIsValid(refs.rating, viewer, false) then refs.rating = nil end
+
+  viewer._ggApplicantHeaderRefs = refs
+  return refs, nil
+end
+
+local function SaveHeaderRecord(record)
+  if not record then return end
+  SaveObjectLayout(record.owner)
+  SaveObjectLayout(record.text)
+  if record.owner then
+    SaveObjectLayout(record.owner.Text)
+    SaveObjectLayout(record.owner.Label)
+  end
+end
+
+local function RestoreHeaderRecord(record)
+  if not record then return end
+  RestoreObjectLayout(record.owner)
+  RestoreObjectLayout(record.text)
+  if record.owner then
+    RestoreObjectLayout(record.owner.Text)
+    RestoreObjectLayout(record.owner.Label)
+  end
+end
+
+local function RestoreApplicantHeaderGrid(viewer)
+  if not viewer then return end
+  local refs = viewer._ggApplicantHeaderRefs
+  if refs then
+    RestoreHeaderRecord(refs.name)
+    RestoreHeaderRecord(refs.role)
+    RestoreHeaderRecord(refs.ilvl)
+    RestoreHeaderRecord(refs.rating)
+  end
+  viewer._ggApplicantColumnLayout = nil
+  RestoreObjectLayout(viewer._ggContextHeader)
+  RestoreObjectLayout(viewer._ggContextHeaderFrame)
+  if viewer._ggContextHeader and type(viewer._ggContextHeader.Hide) == "function" then pcall(viewer._ggContextHeader.Hide, viewer._ggContextHeader) end
+  if viewer._ggContextHeaderFrame and type(viewer._ggContextHeaderFrame.Hide) == "function" then pcall(viewer._ggContextHeaderFrame.Hide, viewer._ggContextHeaderFrame) end
+end
+
+local function HideApplicantContextHeader(viewer, reason)
+  viewer = viewer or (LFGListFrame and LFGListFrame.ApplicationViewer)
+  if not viewer then return end
+  SetApplicantLayoutReason(viewer, reason or GG_LAYOUT_REASONS.DISABLED)
+  RestoreApplicantHeaderGrid(viewer)
+end
+
 local function ReflowApplicantColumnHeaders(viewer, headerFrame)
   if not (viewer and headerFrame) then return false end
 
-  -- Do not re-anchor Blizzard's stock Name/Role/iLvl/Rating columns.
-  -- The GG header is an overlay positioned relative to the stock iLvl header.
-  -- If the expected stock header cannot be measured, disable the GG header for
-  -- this draw pass instead of risking a broken LFG layout after a Blizzard patch
-  -- or another addon reflow.
-  local ilvlHeader = FindHeaderFontStringByText(viewer, { ITEM_LEVEL_ABBR, "iLvl", "ilvl", "ILvl", "Item Level" })
-  local ilvlOwner = GetHeaderOwner(ilvlHeader)
-  if ilvlOwner == viewer then ilvlOwner = nil end
-  if not ilvlOwner then return false end
+  local refs, reason = ResolveApplicantColumnHeaders(viewer)
+  if not refs then
+    HideApplicantContextHeader(viewer, reason or GG_LAYOUT_REASONS.UNMEASURABLE)
+    return false
+  end
 
-  local headerHeight = GetHeaderHeight(ilvlOwner, 18)
+  local nameOwner, roleOwner, ilvlOwner = refs.name.owner, refs.role.owner, refs.ilvl.owner
+  local ratingOwner = refs.rating and refs.rating.owner or nil
+  if not (CanUseHeaderOwner(nameOwner, viewer) and CanUseHeaderOwner(roleOwner, viewer) and CanUseHeaderOwner(ilvlOwner, viewer)) then
+    HideApplicantContextHeader(viewer, GG_LAYOUT_REASONS.UNMEASURABLE)
+    return false
+  end
+
+  local nameLeft = SafeGetLeft(nameOwner)
+  local lastRight = ratingOwner and SafeGetRight(ratingOwner) or SafeGetRight(ilvlOwner)
+  if not (nameLeft and lastRight and lastRight > nameLeft) then
+    HideApplicantContextHeader(viewer, GG_LAYOUT_REASONS.UNMEASURABLE)
+    return false
+  end
+
+  local ilvlMeasured = SafeGetWidthValue(ilvlOwner) or ((SafeGetRight(ilvlOwner) or 0) - (SafeGetLeft(ilvlOwner) or 0))
+  local ratingMeasured = ratingOwner and (SafeGetWidthValue(ratingOwner) or ((SafeGetRight(ratingOwner) or 0) - (SafeGetLeft(ratingOwner) or 0))) or nil
+  local ilvlWidth = ClampNumber(ilvlMeasured, GG_ILVL_MIN_WIDTH, GG_ILVL_MAX_WIDTH, 38)
+  local ratingWidth = ratingOwner and ClampNumber(ratingMeasured, GG_RATING_MIN_WIDTH, GG_RATING_MAX_WIDTH, 50) or 0
+  local roleWidth = GG_ROLE_COLUMN_WIDTH
   local ggWidth = GG_CONTEXT_COLUMN_WIDTH
-  SafeSetSize(headerFrame, ggWidth, headerHeight)
-  SafeClearAllPoints(headerFrame)
-  SafeSetPoint(headerFrame, "RIGHT", ilvlOwner, "LEFT", -2, 0)
+  local available = lastRight - nameLeft
+  local fixedWidth = roleWidth + ggWidth + ilvlWidth + ratingWidth
+  local nameWidth = math_floor(available - fixedWidth)
 
+  if nameWidth < GG_MIN_NAME_COLUMN_WIDTH then
+    HideApplicantContextHeader(viewer, GG_LAYOUT_REASONS.INSUFFICIENT)
+    return false
+  end
+
+  SaveHeaderRecord(refs.name)
+  SaveHeaderRecord(refs.role)
+  SaveHeaderRecord(refs.ilvl)
+  SaveHeaderRecord(refs.rating)
+  SaveObjectLayout(headerFrame)
+  SaveObjectLayout(viewer._ggContextHeader)
+
+  local headerHeight = GetHeaderHeight(roleOwner, GetHeaderHeight(ilvlOwner, 18))
+  local ok = true
+  ok = SafeSetWidth(nameOwner, nameWidth) and ok
+  ok = SafeSetWidth(roleOwner, roleWidth) and ok
+  ok = SafeSetSize(headerFrame, ggWidth, headerHeight) and ok
+  ok = SafeSetWidth(ilvlOwner, ilvlWidth) and ok
+  if ratingOwner then ok = SafeSetWidth(ratingOwner, ratingWidth) and ok end
+
+  SafeClearAllPoints(roleOwner)
+  ok = SafeSetPoint(roleOwner, "LEFT", nameOwner, "RIGHT", 0, 0) and ok
+  SafeClearAllPoints(headerFrame)
+  ok = SafeSetPoint(headerFrame, "LEFT", roleOwner, "RIGHT", 0, 0) and ok
+  SafeClearAllPoints(ilvlOwner)
+  ok = SafeSetPoint(ilvlOwner, "LEFT", headerFrame, "RIGHT", 0, 0) and ok
+  if ratingOwner then
+    SafeClearAllPoints(ratingOwner)
+    ok = SafeSetPoint(ratingOwner, "LEFT", ilvlOwner, "RIGHT", 0, 0) and ok
+  end
+
+  SetHeaderText(refs.role.text, roleOwner, "R")
+  SetHeaderText(viewer._ggContextHeader, headerFrame, GG_CONTEXT_HEADER_TEXT)
+
+  if not ok then
+    HideApplicantContextHeader(viewer, GG_LAYOUT_REASONS.UNMEASURABLE)
+    return false
+  end
+
+  local roleLeft = nameLeft + nameWidth
+  local ggLeft = roleLeft + roleWidth
+  local ilvlLeft = ggLeft + ggWidth
+  local ratingLeft = ilvlLeft + ilvlWidth
   viewer._ggApplicantColumnLayout = {
+    reason = GG_LAYOUT_REASONS.OK,
+    nameOwner = nameOwner,
+    roleOwner = roleOwner,
     ggOwner = headerFrame,
     ilvlOwner = ilvlOwner,
+    ratingOwner = ratingOwner,
+    widths = { name = nameWidth, role = roleWidth, gg = ggWidth, ilvl = ilvlWidth, rating = ratingOwner and ratingWidth or 0 },
+    columns = {
+      name = { left = nameLeft, right = nameLeft + nameWidth },
+      role = { left = roleLeft, right = roleLeft + roleWidth },
+      gg = { left = ggLeft, right = ggLeft + ggWidth },
+      ilvl = { left = ilvlLeft, right = ilvlLeft + ilvlWidth },
+      rating = ratingOwner and { left = ratingLeft, right = ratingLeft + ratingWidth } or nil,
+    },
   }
+  viewer._ggApplicantColumnLayoutReason = GG_LAYOUT_REASONS.OK
+  viewer._ggApplicantColumnFound = { name = true, role = true, ilvl = true, rating = ratingOwner ~= nil }
   return true
 end
 
-local function PositionRegionUnderHeader(region, row, headerOwner)
-  if not (region and row and headerOwner) then return false end
+local function PositionRegionUnderColumn(region, row, column)
+  if not (region and row and column) then return false end
   local rowLeft = SafeGetLeft(row)
-  local headerLeft, headerRight = SafeGetLeft(headerOwner), SafeGetRight(headerOwner)
-  if not (rowLeft and headerLeft and headerRight) then return false end
+  if not rowLeft then return false end
+  SaveObjectLayout(region)
   SafeClearAllPoints(region)
-  SafeSetPoint(region, "CENTER", row, "LEFT", ((headerLeft + headerRight) / 2) - rowLeft, 0)
-  return true
+  return SafeSetPoint(region, "CENTER", row, "LEFT", ((column.left + column.right) / 2) - rowLeft, 0)
 end
 
-local function PositionFontStringUnderHeader(fs, row, headerOwner, padding)
-  if not (IsFontString(fs) and row and headerOwner) then return false end
+local function PositionFontStringUnderColumn(fs, row, column, padding)
+  if not (IsFontString(fs) and row and column) then return false end
   local rowLeft = SafeGetLeft(row)
-  local headerLeft, headerRight = SafeGetLeft(headerOwner), SafeGetRight(headerOwner)
-  if not (rowLeft and headerLeft and headerRight) then return false end
+  if not rowLeft then return false end
   padding = padding or 2
+  SaveObjectLayout(fs)
   SafeClearAllPoints(fs)
-  SafeSetPoint(fs, "LEFT", row, "LEFT", headerLeft - rowLeft + padding, 0)
-  SafeSetPoint(fs, "RIGHT", row, "LEFT", headerRight - rowLeft - padding, 0)
+  SafeSetSize(fs, math.max(1, (column.right - column.left) - (padding * 2)), 14)
+  local ok = true
+  ok = SafeSetPoint(fs, "LEFT", row, "LEFT", column.left - rowLeft + padding, 0) and ok
+  ok = SafeSetPoint(fs, "RIGHT", row, "LEFT", column.right - rowLeft - padding, 0) and ok
   if type(fs.SetJustifyH) == "function" then pcall(fs.SetJustifyH, fs, "CENTER") end
-  return true
+  return ok
+end
+
+local function RestoreRowColumnLayout(row)
+  if not row then return end
+  RestoreObjectLayout(row._ggRoleRegion)
+  RestoreObjectLayout(row._ggStockIlvlFS)
+  RestoreObjectLayout(row._ggStockRatingFS)
+  RestoreObjectLayout(row._ggContextColumnFS)
+  row._ggRoleRegion = nil
+  row._ggColumnReflowApplied = nil
 end
 
 local function PositionApplicantRowColumns(row, contextFS)
   local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
   local layout = viewer and viewer._ggApplicantColumnLayout
-  if not (row and layout and IsFontString(contextFS) and layout.ggOwner) then return false end
+  if not (row and layout and layout.reason == GG_LAYOUT_REASONS.OK and layout.columns and IsFontString(contextFS)) then return false end
 
-  -- Only move GroupGuard's own text. Stock role/iLvl/rating regions are left
-  -- untouched to avoid conflicting with Blizzard, RaiderIO, Plumber or PGF.
-  return PositionFontStringUnderHeader(contextFS, row, layout.ggOwner, 2)
+  local roleRegion = FindRoleRegion(row)
+  local ilvlFS = FindItemLevelFontString(row)
+  local ratingFS = FindRatingFontString(row)
+  local ok = true
+
+  if roleRegion then
+    row._ggRoleRegion = roleRegion
+    ok = PositionRegionUnderColumn(roleRegion, row, layout.columns.role) and ok
+  end
+  ok = PositionFontStringUnderColumn(contextFS, row, layout.columns.gg, 2) and ok
+  if ilvlFS then
+    row._ggStockIlvlFS = ilvlFS
+    ok = PositionFontStringUnderColumn(ilvlFS, row, layout.columns.ilvl, 2) and ok
+  end
+  if ratingFS and layout.columns.rating then
+    row._ggStockRatingFS = ratingFS
+    ok = PositionFontStringUnderColumn(ratingFS, row, layout.columns.rating, 2) and ok
+  end
+  row._ggColumnReflowApplied = ok and true or nil
+  return ok
 end
 
 local function EnsureApplicantContextHeader()
@@ -768,8 +1042,8 @@ local function EnsureApplicantContextHeader()
     SafeShow(headerFrame)
     SafeShow(fs)
   else
-    -- Wait until the applicant viewer has finished drawing its headers.
-    HideApplicantContextHeader(viewer)
+    -- ReflowApplicantColumnHeaders already restored stock columns and stored the exact fallback reason.
+    return
   end
 end
 
@@ -788,22 +1062,17 @@ local function EnsureRowContextColumn(frame)
   end
 
   if not PositionApplicantRowColumns(frame, fs) then
-    -- Keep the value near iLvl until the header grid is measurable.
-    SafeClearAllPoints(fs)
-    local ilvl = FindItemLevelFontString(frame)
-    if ilvl then
-      SafeSetSize(fs, GG_CONTEXT_COLUMN_WIDTH, 14)
-      SafeSetPoint(fs, "RIGHT", ilvl, "LEFT", -4, 0)
-    else
-      SafeSetSize(fs, GG_CONTEXT_COLUMN_WIDTH, 14)
-      SafeSetPoint(fs, "RIGHT", frame, "RIGHT", -64, 0)
-    end
+    -- No fallback positioning: if the Blizzard header grid cannot be measured,
+    -- the GG column must stay hidden instead of overlapping Role/iLvl.
+    HideFontString(fs)
+    return nil
   end
   return fs
 end
 
 local function CleanupLegacyApplicantDecorations(frame)
   if not frame then return end
+  RestoreRowColumnLayout(frame)
   local detail = frame._ggApplicantDetailLine
   if IsFontString(detail) then HideFontString(detail) end
   frame._ggApplicantDetailLine = nil
@@ -912,12 +1181,6 @@ function addon:LFG_BuildApplicantSummary(applicantID)
   for i = 1, num do
     local m = ReadApplicantMember(applicantID, i)
     if type(m) == "table" then addMember(m) end
-  end
-  if #members == 0 and num > 0 then
-    for i = 0, num - 1 do
-      local m = ReadApplicantMember(applicantID, i)
-      if type(m) == "table" then addMember(m) end
-    end
   end
 
   return {

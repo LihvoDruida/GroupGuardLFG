@@ -109,15 +109,15 @@ GroupGuard is designed to run beside common LFG addons.
 GroupGuard does not identify a player’s nationality, ethnicity, religion, origin or personal identity. Optional text checks are based only on visible text such as group titles, comments, character names, guild names and user-configured rules. Text and realm hints can be wrong, so rules should be reviewed carefully.
 
 
-## Release notes — 4.2.40
+## Release notes — 4.2.41
 
-- Added `/gg` slash alias and `/gg settings`, `/gg debug ...`, `/gg perf`, `/gg queue` helpers.
-- Centralized shared safe wrappers through `addon.Safe` and exposed explicit `addon.LFGRaw` / `addon.LFG` namespaces.
-- Blocked applicant member index `0` probes; applicant member reads now require valid 1-based indexes.
-- Changed GG applicant column layout to overlay only GroupGuard-owned text and avoid re-anchoring Blizzard Name/Role/iLvl/Rating columns.
-- Changed combat kick queue so protected `UninviteUnit` calls are not executed automatically from `PLAYER_REGEN_ENABLED`; user action is required after combat.
-- Hardened Premade Groups Filter compatibility hooks and cross-realm social cache keys.
-- Added `CHANGELOG.md` for packaging metadata.
+- Reworked applicant list GG column as a measured stock-grid reflow instead of an overlay.
+- Applicant headers now resolve to `Name | R | GG | iLvl | Rating` when Blizzard's ApplicationViewer grid is recognized.
+- The Name column is compacted to make real space for GG, while Role is reduced to `R`.
+- Row role icon, GG text, iLvl and optional Rating are aligned under the same measured headers.
+- If Name/Role/iLvl headers cannot be found or measured, GG is hidden and the stock Blizzard UI is restored.
+- Removed unsafe fallback positions that placed GG next to iLvl or near the row right edge.
+- `/gg debug lfg` now prints GG layout reason, detected headers and column widths.
 
 ## Release notes — 4.2.19
 

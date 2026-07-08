@@ -1068,6 +1068,12 @@ local function PrintDebugInfo(mode)
     print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollFrame", viewer.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
     print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollBox", viewer.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
     print(addon:Tr("CMD_LFG_FRAME_STATE", "GG header", viewer._ggContextHeaderFrame and viewer._ggContextHeaderFrame:IsShown() and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG layout reason", tostring(viewer._ggApplicantColumnLayoutReason or "nil")))
+    local found = viewer._ggApplicantColumnFound or {}
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG found Name/Role/iLvl/Rating", tostring(found.name == true) .. "/" .. tostring(found.role == true) .. "/" .. tostring(found.ilvl == true) .. "/" .. tostring(found.rating == true)))
+    local layout = viewer._ggApplicantColumnLayout
+    local widths = layout and layout.widths or {}
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG widths R/GG/iLvl/Rating", tostring(widths.role or "nil") .. "/" .. tostring(widths.gg or "nil") .. "/" .. tostring(widths.ilvl or "nil") .. "/" .. tostring(widths.rating or "nil")))
     print(addon:Tr("CMD_BUTTON_COUNT", "viewer.ScrollFrame", tostring(viewer.ScrollFrame and viewer.ScrollFrame.buttons and #viewer.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
   end
 
