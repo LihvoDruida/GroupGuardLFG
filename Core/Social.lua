@@ -1,19 +1,80 @@
 -- GroupGuard LFG — Core / Social
 local addonName, addon = ...
 
+local function NormalizeRealm(realm)
+  if type(realm) ~= "string" or realm == "" then return nil end
+  realm = realm:gsub("%s+", "")
+  return string.lower(realm)
+end
+
+local function LocalRealmKey()
+  local realm
+  if GetNormalizedRealmName then
+    local ok, value = pcall(GetNormalizedRealmName)
+    if ok then realm = value end
+  end
+  if (not realm or realm == "") and GetRealmName then
+    local ok, value = pcall(GetRealmName)
+    if ok then realm = value end
+  end
+  return NormalizeRealm(realm)
+end
+
+local function SplitNameRealm(name)
+  if type(name) ~= "string" or name == "" then return nil, nil end
+  local player, realm = name:match("^([^-]+)%-(.+)$")
+  if not player then player = name end
+  player = player and player:gsub("^%s+", ""):gsub("%s+$", "") or nil
+  realm = realm and realm:gsub("^%s+", ""):gsub("%s+$", "") or nil
+  if not player or player == "" then return nil, nil end
+  return player, realm
+end
+
 local function GGNameKey(name)
-  if type(name) ~= "string" or name == "" then return nil end
-  local base = name:match("^([^-]+)") or name
-  return string.lower(base)
+  local player, realm = SplitNameRealm(name)
+  if not player then return nil end
+  local realmKey = NormalizeRealm(realm)
+  if realmKey then return string.lower(player) .. "-" .. realmKey end
+  return string.lower(player)
+end
+
+local function GGShortNameKey(name)
+  local player = SplitNameRealm(name)
+  return player and string.lower(player) or nil
+end
+
+local function MayUseShortFallback(name)
+  local _, realm = SplitNameRealm(name)
+  local realmKey = NormalizeRealm(realm)
+  return not realmKey or realmKey == LocalRealmKey()
 end
 
 function addon:NormalizeNameKey(name)
   return GGNameKey(name)
 end
 
-local function AddFriendName(cache, name)
+local function CacheName(cache, name, value)
   local key = GGNameKey(name)
-  if key then cache[key] = true end
+  if key then cache[key] = value or true end
+  if MayUseShortFallback(name) then
+    local short = GGShortNameKey(name)
+    if short then cache[short] = value or true end
+  end
+end
+
+local function CacheLookup(cache, name)
+  if not cache then return nil end
+  local key = GGNameKey(name)
+  if key and cache[key] ~= nil then return cache[key] end
+  if MayUseShortFallback(name) then
+    local short = GGShortNameKey(name)
+    if short then return cache[short] end
+  end
+  return nil
+end
+
+local function AddFriendName(cache, name)
+  CacheName(cache, name, true)
 end
 
 function addon:RebuildFriendCache(force)
@@ -103,10 +164,10 @@ function addon:RebuildGuildCache(force)
       if ok then
         local key = GGNameKey(fullName)
         if key then
-          cache[key] = true
+          CacheName(cache, fullName, true)
           rankIndex = tonumber(rankIndex)
-          rankIndexCache[key] = rankIndex
-          rankNameCache[key] = type(rankName) == "string" and rankName or ""
+          CacheName(rankIndexCache, fullName, rankIndex)
+          CacheName(rankNameCache, fullName, type(rankName) == "string" and rankName or "")
           if rankIndex ~= nil and type(rankName) == "string" and rankName ~= "" then
             rankNameByIndex[rankIndex] = rankName
           end
@@ -130,6 +191,10 @@ function addon:BuildNameSet(text)
     name = string.gsub(name, "%s+$", "")
     local key = GGNameKey(name)
     if key then set[key] = true end
+    if MayUseShortFallback(name) then
+      local short = GGShortNameKey(name)
+      if short then set[short] = true end
+    end
   end
   return set
 end
@@ -232,7 +297,10 @@ function addon:IsManualRaidAssistName(name)
     self._raidAssistManualSet = self:BuildNameSet(text)
     self._raidAssistManualSetText = text
   end
-  return self._raidAssistManualSet and self._raidAssistManualSet[key] and true or false
+  if not self._raidAssistManualSet then return false end
+  if self._raidAssistManualSet[key] then return true end
+  local short = GGShortNameKey(name)
+  return short and self._raidAssistManualSet[short] and true or false
 end
 
 function addon:IsGuildOfficerName(name)
@@ -240,7 +308,7 @@ function addon:IsGuildOfficerName(name)
   if not key then return false end
   self:RebuildGuildCache(false)
 
-  local rankIndex = self._guildRankIndexCache and self._guildRankIndexCache[key]
+  local rankIndex = CacheLookup(self._guildRankIndexCache, name)
   local selectedText = self.db and tostring(self.db.raid_assist_selected_ranks or "") or ""
   if selectedText ~= "" then
     return self:IsSelectedRaidAssistRankIndex(rankIndex)
@@ -252,7 +320,7 @@ function addon:IsGuildOfficerName(name)
     return true
   end
 
-  local rankName = self._guildRankNameCache and self._guildRankNameCache[key]
+  local rankName = CacheLookup(self._guildRankNameCache, name)
   if type(rankName) == "string" and rankName ~= "" then
     local lowered = string.lower(rankName)
     local keywords = self.db and self.db.raid_assist_officer_keywords or ""
@@ -276,14 +344,14 @@ function addon:IsGuildMemberName(name)
   local key = GGNameKey(name)
   if not key then return false end
   self:RebuildGuildCache(false)
-  return self._guildCache and self._guildCache[key] and true or false
+  return CacheLookup(self._guildCache, name) and true or false
 end
 
 function addon:IsFriendName(name)
   local key = GGNameKey(name)
   if not key then return false end
   self:RebuildFriendCache(false)
-  return self._friendCache and self._friendCache[key] and true or false
+  return CacheLookup(self._friendCache, name) and true or false
 end
 
 function addon:IsGuildUnit(unit, guildName)
@@ -300,6 +368,18 @@ function addon:IsGuildUnit(unit, guildName)
   end
 
   return false
+end
+
+function addon:GetSocialDebugInfo()
+  local friends, guild = 0, 0
+  if type(self._friendCache) == "table" then for _ in pairs(self._friendCache) do friends = friends + 1 end end
+  if type(self._guildCache) == "table" then for _ in pairs(self._guildCache) do guild = guild + 1 end end
+  return {
+    friends = friends,
+    guild = guild,
+    friendBuiltAt = self._friendCacheBuiltAt or 0,
+    guildBuiltAt = self._guildCacheBuiltAt or 0,
+  }
 end
 
 function addon:GetUnitSocialStatus(unit, name, guildName)

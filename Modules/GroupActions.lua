@@ -240,6 +240,7 @@ function addon:KickNamesSequential(targets, delayStep)
   if UnitAffectingCombat and UnitAffectingCombat("player") then
     self._kickQueue = self._kickQueue or {}
     for _, n in ipairs(targets) do table.insert(self._kickQueue, n) end
+    self._kickQueueNeedsClick = true
     print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_COMBAT"))
     return
   end
@@ -313,18 +314,36 @@ function addon:KickNamesSequential(targets, delayStep)
 end
 
 function addon:ProcessKickQueue()
+  -- Protected group removal must not be executed automatically from events such
+  -- as PLAYER_REGEN_ENABLED. Keep the queue and ask the raid leader to click a
+  -- real button or run /ggremove after combat.
   if not self._kickQueue or #self._kickQueue == 0 then return end
   if UnitAffectingCombat and UnitAffectingCombat("player") then return end
+  self._kickQueueNeedsClick = true
+  local now = GetTime and GetTime() or 0
+  if (self._lastKickQueueNoticeAt or 0) + 4 <= now then
+    self._lastKickQueueNoticeAt = now
+    print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_NEEDS_CLICK"))
+  end
+end
 
+function addon:RunQueuedKicksFromUserAction()
+  if not self._kickQueue or #self._kickQueue == 0 then return false end
+  if UnitAffectingCombat and UnitAffectingCombat("player") then
+    print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_COMBAT"))
+    return false
+  end
   if not PlayerCanManageGroup() then
     print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("NO_QUEUE_RIGHTS"))
     self._kickQueue = nil
-    return
+    self._kickQueueNeedsClick = false
+    return false
   end
-
   local q = self._kickQueue
   self._kickQueue = nil
+  self._kickQueueNeedsClick = false
   self:KickNamesSequential(q, 0.15)
+  return true
 end
 
 local function CountGroupOffenders()

@@ -49,6 +49,58 @@ function addon:SafeCall(fn, ...)
   return pcall(fn, ...)
 end
 
+-- Public Safe namespace for modules. Keep old addon:Safe* methods for
+-- compatibility, but route new code through one shared table instead of
+-- duplicating guards in every module.
+addon.Safe = addon.Safe or {}
+local SafeNS = addon.Safe
+function SafeNS.CanReadValue(value) return addon:SafeCanRead(value) end
+function SafeNS.Text(value, fallback) return addon:SafeText(value, fallback) end
+function SafeNS.Number(value, fallback) return addon:SafeNumber(value, fallback) end
+function SafeNS.Bool(value) return addon:SafeBool(value) end
+function SafeNS.Call(fn, ...) return addon:SafeCall(fn, ...) end
+function SafeNS.UnitExists(unit)
+  if not UnitExists then return false end
+  local ok, exists = pcall(UnitExists, unit)
+  return ok and exists and true or false
+end
+function SafeNS.UnitFullName(unit)
+  local name, realm
+  if UnitFullName then
+    local ok, n, r = pcall(UnitFullName, unit)
+    if ok then name, realm = n, r end
+  end
+  if not name and UnitName then
+    local ok, n, r = pcall(UnitName, unit)
+    if ok then name, realm = n, r end
+  end
+  name = addon:SafeText(name)
+  realm = addon:SafeText(realm)
+  if not name or name == "" then return nil, nil, nil end
+  if realm and realm ~= "" then return name .. "-" .. realm, name, realm end
+  return name, name, realm
+end
+function SafeNS.IsInRaid()
+  if not IsInRaid then return false end
+  local ok, value = pcall(IsInRaid)
+  return ok and value and true or false
+end
+function SafeNS.IsInGroup()
+  if not IsInGroup then return false end
+  local ok, value = pcall(IsInGroup)
+  return ok and value and true or false
+end
+function SafeNS.IsGroupLeader(unit)
+  if not UnitIsGroupLeader then return false end
+  local ok, value = pcall(UnitIsGroupLeader, unit or "player")
+  return ok and value and true or false
+end
+function SafeNS.IsGroupAssistant(unit)
+  if not UnitIsGroupAssistant then return false end
+  local ok, value = pcall(UnitIsGroupAssistant, unit or "player")
+  return ok and value and true or false
+end
+
 function addon:SafeHookOnce(key, target, methodOrFunc, maybeFunc)
   if type(hooksecurefunc) ~= "function" or not key then return false end
   self._safeHookKeys = self._safeHookKeys or {}
@@ -193,7 +245,7 @@ end
 function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
-  if not (C_LFGList and type(C_LFGList.GetApplicantMemberInfo) == "function" and applicantID and memberIndex ~= nil) then return nil end
+  if not (C_LFGList and type(C_LFGList.GetApplicantMemberInfo) == "function" and applicantID and memberIndex and memberIndex >= 1) then return nil end
   local values = { pcall(C_LFGList.GetApplicantMemberInfo, applicantID, memberIndex) }
   if not values[1] then return nil end
 
@@ -304,7 +356,7 @@ function addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberInd
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   activityID = self:SafeNumber(activityID, nil)
-  if not (C_LFGList and type(C_LFGList.GetApplicantDungeonScoreForListing) == "function" and applicantID and memberIndex ~= nil and activityID) then return nil end
+  if not (C_LFGList and type(C_LFGList.GetApplicantDungeonScoreForListing) == "function" and applicantID and memberIndex and memberIndex >= 1 and activityID) then return nil end
   local ok, scoreInfo = pcall(C_LFGList.GetApplicantDungeonScoreForListing, applicantID, memberIndex, activityID)
   if ok and type(scoreInfo) == "table" then
     return {
@@ -321,7 +373,7 @@ end
 function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
-  if not (C_LFGList and type(C_LFGList.GetApplicantBestDungeonScore) == "function" and applicantID and memberIndex ~= nil) then return nil end
+  if not (C_LFGList and type(C_LFGList.GetApplicantBestDungeonScore) == "function" and applicantID and memberIndex and memberIndex >= 1) then return nil end
   local ok, scoreInfo = pcall(C_LFGList.GetApplicantBestDungeonScore, applicantID, memberIndex)
   if ok and type(scoreInfo) == "table" then
     return {
@@ -418,7 +470,7 @@ local _rawGetApplicantMemberInfo = addon.LFG_API_GetApplicantMemberInfo
 function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
-  if not applicantID or memberIndex == nil then return nil end
+  if not applicantID or not memberIndex or memberIndex < 1 then return nil end
   local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
   local hit, value = CacheGet(self, "memberInfo", key)
   if hit then return value end
@@ -447,7 +499,7 @@ function addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberInd
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   activityID = self:SafeNumber(activityID, nil)
-  if not applicantID or memberIndex == nil or not activityID then return nil end
+  if not applicantID or not memberIndex or memberIndex < 1 or not activityID then return nil end
   local key = tostring(applicantID) .. ":" .. tostring(memberIndex) .. ":" .. tostring(activityID)
   local hit, value = CacheGet(self, "listingScore", key)
   if hit then return value end
@@ -458,7 +510,7 @@ local _rawGetBestScore = addon.LFG_API_GetApplicantBestDungeonScore
 function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
-  if not applicantID or memberIndex == nil then return nil end
+  if not applicantID or not memberIndex or memberIndex < 1 then return nil end
   local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
   local hit, value = CacheGet(self, "bestScore", key)
   if hit then return value end
@@ -481,9 +533,45 @@ local _rawGetSearchResultPlayerInfo = addon.LFG_API_GetSearchResultPlayerInfo
 function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   resultID = self:SafeNumber(resultID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
-  if not resultID or not memberIndex then return nil end
+  if not resultID or not memberIndex or memberIndex < 1 then return nil end
   local key = tostring(resultID) .. ":" .. tostring(memberIndex)
   local hit, value = CacheGet(self, "searchPlayer", key)
   if hit then return value end
   return CacheSet(self, "searchPlayer", key, _rawGetSearchResultPlayerInfo(self, resultID, memberIndex), 0.65)
+end
+
+
+-- Explicit raw/cached LFG namespaces. Legacy addon:LFG_API_* methods remain
+-- available, but diagnostics and future modules can choose the intended layer.
+addon.LFGRaw = addon.LFGRaw or {}
+addon.LFGRaw.GetApplicants = function(...) return _rawGetApplicants(addon, ...) end
+addon.LFGRaw.GetApplicantInfo = function(applicantID) return _rawGetApplicantInfo(addon, applicantID) end
+addon.LFGRaw.GetApplicantMemberInfo = function(applicantID, memberIndex) return _rawGetApplicantMemberInfo(addon, applicantID, memberIndex) end
+addon.LFGRaw.GetActiveEntryInfo = function() return _rawGetActiveEntryInfo(addon) end
+addon.LFGRaw.GetActivityInfoTable = function(activityID) return _rawGetActivityInfoTable(addon, activityID) end
+addon.LFGRaw.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex, activityID) return _rawGetListingScore(addon, applicantID, memberIndex, activityID) end
+addon.LFGRaw.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return _rawGetBestScore(addon, applicantID, memberIndex) end
+addon.LFGRaw.GetSearchResultInfo = function(resultID) return _rawGetSearchResultInfo(addon, resultID) end
+addon.LFGRaw.GetSearchResultPlayerInfo = function(resultID, memberIndex) return _rawGetSearchResultPlayerInfo(addon, resultID, memberIndex) end
+
+addon.LFG = addon.LFG or {}
+addon.LFG.GetApplicants = function() return addon:LFG_API_GetApplicants() end
+addon.LFG.GetApplicantInfo = function(applicantID) return addon:LFG_API_GetApplicantInfo(applicantID) end
+addon.LFG.GetApplicantMemberInfo = function(applicantID, memberIndex) return addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex) end
+addon.LFG.GetActiveEntryInfo = function() return addon:LFG_API_GetActiveEntryInfo() end
+addon.LFG.GetActivityInfoTable = function(activityID) return addon:LFG_API_GetActivityInfoTable(activityID) end
+addon.LFG.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex, activityID) return addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberIndex, activityID) end
+addon.LFG.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex) end
+addon.LFG.GetSearchResultInfo = function(resultID) return addon:LFG_API_GetSearchResultInfo(resultID) end
+addon.LFG.GetSearchResultPlayerInfo = function(resultID, memberIndex) return addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) end
+
+function addon:LFG_API_DebugDump()
+  local buckets, entries = 0, 0
+  if type(self._lfgAPICache) == "table" then
+    for _, bucket in pairs(self._lfgAPICache) do
+      buckets = buckets + 1
+      if type(bucket) == "table" then for _ in pairs(bucket) do entries = entries + 1 end end
+    end
+  end
+  return { buckets = buckets, entries = entries }
 end

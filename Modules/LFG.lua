@@ -782,9 +782,10 @@ function addon:InitPGFIntegration()
   if self.db and self.db.pgf_integration == false then return end
   if not self:IsPremadeGroupsFilterLoaded() then return end
 
-  local PGF = PremadeGroupsFilter and PremadeGroupsFilter.Debug
-  if type(PGF) ~= "table" then return end
-  self._pgfIntegrated = true
+  local candidates = {}
+  if type(PremadeGroupsFilter) == "table" then candidates[#candidates + 1] = PremadeGroupsFilter end
+  if type(PremadeGroupsFilter) == "table" and type(PremadeGroupsFilter.Debug) == "table" then candidates[#candidates + 1] = PremadeGroupsFilter.Debug end
+  if #candidates == 0 then return end
 
   local function refreshResults(delay)
     if addon and addon.db and addon.db.pgf_integration ~= false and addon.LFG_DebouncedHighlightResults then
@@ -792,27 +793,36 @@ function addon:InitPGFIntegration()
     end
   end
 
-  if type(PGF.FilterSearchResults) == "function" then
-    hooksecurefunc(PGF, "FilterSearchResults", function() refreshResults(0.05) end)
+  local hooked = false
+  local function safeHook(tableRef, methodName, delay, resetCaches)
+    if type(tableRef) ~= "table" or type(tableRef[methodName]) ~= "function" then return end
+    local key = "PGF:" .. tostring(tableRef) .. ":" .. methodName
+    local ok
+    if addon.SafeHookOnce then
+      ok = addon:SafeHookOnce(key, tableRef, methodName, function()
+        if resetCaches then
+          addon._lfgResultFlagCache = {}
+          addon._lfgResultFlagReasons = {}
+          addon._lfgResultSocialCache = {}
+          addon._lfgResultSocialReasons = {}
+        end
+        refreshResults(delay)
+      end)
+    elseif type(hooksecurefunc) == "function" then
+      ok = pcall(hooksecurefunc, tableRef, methodName, function() refreshResults(delay) end)
+    end
+    hooked = hooked or ok
   end
-  if type(PGF.DoFilterSearchResults) == "function" then
-    hooksecurefunc(PGF, "DoFilterSearchResults", function() refreshResults(0.08) end)
+
+  for _, PGF in ipairs(candidates) do
+    safeHook(PGF, "FilterSearchResults", 0.05)
+    safeHook(PGF, "DoFilterSearchResults", 0.08)
+    safeHook(PGF, "OnLFGListSearchPanelUpdateResultList", 0.08)
+    safeHook(PGF, "OnLFGListSearchEntryUpdate", 0.04)
+    safeHook(PGF, "ResetSearchEntries", 0.08, true)
   end
-  if type(PGF.OnLFGListSearchPanelUpdateResultList) == "function" then
-    hooksecurefunc(PGF, "OnLFGListSearchPanelUpdateResultList", function() refreshResults(0.08) end)
-  end
-  if type(PGF.OnLFGListSearchEntryUpdate) == "function" then
-    hooksecurefunc(PGF, "OnLFGListSearchEntryUpdate", function() refreshResults(0.04) end)
-  end
-  if type(PGF.ResetSearchEntries) == "function" then
-    hooksecurefunc(PGF, "ResetSearchEntries", function()
-      addon._lfgResultFlagCache = {}
-      addon._lfgResultFlagReasons = {}
-      addon._lfgResultSocialCache = {}
-      addon._lfgResultSocialReasons = {}
-      refreshResults(0.08)
-    end)
-  end
+
+  self._pgfIntegrated = hooked and true or false
 end
 
 function addon:LFG_RetryHighlightSearchResults(force)

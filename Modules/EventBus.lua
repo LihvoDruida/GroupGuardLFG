@@ -287,7 +287,7 @@ local function OnEvent(self, event, arg1, ...)
     if addon.ClearFrameMarkers then addon:ClearFrameMarkers() end
 
   elseif event == "PLAYER_REGEN_ENABLED" then
-    addon:ProcessKickQueue()
+    if addon.ProcessKickQueue then addon:ProcessKickQueue() end
     if addon._raidAssistQueued and addon.ScheduleRaidAssist then
       addon._raidAssistQueued = false
       addon:ScheduleRaidAssist(0, "combat_end")

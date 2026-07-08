@@ -35,8 +35,25 @@ The GG column is an extra helper column only.
 
 ```text
 /gg
+/gg settings
+/gglfg
+/groupguard
+/gguard
+/guardlfg
 ```
 Open settings.
+
+```text
+/gg debug on
+/gg debug off
+/gg debug api
+/gg debug lfg
+/gg debug deps
+/gg debug social
+/gg perf
+/gg queue
+```
+Debug, performance and deferred-kick queue helpers.
 
 ```text
 /ggscan
@@ -91,6 +108,16 @@ GroupGuard is designed to run beside common LFG addons.
 
 GroupGuard does not identify a player’s nationality, ethnicity, religion, origin or personal identity. Optional text checks are based only on visible text such as group titles, comments, character names, guild names and user-configured rules. Text and realm hints can be wrong, so rules should be reviewed carefully.
 
+
+## Release notes — 4.2.40
+
+- Added `/gg` slash alias and `/gg settings`, `/gg debug ...`, `/gg perf`, `/gg queue` helpers.
+- Centralized shared safe wrappers through `addon.Safe` and exposed explicit `addon.LFGRaw` / `addon.LFG` namespaces.
+- Blocked applicant member index `0` probes; applicant member reads now require valid 1-based indexes.
+- Changed GG applicant column layout to overlay only GroupGuard-owned text and avoid re-anchoring Blizzard Name/Role/iLvl/Rating columns.
+- Changed combat kick queue so protected `UninviteUnit` calls are not executed automatically from `PLAYER_REGEN_ENABLED`; user action is required after combat.
+- Hardened Premade Groups Filter compatibility hooks and cross-realm social cache keys.
+- Added `CHANGELOG.md` for packaging metadata.
 
 ## Release notes — 4.2.19
 

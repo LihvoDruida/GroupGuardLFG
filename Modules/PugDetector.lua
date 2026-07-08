@@ -4,6 +4,7 @@ local addonName, addon = ...
 local C_Timer = C_Timer
 
 local function SafeIsInRaid()
+  if addon and addon.Safe and addon.Safe.IsInRaid then return addon.Safe.IsInRaid() end
   if not IsInRaid then return false end
   local ok, value = pcall(IsInRaid)
   return ok and value and true or false
@@ -17,16 +18,7 @@ local function SafeGroupCount()
 end
 
 local function CanReadValue(value)
-  if value == nil then return false end
-  if type(canaccessvalue) == "function" then
-    local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
-  end
-  if type(issecretvalue) == "function" then
-    local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
-  end
-  return true
+  return addon and addon.Safe and addon.Safe.CanReadValue and addon.Safe.CanReadValue(value) or value ~= nil
 end
 
 local function ShortName(name)
@@ -140,7 +132,7 @@ function addon:GetPugItemLevel(unit, fullName)
 
   cache = cache or {}
   local requestedAt = tonumber(cache.requestedAt or 0) or 0
-  if (now - requestedAt) > 12 and (now - (self._lastPugInspectRequest or 0)) > 0.9 then
+  if (now - requestedAt) > 20 and (now - (self._lastPugInspectRequest or 0)) > 1.5 then
     cache.requestedAt = now
     cache.guid = guid
     self._pugIlvlCache[key] = cache
@@ -358,9 +350,10 @@ local function CreateRow(parent, index)
   row.group:SetWidth(PUG_COL.GROUP_W)
   row.group:SetJustifyH("LEFT")
 
-  row.kick = CreateFrame("Button", nil, row, "UIPanelCloseButton")
-  row.kick:SetSize(PUG_COL.ACTION_W, PUG_COL.ACTION_W)
+  row.kick = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+  row.kick:SetSize(PUG_COL.ACTION_W, 20)
   row.kick:SetPoint("LEFT", row, "LEFT", PUG_COL.ACTION_X, 0)
+  row.kick:SetText("×")
   if row.kick.SetHitRectInsets then row.kick:SetHitRectInsets(0, 0, 0, 0) end
   row.kick:SetScript("OnEnter", function(btn)
     if not GameTooltip then return end

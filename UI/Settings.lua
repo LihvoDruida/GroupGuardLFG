@@ -1044,15 +1044,94 @@ end
 -- Команди
 --------------------------------------------------
 
-SLASH_GROUPGUARDLFG1 = "/gglfg"
-SLASH_GROUPGUARDLFG2 = "/groupguard"
-SLASH_GROUPGUARDLFG3 = "/gguard"
-SLASH_GROUPGUARDLFG4 = "/guardlfg"
+SLASH_GROUPGUARDLFG1 = "/gg"
+SLASH_GROUPGUARDLFG2 = "/gglfg"
+SLASH_GROUPGUARDLFG3 = "/groupguard"
+SLASH_GROUPGUARDLFG4 = "/gguard"
+SLASH_GROUPGUARDLFG5 = "/guardlfg"
+
+local function PrintDebugInfo(mode)
+  mode = tostring(mode or ""):lower()
+  local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
+  local sp = LFGListFrame and LFGListFrame.SearchPanel
+
+  print(addon:Tr("CMD_DEBUG_TITLE"))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "debug", tostring(addon.debug == true)))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "LFGListFrame", LFGListFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "SearchPanel", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "ApplicationViewer", viewer and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "Premade Groups Filter", addon.IsPremadeGroupsFilterLoaded and addon:IsPremadeGroupsFilterLoaded() and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "RaiderIO", _G.RaiderIO and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "Plumber", _G.Plumber and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
+
+  if viewer then
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollFrame", viewer.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollBox", viewer.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "GG header", viewer._ggContextHeaderFrame and viewer._ggContextHeaderFrame:IsShown() and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_BUTTON_COUNT", "viewer.ScrollFrame", tostring(viewer.ScrollFrame and viewer.ScrollFrame.buttons and #viewer.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
+  end
+
+  if sp then
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "search.ScrollFrame", sp.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "search.ScrollBox", sp.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+    print(addon:Tr("CMD_BUTTON_COUNT", "search.ScrollFrame", tostring(sp.ScrollFrame and sp.ScrollFrame.buttons and #sp.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
+  end
+
+  if addon.LFG_API_GetApplicants then
+    local apps = addon:LFG_API_GetApplicants() or {}
+    print(addon:Tr("CMD_APPLICANTS_COUNT", #apps))
+    if apps[1] and addon.LFG_API_GetApplicantInfo then
+      local info = addon:LFG_API_GetApplicantInfo(apps[1]) or nil
+      print(addon:Tr("CMD_FIRST_APPLICANT", tostring(apps[1]), tostring(info and info.numMembers or addon:Tr("CMD_NIL"))))
+    end
+  end
+
+  if mode == "social" and addon.GetSocialDebugInfo then
+    local info = addon:GetSocialDebugInfo()
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "friend cache", tostring(info.friends)))
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "guild cache", tostring(info.guild)))
+  end
+
+  if addon.LFG_API_DebugDump then
+    local dump = addon:LFG_API_DebugDump()
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "LFG API cache", tostring(dump.buckets) .. " / " .. tostring(dump.entries)))
+  end
+end
+
+local function PrintPerfInfo()
+  local dump = addon.LFG_API_DebugDump and addon:LFG_API_DebugDump() or { buckets = 0, entries = 0 }
+  local inspectCache = 0
+  if type(addon._pugIlvlCache) == "table" then for _ in pairs(addon._pugIlvlCache) do inspectCache = inspectCache + 1 end end
+  print(addon:Tr("CMD_DEBUG_TITLE"))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "LFG API cache", tostring(dump.buckets) .. " buckets / " .. tostring(dump.entries) .. " entries"))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "PUG inspect cache", tostring(inspectCache)))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "last inspect request", tostring(addon._lastPugInspectRequest or 0)))
+end
 
 local function HandleSlash(msg)
   msg = tostring(msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
   if msg == "pugs" or msg == "pug" or msg == "raidpugs" or msg == "пуги" then
     if addon.TogglePugWindow then addon:TogglePugWindow() end
+    return
+  end
+  if msg == "settings" or msg == "options" then
+    msg = ""
+  elseif msg == "debug on" then
+    addon.debug = true
+    print((addon.printPrefix or "GroupGuard LFG:"), "debug on")
+    return
+  elseif msg == "debug off" then
+    addon.debug = false
+    print((addon.printPrefix or "GroupGuard LFG:"), "debug off")
+    return
+  elseif msg == "debug" or msg == "debug api" or msg == "debug lfg" or msg == "debug deps" or msg == "debug social" then
+    PrintDebugInfo(msg:match("debug%s+(.+)") or "")
+    return
+  elseif msg == "perf" then
+    PrintPerfInfo()
+    return
+  elseif msg == "queue" or msg == "kickqueue" then
+    if addon.RunQueuedKicksFromUserAction then addon:RunQueuedKicksFromUserAction() end
     return
   end
   if not addon.settingsRoot then addon:InitSettingsPages() end
@@ -1093,6 +1172,9 @@ end
 
 SLASH_GROUPGUARDLFGREMOVE1 = "/ggremove"
 SlashCmdList.GROUPGUARDLFGREMOVE = function()
+  if addon.RunQueuedKicksFromUserAction and addon._kickQueue and #addon._kickQueue > 0 then
+    if addon:RunQueuedKicksFromUserAction() then return end
+  end
   if not addon.db and addon.EnsureDB then addon:EnsureDB() end
   if addon.ScanGroupOffenders then addon:ScanGroupOffenders() end
 
@@ -1187,34 +1269,11 @@ end
 
 
 SLASH_GROUPGUARDLFGDEBUG1 = "/ggdebug"
-SlashCmdList.GROUPGUARDLFGDEBUG = function()
-  local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+SlashCmdList.GROUPGUARDLFGDEBUG = function(msg)
+  PrintDebugInfo(msg)
+end
 
-  print(addon:Tr("CMD_DEBUG_TITLE"))
-  print(addon:Tr("CMD_LFG_FRAME_STATE", "LFGListFrame", LFGListFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-  print(addon:Tr("CMD_LFG_FRAME_STATE", "SearchPanel", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-  print(addon:Tr("CMD_LFG_FRAME_STATE", "ApplicationViewer", viewer and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-  print(addon:Tr("CMD_LFG_FRAME_STATE", "Premade Groups Filter", addon.IsPremadeGroupsFilterLoaded and addon:IsPremadeGroupsFilterLoaded() and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
-
-  if viewer then
-    print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollFrame", viewer.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-    print(addon:Tr("CMD_LFG_FRAME_STATE", "viewer.ScrollBox", viewer.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-    print(addon:Tr("CMD_BUTTON_COUNT", "viewer.ScrollFrame", tostring(viewer.ScrollFrame and viewer.ScrollFrame.buttons and #viewer.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
-  end
-
-  if sp then
-    print(addon:Tr("CMD_LFG_FRAME_STATE", "search.ScrollFrame", sp.ScrollFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-    print(addon:Tr("CMD_LFG_FRAME_STATE", "search.ScrollBox", sp.ScrollBox and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-    print(addon:Tr("CMD_BUTTON_COUNT", "search.ScrollFrame", tostring(sp.ScrollFrame and sp.ScrollFrame.buttons and #sp.ScrollFrame.buttons or addon:Tr("CMD_NIL"))))
-  end
-
-  if addon.LFG_API_GetApplicants then
-    local apps = addon:LFG_API_GetApplicants() or {}
-    print(addon:Tr("CMD_APPLICANTS_COUNT", #apps))
-    if apps[1] and addon.LFG_API_GetApplicantInfo then
-      local info = addon:LFG_API_GetApplicantInfo(apps[1]) or nil
-      print(addon:Tr("CMD_FIRST_APPLICANT", tostring(apps[1]), tostring(info and info.numMembers or addon:Tr("CMD_NIL"))))
-    end
-  end
+SLASH_GROUPGUARDLFGPERF1 = "/ggperf"
+SlashCmdList.GROUPGUARDLFGPERF = function()
+  PrintPerfInfo()
 end

@@ -37,28 +37,19 @@ local RAID_ACTIVITY_MAP = {
 }
 
 local function CanReadValue(value)
-  if value == nil then return false end
-  if type(canaccessvalue) == "function" then
-    local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
-  end
-  if type(issecretvalue) == "function" then
-    local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
-  end
-  return true
+  return addon and addon.Safe and addon.Safe.CanReadValue and addon.Safe.CanReadValue(value) or value ~= nil
 end
 
 local function SafeNumber(value, fallback)
-  if value == nil or not CanReadValue(value) then return fallback end
+  if addon and addon.Safe and addon.Safe.Number then return addon.Safe.Number(value, fallback) end
+  if value == nil then return fallback end
   if type(value) == "number" then return value end
-  if type(value) == "string" then return tonumber(value) or fallback end
-  local ok, n = pcall(tonumber, value)
-  return (ok and type(n) == "number") and n or fallback
+  return tonumber(value) or fallback
 end
 
 local function SafeText(value)
-  if value == nil or not CanReadValue(value) then return nil end
+  if addon and addon.Safe and addon.Safe.Text then return addon.Safe.Text(value) end
+  if value == nil then return nil end
   if type(value) == "string" then return value end
   local ok, result = pcall(tostring, value)
   if ok then return result end
@@ -66,7 +57,7 @@ local function SafeText(value)
 end
 
 local function SafeBool(value)
-  if value == nil or not CanReadValue(value) then return false end
+  if addon and addon.Safe and addon.Safe.Bool then return addon.Safe.Bool(value) end
   return value == true
 end
 
@@ -694,58 +685,25 @@ end
 local function ReflowApplicantColumnHeaders(viewer, headerFrame)
   if not (viewer and headerFrame) then return false end
 
-  local nameHeader = FindHeaderFontStringByText(viewer, { NAME, "Name", "Ім'я", "Ім’я" })
-  local roleHeader = FindHeaderFontStringByText(viewer, { ROLE, "Role", "Роль", "R" })
+  -- Do not re-anchor Blizzard's stock Name/Role/iLvl/Rating columns.
+  -- The GG header is an overlay positioned relative to the stock iLvl header.
+  -- If the expected stock header cannot be measured, disable the GG header for
+  -- this draw pass instead of risking a broken LFG layout after a Blizzard patch
+  -- or another addon reflow.
   local ilvlHeader = FindHeaderFontStringByText(viewer, { ITEM_LEVEL_ABBR, "iLvl", "ilvl", "ILvl", "Item Level" })
-  local ratingHeader = FindHeaderFontStringByText(viewer, { RATING, "Rating", "Рейтинг" })
-
-  local nameOwner = GetHeaderOwner(nameHeader)
-  local roleOwner = GetHeaderOwner(roleHeader)
   local ilvlOwner = GetHeaderOwner(ilvlHeader)
-  local ratingOwner = GetHeaderOwner(ratingHeader)
-  if nameOwner == viewer then nameOwner = nil end
-  if roleOwner == viewer then roleOwner = nil end
   if ilvlOwner == viewer then ilvlOwner = nil end
-  if ratingOwner == viewer then ratingOwner = nil end
-  if not (nameOwner and roleOwner and ilvlOwner) then return false end
+  if not ilvlOwner then return false end
 
-  local roleWidth = 24
+  local headerHeight = GetHeaderHeight(ilvlOwner, 18)
   local ggWidth = GG_CONTEXT_COLUMN_WIDTH
-  local ilvlWidth = math.max(30, math.min(42, SafeGetWidthValue(ilvlOwner) or 36))
-  local ratingWidth = ratingOwner and math.max(42, math.min(56, SafeGetWidthValue(ratingOwner) or 48)) or nil
-  local headerHeight = GetHeaderHeight(ilvlOwner, GetHeaderHeight(roleOwner, 18))
-
-  -- Preserve original stock sizes once, but intentionally reflow the visible grid so values follow headers.
-  if not roleOwner._ggOriginalWidth then roleOwner._ggOriginalWidth = SafeGetWidthValue(roleOwner) end
-  if not ilvlOwner._ggOriginalWidth then ilvlOwner._ggOriginalWidth = SafeGetWidthValue(ilvlOwner) end
-  if ratingOwner and not ratingOwner._ggOriginalWidth then ratingOwner._ggOriginalWidth = SafeGetWidthValue(ratingOwner) end
-
-  SetHeaderText(roleHeader, roleOwner, "R")
-  SafeSetWidth(roleOwner, roleWidth)
-  SafeSetWidth(ilvlOwner, ilvlWidth)
-  if ratingOwner and ratingWidth then SafeSetWidth(ratingOwner, ratingWidth) end
-
-  SafeClearAllPoints(roleOwner)
-  SafeSetPoint(roleOwner, "LEFT", nameOwner, "RIGHT", 0, 0)
-
   SafeSetSize(headerFrame, ggWidth, headerHeight)
   SafeClearAllPoints(headerFrame)
-  SafeSetPoint(headerFrame, "LEFT", roleOwner, "RIGHT", 0, 0)
-
-  SafeClearAllPoints(ilvlOwner)
-  SafeSetPoint(ilvlOwner, "LEFT", headerFrame, "RIGHT", 0, 0)
-
-  if ratingOwner then
-    SafeClearAllPoints(ratingOwner)
-    SafeSetPoint(ratingOwner, "LEFT", ilvlOwner, "RIGHT", 0, 0)
-  end
+  SafeSetPoint(headerFrame, "RIGHT", ilvlOwner, "LEFT", -2, 0)
 
   viewer._ggApplicantColumnLayout = {
-    nameOwner = nameOwner,
-    roleOwner = roleOwner,
     ggOwner = headerFrame,
     ilvlOwner = ilvlOwner,
-    ratingOwner = ratingOwner,
   }
   return true
 end
@@ -776,17 +734,11 @@ end
 local function PositionApplicantRowColumns(row, contextFS)
   local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
   local layout = viewer and viewer._ggApplicantColumnLayout
-  if not (row and layout) then return false end
+  if not (row and layout and IsFontString(contextFS) and layout.ggOwner) then return false end
 
-  local roleRegion = FindRoleRegion(row)
-  local ilvl = FindItemLevelFontString(row)
-  local rating = FindRatingFontString(row)
-
-  if roleRegion and layout.roleOwner then PositionRegionUnderHeader(roleRegion, row, layout.roleOwner) end
-  if IsFontString(contextFS) and layout.ggOwner then PositionFontStringUnderHeader(contextFS, row, layout.ggOwner, 2) end
-  if ilvl and layout.ilvlOwner then PositionFontStringUnderHeader(ilvl, row, layout.ilvlOwner, 2) end
-  if rating and layout.ratingOwner then PositionFontStringUnderHeader(rating, row, layout.ratingOwner, 2) end
-  return true
+  -- Only move GroupGuard's own text. Stock role/iLvl/rating regions are left
+  -- untouched to avoid conflicting with Blizzard, RaiderIO, Plumber or PGF.
+  return PositionFontStringUnderHeader(contextFS, row, layout.ggOwner, 2)
 end
 
 local function EnsureApplicantContextHeader()
@@ -1103,7 +1055,7 @@ local function BuildApplicantContextMetric(applicantID, memberIdx)
   local activityIDs, entry = GetActiveActivityIDs()
   local member = ReadApplicantMember(applicantID, memberIdx)
   if not member and memberIdx ~= 1 then member = ReadApplicantMember(applicantID, 1) end
-  if not member and memberIdx ~= 0 then member = ReadApplicantMember(applicantID, 0) end
+  -- WoW LFG applicant member indexes are 1-based; never probe member index 0.
   if not member then return nil end
 
   local raidMode = false
