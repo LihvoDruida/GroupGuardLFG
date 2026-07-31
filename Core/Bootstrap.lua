@@ -516,8 +516,15 @@ function addon:GetUILanguage()
 end
 
 function addon:Tr(key, ...)
-  local lang = self:GetUILanguage()
-  local tableForLang = self.L10N and (self.L10N[lang] or self.L10N.enUS) or nil
+  -- PERF: Tr runs per row, per tooltip line and per flag reason.  Resolving
+  -- the language and the L10N table on every call was pure overhead; both are
+  -- cached and invalidated by SetUILanguage.
+  local tableForLang = self._trTable
+  if tableForLang == nil then
+    local lang = self:GetUILanguage()
+    tableForLang = self.L10N and (self.L10N[lang] or self.L10N.enUS) or false
+    self._trLang, self._trTable = lang, tableForLang
+  end
   local text = tableForLang and tableForLang[key]
   if text == nil and self.L10N and self.L10N.enUS then text = self.L10N.enUS[key] end
   if text == nil then text = tostring(key) end
@@ -539,6 +546,8 @@ function addon:SetUILanguage(lang)
   local oldDefaultUK = self.L10N and self.L10N.ukUA and self.L10N.ukUA.LFG_DECLINE_BUTTON_FMT
   local oldValue = self.db.lfg_button_text
   self.db.ui_language = lang
+  self._trLang, self._trTable = nil, nil
+  if self.ClearRuleMemo then self:ClearRuleMemo() end
   if oldValue == nil or oldValue == "" or oldValue == oldDefaultEN or oldValue == oldDefaultUK or oldValue == "Відхилити позначені (%d)" then
     self.db.lfg_button_text = self:DefaultLFGButtonText()
   end

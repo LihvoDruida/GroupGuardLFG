@@ -9,6 +9,7 @@ local addonName, addon = ...
 addon._instanceLockoutUntil = 0
 
 function addon:EnterInstanceLockout(seconds)
+  if self.InvalidateInstanceFlags then self:InvalidateInstanceFlags() end
   seconds = tonumber(seconds) or 1.5
   local now = self.SafeGetTime and self:SafeGetTime() or ((GetTime and GetTime()) or 0)
   self._instanceLockoutUntil = now + seconds
@@ -24,7 +25,17 @@ function addon:IsDisabledNow()
   return self:IsInRestrictedInstance()
 end
 
+-- PERF: IsDisabledNow() sits at the top of the group scan, the LFG tooltip
+-- path and every alert, and this used to fire up to four pcalls (including
+-- GetInstanceInfo) on each call.  Instance state only changes on zone events,
+-- so the result is cached until InvalidateInstanceFlags() is called.
+function addon:InvalidateInstanceFlags()
+  self._instanceFlagsCached = nil
+end
+
 function addon:DetectInstanceFlags()
+  local cached = self._instanceFlagsCached
+  if cached then return cached[1], cached[2] end
   local inInst, instType = false, nil
   if IsInInstance then
     local ok, inside, kind = pcall(IsInInstance)
@@ -62,6 +73,7 @@ function addon:DetectInstanceFlags()
     isBG, isArena = false, false
   end
 
+  self._instanceFlagsCached = { isBG, isArena }
   return isBG, isArena
 end
 
@@ -111,12 +123,17 @@ local CYRILLIC_LOWER_MAP = {
   ["Є"]="є", ["І"]="і", ["Ї"]="ї", ["Ґ"]="ґ",
 }
 
+-- PERF: this used to run one gsub per map entry (37 passes, 37 string
+-- allocations) on every name, comment and member the LFG panels scanned.
+-- One table-driven gsub does the same work in a single pass, and pure-ASCII
+-- text skips it entirely.
+local CYRILLIC_BYTES = "[\208-\210][\128-\191]"
+
 local function LowerLite(text)
-  text = string.lower(text or "")
-  for upper, lower in pairs(CYRILLIC_LOWER_MAP) do
-    text = text:gsub(upper, lower)
-  end
-  return text
+  if type(text) ~= "string" or text == "" then return "" end
+  text = string.lower(text)
+  if not string.find(text, "[\208-\210]") then return text end
+  return (string.gsub(text, CYRILLIC_BYTES, CYRILLIC_LOWER_MAP))
 end
 
 local function NormalizeForRules(value)
@@ -139,12 +156,27 @@ local function SplitRules(text)
   return rules
 end
 
+-- PERF: the same names and comments are re-tested on every scroll tick and
+-- every panel refresh.  A bounded memo keyed on the raw text turns repeated
+-- passes into a single table lookup.  It is dropped whenever the rules or the
+-- language settings change.
+local RULE_MEMO_LIMIT = 512
+addon._ruleMemo = addon._ruleMemo or {}
+addon._ruleMemoCount = addon._ruleMemoCount or 0
+
+function addon:ClearRuleMemo()
+  self._ruleMemo = {}
+  self._ruleMemoCount = 0
+end
+
 function addon:RebuildFlagRules()
   self._flagRules = SplitRules(self.db and self.db.flag_rules or "")
+  self:ClearRuleMemo()
 end
 
 function addon:RebuildLanguageRules()
   self._languageRules = SplitRules(self.db and self.db.language_detect_rules or "")
+  self:ClearRuleMemo()
 end
 
 local LANGUAGE_SCRIPT_DETECTORS = {
@@ -200,7 +232,15 @@ function addon:IsLanguageFlaggedText(text)
   return (self:GetLanguageKeywordReason(text) ~= nil) or (self:GetLanguageScriptReason(text) ~= nil)
 end
 
+local FALSE_RESULT = { false }
+
 function addon:GetFlagReason(text)
+  local memoKey = type(text) == "string" and text ~= "" and text or nil
+  if memoKey then
+    local memo = self._ruleMemo[memoKey]
+    if memo then return memo[1], memo[2] end
+  end
+
   local haystack = NormalizeForRules(text)
   if not haystack then return false, nil end
 
@@ -210,18 +250,27 @@ function addon:GetFlagReason(text)
     rules = self._flagRules
   end
 
-  for _, rule in ipairs(rules or {}) do
+  local flagged, reason = false, nil
+  for i = 1, #rules do
+    local rule = rules[i]
     if rule ~= "" and string.find(haystack, rule, 1, true) then
-      return true, self:Tr("REASON_RULE", rule)
+      flagged, reason = true, self:Tr("REASON_RULE", rule)
+      break
     end
   end
 
-  local languageReason = self:GetLanguageKeywordReason(text) or self:GetLanguageScriptReason(text)
-  if languageReason then
-    return true, languageReason
+  if not flagged then
+    reason = self:GetLanguageKeywordReason(text) or self:GetLanguageScriptReason(text)
+    if reason then flagged = true end
   end
 
-  return false, nil
+  if memoKey then
+    if self._ruleMemoCount >= RULE_MEMO_LIMIT then self:ClearRuleMemo() end
+    if self._ruleMemo[memoKey] == nil then self._ruleMemoCount = self._ruleMemoCount + 1 end
+    self._ruleMemo[memoKey] = flagged and { true, reason } or FALSE_RESULT
+  end
+
+  return flagged, reason
 end
 
 function addon:IsFlaggedText(text)
@@ -238,6 +287,7 @@ end
 
 function addon:RebuildCaches()
   self.realm_name = GetRealmName() or self.realm_name or ""
+  self:InvalidateInstanceFlags()
   self:RebuildFlagRules()
   self:RebuildLanguageRules()
 end

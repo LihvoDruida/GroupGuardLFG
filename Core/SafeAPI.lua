@@ -200,11 +200,16 @@ end
 function addon:LFG_API_GetApplicantInfo(applicantID)
   applicantID = self:SafeNumber(applicantID, nil)
   if not (C_LFGList and type(C_LFGList.GetApplicantInfo) == "function" and applicantID) then return nil end
-  local values = { pcall(C_LFGList.GetApplicantInfo, applicantID) }
-  if not values[1] then return nil end
+  -- Retail returns a table; only the legacy multi-return path needs the
+  -- vararg capture below.
+  local ok, first = pcall(C_LFGList.GetApplicantInfo, applicantID)
+  if not ok then return nil end
+  if type(first) ~= "table" then
+    return self:_LFG_API_ApplicantInfoPositional(applicantID)
+  end
 
-  if type(values[2]) == "table" then
-    local t = values[2]
+  do
+    local t = first
     return {
       applicantID = self:SafeNumber(t.applicantID or t.id or applicantID, applicantID),
       applicationStatus = self:SafeText(t.applicationStatus or t.status),
@@ -216,6 +221,13 @@ function addon:LFG_API_GetApplicantInfo(applicantID)
       raw = t,
     }
   end
+end
+
+-- Legacy/foreign clients where GetApplicantInfo returns positional values.
+-- Kept off the hot path so retail never pays for the vararg capture.
+function addon:_LFG_API_ApplicantInfoPositional(applicantID)
+  local values = { pcall(C_LFGList.GetApplicantInfo, applicantID) }
+  if not values[1] then return nil end
 
   local info = {
     applicantID = self:SafeNumber(values[2], applicantID) or applicantID,
@@ -246,12 +258,16 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not (C_LFGList and type(C_LFGList.GetApplicantMemberInfo) == "function" and applicantID and memberIndex and memberIndex >= 1) then return nil end
-  local values = { pcall(C_LFGList.GetApplicantMemberInfo, applicantID, memberIndex) }
-  if not values[1] then return nil end
+  -- PERF: this is called for every member of every visible applicant on every
+  -- refresh.  Capturing the returns in explicit locals avoids allocating a
+  -- vararg table per call.
+  local ok, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17 =
+    pcall(C_LFGList.GetApplicantMemberInfo, applicantID, memberIndex)
+  if not ok then return nil end
 
   local m
-  if type(values[2]) == "table" then
-    local t = values[2]
+  if type(v1) == "table" then
+    local t = v1
     m = {
       name = t.name or t.memberName or t.playerName or t.fullName,
       classFilename = t.classFilename or t.classFileName or t.classFile or t.class,
@@ -274,23 +290,23 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
     }
   else
     m = {
-      name = values[2],
-      classFilename = values[3],
-      localizedClass = values[4],
-      level = values[5],
-      itemLevel = values[6],
-      honorLevel = values[7],
-      tank = values[8],
-      healer = values[9],
-      damage = values[10],
-      assignedRole = values[11],
-      relationship = values[12],
-      dungeonScore = values[13],
-      pvpItemLevel = values[14],
-      factionGroup = values[15],
-      raceID = values[16],
-      specID = values[17],
-      isLeaver = values[18],
+      name = v1,
+      classFilename = v2,
+      localizedClass = v3,
+      level = v4,
+      itemLevel = v5,
+      honorLevel = v6,
+      tank = v7,
+      healer = v8,
+      damage = v9,
+      assignedRole = v10,
+      relationship = v11,
+      dungeonScore = v12,
+      pvpItemLevel = v13,
+      factionGroup = v14,
+      raceID = v15,
+      specID = v16,
+      isLeaver = v17,
     }
   end
 
@@ -408,25 +424,37 @@ end
 
 -- Short-lived LFG API cache. Blizzard LFG fires many update/scroll hooks in bursts;
 -- caching avoids repeated protected API calls for the same visible rows.
+-- PERF: values and expiry timestamps live in two parallel tables so a cache
+-- write does not allocate a wrapper table on every miss.
 local GG_NIL = {}
 local function CacheNow() return (GetTime and GetTime()) or 0 end
 local function CacheBucket(self, name)
   self._lfgAPICache = self._lfgAPICache or {}
   local bucket = self._lfgAPICache[name]
-  if not bucket then bucket = {}; self._lfgAPICache[name] = bucket end
+  if not bucket then
+    bucket = { values = {}, expires = {} }
+    self._lfgAPICache[name] = bucket
+  end
   return bucket
 end
 local function CacheGet(self, name, key)
   local bucket = self._lfgAPICache and self._lfgAPICache[name]
-  local item = bucket and bucket[key]
-  if item and item.expires >= CacheNow() then
-    return true, item.value == GG_NIL and nil or item.value
+  if not bucket then return false, nil end
+  local expires = bucket.expires[key]
+  if expires and expires >= CacheNow() then
+    local value = bucket.values[key]
+    return true, value ~= GG_NIL and value or nil
   end
-  if bucket then bucket[key] = nil end
+  if expires then
+    bucket.values[key] = nil
+    bucket.expires[key] = nil
+  end
   return false, nil
 end
 local function CacheSet(self, name, key, value, ttl)
-  CacheBucket(self, name)[key] = { value = value == nil and GG_NIL or value, expires = CacheNow() + (ttl or 0.6) }
+  local bucket = CacheBucket(self, name)
+  bucket.values[key] = value == nil and GG_NIL or value
+  bucket.expires[key] = CacheNow() + (ttl or 0.6)
   return value
 end
 
@@ -460,7 +488,7 @@ local _rawGetApplicantInfo = addon.LFG_API_GetApplicantInfo
 function addon:LFG_API_GetApplicantInfo(applicantID)
   applicantID = self:SafeNumber(applicantID, nil)
   if not applicantID then return nil end
-  local key = tostring(applicantID)
+  local key = applicantID
   local hit, value = CacheGet(self, "applicantInfo", key)
   if hit then return value end
   return CacheSet(self, "applicantInfo", key, _rawGetApplicantInfo(self, applicantID), 0.65)
@@ -471,7 +499,7 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not applicantID or not memberIndex or memberIndex < 1 then return nil end
-  local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
+  local key = (applicantID * 8) + memberIndex
   local hit, value = CacheGet(self, "memberInfo", key)
   if hit then return value end
   return CacheSet(self, "memberInfo", key, _rawGetApplicantMemberInfo(self, applicantID, memberIndex), 0.65)
@@ -488,7 +516,7 @@ local _rawGetActivityInfoTable = addon.LFG_API_GetActivityInfoTable
 function addon:LFG_API_GetActivityInfoTable(activityID)
   activityID = self:SafeNumber(activityID, nil)
   if not activityID then return nil end
-  local key = tostring(activityID)
+  local key = activityID
   local hit, value = CacheGet(self, "activityInfo", key)
   if hit then return value end
   return CacheSet(self, "activityInfo", key, _rawGetActivityInfoTable(self, activityID), 120)
@@ -511,7 +539,7 @@ function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not applicantID or not memberIndex or memberIndex < 1 then return nil end
-  local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
+  local key = (applicantID * 8) + memberIndex
   local hit, value = CacheGet(self, "bestScore", key)
   if hit then return value end
   return CacheSet(self, "bestScore", key, _rawGetBestScore(self, applicantID, memberIndex), 2.5)
@@ -521,7 +549,7 @@ local _rawGetSearchResultInfo = addon.LFG_API_GetSearchResultInfo
 function addon:LFG_API_GetSearchResultInfo(resultID)
   resultID = self:SafeNumber(resultID, nil)
   if not resultID then return nil, false end
-  local key = tostring(resultID)
+  local key = resultID
   local hit, value = CacheGet(self, "searchInfo", key)
   if hit then return value and value[1], value and value[2] or false end
   local info, ok = _rawGetSearchResultInfo(self, resultID)
@@ -534,7 +562,7 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   resultID = self:SafeNumber(resultID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not resultID or not memberIndex or memberIndex < 1 then return nil end
-  local key = tostring(resultID) .. ":" .. tostring(memberIndex)
+  local key = (resultID * 64) + memberIndex
   local hit, value = CacheGet(self, "searchPlayer", key)
   if hit then return value end
   return CacheSet(self, "searchPlayer", key, _rawGetSearchResultPlayerInfo(self, resultID, memberIndex), 0.65)

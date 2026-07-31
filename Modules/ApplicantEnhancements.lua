@@ -914,9 +914,42 @@ local function SetApplicantLayoutReason(viewer, reason)
   if viewer then viewer._ggApplicantColumnLayoutReason = reason or GG_LAYOUT_REASONS.DISABLED end
 end
 
+-- UX: the GG column shows values like "+10" or "3/8" with no explanation
+-- anywhere in the UI.  APPLICANT_CONTEXT_COLUMN_TOOLTIP already existed in
+-- both locales but was never wired up, so the header now answers "what is
+-- this column?" on hover.  Motion only: clicks still pass through, matching
+-- Blizzard's own (disabled) column header buttons.
+local function EnableHeaderTooltip(frame)
+  if not frame or frame._ggHeaderTooltipHooked then return end
+  frame._ggHeaderTooltipHooked = true
+  if type(frame.SetMouseClickEnabled) == "function" then pcall(frame.SetMouseClickEnabled, frame, false) end
+  if type(frame.SetMouseMotionEnabled) == "function" then
+    pcall(frame.SetMouseMotionEnabled, frame, true)
+  elseif type(frame.EnableMouse) == "function" then
+    pcall(frame.EnableMouse, frame, true)
+  end
+  if type(frame.HookScript) ~= "function" then return end
+  pcall(frame.HookScript, frame, "OnEnter", function(self)
+    if not GameTooltip or type(GameTooltip.SetOwner) ~= "function" then return end
+    local title = (addon and addon.Tr and addon:Tr("APPLICANT_CONTEXT_COLUMN")) or GG_CONTEXT_HEADER_TEXT
+    local body = addon and addon.Tr and addon:Tr("APPLICANT_CONTEXT_COLUMN_TOOLTIP") or nil
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine(title, 1.0, 0.82, 0.0)
+    if body and body ~= "APPLICANT_CONTEXT_COLUMN_TOOLTIP" then
+      GameTooltip:AddLine(body, 0.86, 0.86, 0.86, true)
+    end
+    GameTooltip:Show()
+  end)
+  pcall(frame.HookScript, frame, "OnLeave", function()
+    if GameTooltip and type(GameTooltip.Hide) == "function" then pcall(GameTooltip.Hide, GameTooltip) end
+  end)
+end
+
 local function StyleApplicantContextHeaderFrame(frame, templateUsed)
   if not frame then return end
   SafeEnableMouse(frame, false)
+  EnableHeaderTooltip(frame)
   -- Prefer the native column style when available.
   if not templateUsed then
     SafeSetBackdrop(frame, {

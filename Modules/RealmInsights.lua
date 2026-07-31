@@ -204,17 +204,37 @@ local function HideRealmBadge(row)
   end
 end
 
-local function ScheduleRealmBadgeRefresh(row)
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, function()
-      if not row or not addon or not addon.LFG_PaintRealmBadge then return end
-      local rid = GetResultIDFromRow(row)
-      addon:LFG_PaintRealmBadge(row, rid)
-    end)
-  elseif addon and addon.LFG_PaintRealmBadge then
-    local rid = GetResultIDFromRow(row)
-    addon:LFG_PaintRealmBadge(row, rid)
+-- PERF: this used to allocate a closure and a C_Timer per row on every OnShow
+-- and every SetElementData.  Scrolling a full search panel therefore created
+-- dozens of one-shot timers per frame.  Rows are collected into a pending set
+-- and repainted once on the next tick instead.
+local pendingRealmRows = {}
+local realmRepaintScheduled = false
+
+local function FlushRealmBadgeRefresh()
+  realmRepaintScheduled = false
+  local rows = pendingRealmRows
+  pendingRealmRows = {}
+  if not (addon and addon.LFG_PaintRealmBadge) then return end
+  for row in pairs(rows) do
+    if row.IsShown and row:IsShown() then
+      addon:LFG_PaintRealmBadge(row, GetResultIDFromRow(row))
+    end
   end
+end
+
+local function ScheduleRealmBadgeRefresh(row)
+  if not row then return end
+  if not (C_Timer and C_Timer.After) then
+    if addon and addon.LFG_PaintRealmBadge then
+      addon:LFG_PaintRealmBadge(row, GetResultIDFromRow(row))
+    end
+    return
+  end
+  pendingRealmRows[row] = true
+  if realmRepaintScheduled then return end
+  realmRepaintScheduled = true
+  C_Timer.After(0, FlushRealmBadgeRefresh)
 end
 
 local function HookRealmRow(row)
