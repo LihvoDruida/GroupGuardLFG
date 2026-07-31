@@ -578,6 +578,31 @@ local function SafeGetWidthValue(obj)
   return (ok and type(value) == "number") and value or nil
 end
 
+-- GetLeft()/GetRight()/GetWidth() are expressed in the *object's own* coordinate
+-- space.  The column headers live on the ApplicationViewer while the applicant
+-- rows live inside the ScrollBox, so the two sets of numbers are only
+-- comparable after they are converted to screen units.  Mixing them was the
+-- root cause of the shifted iLvl/Rating values.
+local function SafeGetEffectiveScale(obj)
+  if obj and type(obj.GetEffectiveScale) == "function" then
+    local ok, value = pcall(obj.GetEffectiveScale, obj)
+    if ok and type(value) == "number" and value > 0 then return value end
+  end
+  return 1
+end
+
+local function ScreenLeft(obj)
+  local value = SafeGetLeft(obj)
+  if not value then return nil end
+  return value * SafeGetEffectiveScale(obj)
+end
+
+local function ScreenRight(obj)
+  local value = SafeGetRight(obj)
+  if not value then return nil end
+  return value * SafeGetEffectiveScale(obj)
+end
+
 local function SafeSetDrawLayer(region, layer, sublevel)
   if region and type(region.SetDrawLayer) == "function" then
     pcall(region.SetDrawLayer, region, layer, sublevel or 0)
@@ -676,73 +701,47 @@ end
 
 local function DetectRoleIconsForApplicantRow(frame)
   if not frame then return nil, GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS end
-  local icons, seen = {}, {}
+  local icons = {}
 
-  local orderedKeys = {
-    { "TankIcon", 1 }, { "TankRoleIcon", 1 }, { "RoleIconTank", 1 }, { "tankIcon", 1 },
-    { "HealerIcon", 2 }, { "HealIcon", 2 }, { "HealerRoleIcon", 2 }, { "RoleIconHealer", 2 }, { "healerIcon", 2 },
-    { "DamagerIcon", 3 }, { "DamageIcon", 3 }, { "DPSIcon", 3 }, { "DpsIcon", 3 }, { "RoleIconDamager", 3 }, { "damagerIcon", 3 }, { "dpsIcon", 3 },
-    { "Role", 50 }, { "RoleIcon", 50 }, { "RoleTexture", 50 }, { "RoleIconTexture", 50 }, { "role", 50 }, { "roleIcon", 50 }, { "Icon", 50 }, { "IconTexture", 50 },
-  }
-  for _, item in ipairs(orderedKeys) do
-    local obj = frame[item[1]]
-    AddRoleIconCandidate(icons, seen, obj, item[2], item[1])
+  -- Blizzard_GroupFinder exposes the applicant role buttons through stable
+  -- parent keys (RoleIcon1..RoleIcon3).  Use them directly instead of scanning
+  -- regions by size/texture: the geometric scan picked up unrelated art, and
+  -- iterating the frame table with pairs() is no longer safe in 12.x because of
+  -- private script objects.
+  for index = 1, GG_ROLE_ICON_MAX_COUNT do
+    local obj = frame["RoleIcon" .. index]
+    if obj and CanPositionObject(obj) and IsRegionShown(obj) then
+      icons[#icons + 1] = obj
+    end
   end
 
-  -- Some Blizzard rows expose role textures with generated field names. Prefer explicit role/tank/heal/dps keys.
-  if type(frame) == "table" then
-    for key, value in pairs(frame) do
-      if type(key) == "string" and type(value) == "table" then
-        local priority = GuessRolePriorityFromText(key)
-        if priority or key:lower():find("role", 1, true) then
-          AddRoleIconCandidate(icons, seen, value, priority or 50, key)
-        end
+  if #icons == 0 then
+    -- Legacy/other clients: still only explicit, named keys.
+    local orderedKeys = {
+      { "TankIcon", 1 }, { "TankRoleIcon", 1 }, { "RoleIconTank", 1 },
+      { "HealerIcon", 2 }, { "HealIcon", 2 }, { "HealerRoleIcon", 2 }, { "RoleIconHealer", 2 },
+      { "DamagerIcon", 3 }, { "DamageIcon", 3 }, { "DPSIcon", 3 }, { "DpsIcon", 3 }, { "RoleIconDamager", 3 },
+      { "RoleIcon", 50 }, { "RoleTexture", 50 }, { "RoleIconTexture", 50 },
+    }
+    local seen = {}
+    local candidates = {}
+    for _, item in ipairs(orderedKeys) do
+      local obj = frame[item[1]]
+      if obj and not seen[obj] and CanPositionObject(obj) and IsRegionShown(obj) and not IsFontString(obj) then
+        seen[obj] = true
+        candidates[#candidates + 1] = { region = obj, priority = item[2], left = SafeGetLeft(obj) or 0 }
       end
     end
-  end
-
-  local ilvl = FindItemLevelFontString(frame)
-  local ilvlLeft = SafeGetLeft(ilvl)
-  local frameLeft = SafeGetLeft(frame)
-  local frameRight = SafeGetRight(frame)
-
-  local function considerGeometry(obj)
-    if not IsLikelyRoleRegion(obj) or seen[obj] then return end
-    local left, right = SafeGetLeft(obj), SafeGetRight(obj)
-    local width = SafeGetWidthValue(obj)
-    if not left or not right or not width or width < 8 or width > 32 then return end
-    if ilvlLeft and right >= ilvlLeft then return end
-    if frameLeft and left < frameLeft then return end
-    if frameRight and right > frameRight then return end
-    -- Avoid very-left name/class art; role icons sit close to the stock role/iLvl band.
-    if ilvlLeft and (ilvlLeft - right) > 76 then return end
-    AddRoleIconCandidate(icons, seen, obj, GuessRolePriorityFromText(GetRegionTextureHint(obj)) or 50, "geometry")
-  end
-
-  if type(frame.GetRegions) == "function" then
-    local ok, regions = pcall(function() return { frame:GetRegions() } end)
-    if ok then
-      for _, region in ipairs(regions) do considerGeometry(region) end
-    end
-  end
-  if type(frame.GetChildren) == "function" then
-    local ok, children = pcall(function() return { frame:GetChildren() } end)
-    if ok then
-      for _, child in ipairs(children) do considerGeometry(child) end
-    end
+    table.sort(candidates, function(a, b)
+      if a.priority ~= b.priority then return a.priority < b.priority end
+      return (a.left or 0) < (b.left or 0)
+    end)
+    for _, entry in ipairs(candidates) do icons[#icons + 1] = entry.region end
   end
 
   if #icons == 0 then return nil, GG_LAYOUT_REASONS.MISSING_ROW_ROLE_ICONS end
   if #icons > GG_ROLE_ICON_MAX_COUNT then return nil, GG_LAYOUT_REASONS.UNRECOGNIZED_ROLE_ICONS end
-
-  table.sort(icons, function(a, b)
-    if a.priority ~= b.priority then return a.priority < b.priority end
-    return (a.left or 0) < (b.left or 0)
-  end)
-
-  local result = {}
-  for i = 1, #icons do result[i] = icons[i].region end
-  return result, nil
+  return icons, nil
 end
 
 local function FindRoleRegion(frame)
@@ -750,46 +749,35 @@ local function FindRoleRegion(frame)
   return type(icons) == "table" and icons[1] or nil
 end
 
-local function FindNumericFontString(frame, minValue, maxValue, preferSmall)
-  if not frame or type(frame.GetRegions) ~= "function" then return nil end
-  local ok, regions = pcall(function() return { frame:GetRegions() } end)
-  if not ok or type(regions) ~= "table" then return nil end
-  local best
-  for _, region in ipairs(regions) do
-    if IsFontString(region) and region ~= frame._ggContextColumnFS then
-      local text = SafeGetText(region)
-      local isContextLike = text and (text:find("/", 1, true) or text:find("+", 1, true) or text:find("⚠", 1, true))
-      local n = (text and not isContextLike) and tonumber((text:gsub("[^%d]", ""))) or nil
-      if n and n >= minValue and n <= maxValue then
-        if not best then best = region end
-        if preferSmall then return region end
-      end
-    end
-  end
-  return best
-end
-
-FindItemLevelFontString = function(frame)
+-- Resolve the stock data font strings by parent key only.  The previous
+-- implementation fell back to "find any region whose digits land in range",
+-- which happily returned the Mythic+ rating font string for the iLvl column
+-- (and vice versa) and produced the swapped/garbled numbers in the grid.
+local function FindFontStringByKeys(frame, keys)
   if not frame then return nil end
-  local candidates = {
-    frame.ItemLevel, frame.ItemLevelText, frame.Ilvl, frame.iLvl, frame.ILvl,
-    frame.ItemLevelFontString, frame.PlayerItemLevel, frame.PlayerItemLevelText,
-  }
-  for _, fs in ipairs(candidates) do
+  for _, key in ipairs(keys) do
+    local fs = frame[key]
     if IsFontString(fs) then return fs end
   end
-  -- Item level is normally a 2-3 digit value, while M+ rating is usually four digits.
-  return FindNumericFontString(frame, 1, 999, true)
+  return nil
+end
+
+local ILVL_FONTSTRING_KEYS = {
+  "ItemLevel", "ItemLevelText", "Ilvl", "iLvl", "ILvl",
+  "ItemLevelFontString", "PlayerItemLevel", "PlayerItemLevelText",
+}
+local RATING_FONTSTRING_KEYS = {
+  "Rating", "RatingText", "Score", "ScoreText", "DungeonScore", "DungeonScoreText",
+}
+
+FindItemLevelFontString = function(frame)
+  return FindFontStringByKeys(frame, ILVL_FONTSTRING_KEYS)
 end
 
 local function FindRatingFontString(frame)
-  if not frame then return nil end
-  local candidates = { frame.Rating, frame.RatingText, frame.Score, frame.ScoreText, frame.DungeonScore, frame.DungeonScoreText }
-  for _, fs in ipairs(candidates) do
-    if IsFontString(fs) then return fs end
-  end
-  return FindNumericFontString(frame, 1000, 9999, true)
+  return FindFontStringByKeys(frame, RATING_FONTSTRING_KEYS)
 end
+
 
 local function FindHeaderFontStringByText(parent, texts)
   if not parent then return nil end
@@ -867,17 +855,28 @@ local function SafeGetNumPoints(obj)
   return (ok and type(value) == "number") and value or 0
 end
 
+-- IMPORTANT: only geometry is ever saved/restored here.
+--
+-- The previous version also captured GetText() and wrote it back on restore.
+-- ScrollBox rows are recycled, and the saved state survived until the next
+-- restore, so a row could be handed a *different* applicant and then have the
+-- previous applicant's item level / rating pushed back onto it after Blizzard
+-- had already filled in the correct numbers.  That is the "shifted data" in the
+-- applicant grid.  Blizzard owns the text of its own font strings; we only
+-- move them.
 local function SaveObjectLayout(obj)
   if not obj or APPLICANT_LAYOUT_RESTORE[obj] then return end
+  local isFontString = IsFontString(obj)
   local state = {
-    width = SafeGetWidthValue(obj),
-    height = SafeGetHeightValue(obj),
+    isFontString = isFontString,
     points = {},
-    shown = nil,
   }
-  if type(obj.IsShown) == "function" then
-    local okShown, shown = pcall(obj.IsShown, obj)
-    if okShown then state.shown = shown and true or false end
+  -- Blizzard's applicant font strings auto-size to their text.  Writing a
+  -- measured width back on restore froze them at whatever the previous value
+  -- happened to be and truncated longer numbers, so only frames keep a size.
+  if not isFontString then
+    state.width = SafeGetWidthValue(obj)
+    state.height = SafeGetHeightValue(obj)
   end
   if type(obj.GetPoint) == "function" then
     local count = SafeGetNumPoints(obj)
@@ -888,12 +887,6 @@ local function SaveObjectLayout(obj)
       end
     end
   end
-  if IsFontString(obj) then
-    state.text = SafeGetText(obj)
-  elseif type(obj.GetText) == "function" then
-    local ok, text = pcall(obj.GetText, obj)
-    if ok then state.text = SafeText(text) end
-  end
   APPLICANT_LAYOUT_RESTORE[obj] = state
 end
 
@@ -901,7 +894,11 @@ local function RestoreObjectLayout(obj)
   local state = obj and APPLICANT_LAYOUT_RESTORE[obj]
   if not state then return end
   SafeClearAllPoints(obj)
-  if state.width and state.height and type(obj.SetSize) == "function" then
+  if state.isFontString then
+    -- Hand auto-sizing back to the font string.
+    SafeSetWidth(obj, 0)
+    SafeSetHeight(obj, 0)
+  elseif state.width and state.height and type(obj.SetSize) == "function" then
     SafeSetSize(obj, state.width, state.height)
   else
     if state.width then SafeSetWidth(obj, state.width) end
@@ -909,20 +906,6 @@ local function RestoreObjectLayout(obj)
   end
   for _, point in ipairs(state.points or {}) do
     SafeSetPoint(obj, point[1], point[2], point[3], point[4], point[5])
-  end
-  if state.text ~= nil then
-    if IsFontString(obj) then
-      SafeSetText(obj, state.text)
-    elseif type(obj.SetText) == "function" then
-      pcall(obj.SetText, obj, state.text)
-    end
-  end
-  if state.shown ~= nil then
-    if state.shown and type(obj.Show) == "function" then
-      pcall(obj.Show, obj)
-    elseif not state.shown and type(obj.Hide) == "function" then
-      pcall(obj.Hide, obj)
-    end
   end
   APPLICANT_LAYOUT_RESTORE[obj] = nil
 end
@@ -1043,19 +1026,48 @@ local function HeaderRecordIsValid(record, viewer, required)
   return true
 end
 
+local RestoreHeaderRecord
+
+-- Prefer the stable Blizzard parent keys; the localized-label search is only a
+-- fallback for older/modified clients.  Matching on text also matched headers
+-- that were currently hidden, which is why a Rating column was reserved on
+-- listings that have no rating at all.
+local function MakeHeaderRecordFromButton(viewer, button, fallbackTexts)
+  if not (button and CanUseHeaderOwner(button, viewer)) then
+    return MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, fallbackTexts))
+  end
+  local label = button.Label
+  if not IsFontString(label) and type(button.GetFontString) == "function" then
+    local ok, fs = pcall(button.GetFontString, button)
+    if ok and IsFontString(fs) then label = fs end
+  end
+  return { text = IsFontString(label) and label or nil, owner = button }
+end
+
 local function ResolveApplicantColumnHeaders(viewer)
   if not viewer then return nil, GG_LAYOUT_REASONS.UNMEASURABLE end
+  local ratingShown = viewer.RatingColumnHeader ~= nil and IsRegionShown(viewer.RatingColumnHeader) or false
   local cached = viewer._ggApplicantHeaderRefs
-  if cached and HeaderRecordIsValid(cached.name, viewer, true) and HeaderRecordIsValid(cached.role, viewer, true) and HeaderRecordIsValid(cached.ilvl, viewer, true) and HeaderRecordIsValid(cached.rating, viewer, false) then
+  if cached and cached.ratingShown == ratingShown
+    and HeaderRecordIsValid(cached.name, viewer, true) and HeaderRecordIsValid(cached.role, viewer, true)
+    and HeaderRecordIsValid(cached.ilvl, viewer, true) and HeaderRecordIsValid(cached.rating, viewer, false) then
     return cached, nil
   end
 
   local refs = {
-    name = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { NAME, "Name", "Ім'я", "Ім’я", "Імя" })),
-    role = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ROLE, "Role", "R", "Роль" })),
-    ilvl = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { ITEM_LEVEL_ABBR, "iLvl", "ilvl", "ILvl", "Item Level", "Рівень предметів" })),
-    rating = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { RATING, "Rating", "Score", "Рейтинг" })),
+    ratingShown = ratingShown,
+    name = MakeHeaderRecordFromButton(viewer, viewer.NameColumnHeader, { NAME, "Name", "Ім'я", "Ім’я", "Імя" }),
+    role = MakeHeaderRecordFromButton(viewer, viewer.RoleColumnHeader, { ROLE, "Role", "R", "Роль" }),
+    ilvl = MakeHeaderRecordFromButton(viewer, viewer.ItemLevelColumnHeader, { ITEM_LEVEL_ABBR, "iLvl", "ilvl", "ILvl", "Item Level", "Рівень предметів" }),
+    rating = nil,
   }
+  if ratingShown then
+    refs.rating = MakeHeaderRecordFromButton(viewer, viewer.RatingColumnHeader, { RATING, "Rating", "Score", "Рейтинг" })
+  elseif viewer.RatingColumnHeader == nil then
+    -- Unknown client layout: fall back to the text search.
+    local byText = MakeHeaderRecord(viewer, FindHeaderFontStringByText(viewer, { RATING, "Rating", "Score", "Рейтинг" }))
+    if byText and byText.owner and IsRegionShown(byText.owner) then refs.rating = byText end
+  end
 
   viewer._ggApplicantColumnFound = {
     name = refs.name and refs.name.owner ~= nil,
@@ -1068,6 +1080,17 @@ local function ResolveApplicantColumnHeaders(viewer)
   if not HeaderRecordIsValid(refs.role, viewer, true) then return nil, GG_LAYOUT_REASONS.MISSING_ROLE end
   if not HeaderRecordIsValid(refs.ilvl, viewer, true) then return nil, GG_LAYOUT_REASONS.MISSING_ILVL end
   if not HeaderRecordIsValid(refs.rating, viewer, false) then refs.rating = nil end
+
+  -- The column set changed (e.g. Rating appeared/disappeared).  Give the old
+  -- headers their stock geometry back before we adopt the new set, otherwise
+  -- a dropped header would keep our width and anchor forever.
+  local previous = viewer._ggApplicantHeaderRefs
+  if previous and previous ~= refs then
+    RestoreHeaderRecord(previous.name)
+    RestoreHeaderRecord(previous.role)
+    RestoreHeaderRecord(previous.ilvl)
+    RestoreHeaderRecord(previous.rating)
+  end
 
   viewer._ggApplicantHeaderRefs = refs
   return refs, nil
@@ -1083,7 +1106,7 @@ local function SaveHeaderRecord(record)
   end
 end
 
-local function RestoreHeaderRecord(record)
+RestoreHeaderRecord = function(record)
   if not record then return end
   RestoreObjectLayout(record.owner)
   RestoreObjectLayout(record.text)
@@ -1103,6 +1126,7 @@ local function RestoreApplicantHeaderGrid(viewer)
     RestoreHeaderRecord(refs.rating)
   end
   viewer._ggApplicantColumnLayout = nil
+  viewer._ggHeaderSignature = nil
   viewer._ggRoleStackEnabled = nil
   viewer._ggRoleIconRows = nil
   viewer._ggMaxRoleIconsDetected = nil
@@ -1209,7 +1233,9 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
     ok = SafeSetPoint(ratingOwner, "LEFT", ilvlOwner, "RIGHT", 0, 0) and ok
   end
 
-  SetHeaderText(refs.role.text, roleOwner, GG_ROLE_HEADER_TEXT)
+  -- The stock Role header keeps Blizzard's own localized label; overwriting it
+  -- with a hardcoded English string broke non-enUS clients and forced us to
+  -- restore text we do not own.
   SetHeaderText(viewer._ggContextHeader, headerFrame, GG_CONTEXT_HEADER_TEXT)
 
   if not ok then
@@ -1217,7 +1243,16 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
     return false
   end
 
-  local roleLeft = nameLeft + nameWidth
+  -- Widths above are in the header's own coordinate space (that is what
+  -- SetWidth expects).  The column bands, however, are consumed by applicant
+  -- rows that live under the ScrollBox and may sit at a different effective
+  -- scale, so they are stored in screen units and converted back per row.
+  local headerScale = SafeGetEffectiveScale(nameOwner)
+  local nameScreenLeft = nameLeft * headerScale
+  local function Band(offset, width)
+    return { left = nameScreenLeft + (offset * headerScale), right = nameScreenLeft + ((offset + width) * headerScale) }
+  end
+  local roleLeft = nameWidth
   local ggLeft = roleLeft + roleWidth
   local ilvlLeft = ggLeft + ggWidth
   local ratingLeft = ilvlLeft + ilvlWidth
@@ -1230,11 +1265,11 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
     ratingOwner = ratingOwner,
     widths = { name = nameWidth, role = roleWidth, gg = ggWidth, ilvl = ilvlWidth, rating = ratingOwner and ratingWidth or 0 },
     columns = {
-      name = { left = nameLeft, right = nameLeft + nameWidth },
-      role = { left = roleLeft, right = roleLeft + roleWidth },
-      gg = { left = ggLeft, right = ggLeft + ggWidth },
-      ilvl = { left = ilvlLeft, right = ilvlLeft + ilvlWidth },
-      rating = ratingOwner and { left = ratingLeft, right = ratingLeft + ratingWidth } or nil,
+      name = Band(0, nameWidth),
+      role = Band(roleLeft, roleWidth),
+      gg = Band(ggLeft, ggWidth),
+      ilvl = Band(ilvlLeft, ilvlWidth),
+      rating = ratingOwner and Band(ratingLeft, ratingWidth) or nil,
     },
   }
   viewer._ggApplicantColumnLayoutReason = GG_LAYOUT_REASONS.OK
@@ -1246,27 +1281,39 @@ local function ReflowApplicantColumnHeaders(viewer, headerFrame)
   return true
 end
 
+-- Column bands are screen units; SetPoint offsets are in the row's own units.
+local function ColumnOffsets(row, column)
+  local rowScreenLeft = ScreenLeft(row)
+  if not rowScreenLeft then return nil end
+  local scale = SafeGetEffectiveScale(row)
+  return (column.left - rowScreenLeft) / scale, (column.right - rowScreenLeft) / scale
+end
+
 local function PositionRegionUnderColumn(region, row, column)
   if not (region and row and column) then return false end
-  local rowLeft = SafeGetLeft(row)
-  if not rowLeft then return false end
+  local left, right = ColumnOffsets(row, column)
+  if not left then return false end
   SaveObjectLayout(region)
   SafeClearAllPoints(region)
-  return SafeSetPoint(region, "CENTER", row, "LEFT", ((column.left + column.right) / 2) - rowLeft, 0)
+  return SafeSetPoint(region, "CENTER", row, "LEFT", (left + right) / 2, 0)
 end
 
 local function PositionFontStringUnderColumn(fs, row, column, padding)
   if not (IsFontString(fs) and row and column) then return false end
-  local rowLeft = SafeGetLeft(row)
-  if not rowLeft then return false end
+  local left, right = ColumnOffsets(row, column)
+  if not left then return false end
   padding = padding or 2
+  if (right - left) <= (padding * 2) then return false end
   SaveObjectLayout(fs)
   SafeClearAllPoints(fs)
-  SafeSetSize(fs, math.max(1, (column.right - column.left) - (padding * 2)), 14)
+  -- Two horizontal anchors already define the width; calling SetSize as well
+  -- froze the font string and truncated longer values such as a 4-digit rating.
+  SafeSetHeight(fs, 0)
   local ok = true
-  ok = SafeSetPoint(fs, "LEFT", row, "LEFT", column.left - rowLeft + padding, 0) and ok
-  ok = SafeSetPoint(fs, "RIGHT", row, "LEFT", column.right - rowLeft - padding, 0) and ok
+  ok = SafeSetPoint(fs, "LEFT", row, "LEFT", left + padding, 0) and ok
+  ok = SafeSetPoint(fs, "RIGHT", row, "LEFT", right - padding, 0) and ok
   if type(fs.SetJustifyH) == "function" then pcall(fs.SetJustifyH, fs, "CENTER") end
+  if type(fs.SetWordWrap) == "function" then pcall(fs.SetWordWrap, fs, false) end
   return ok
 end
 
@@ -1280,14 +1327,13 @@ local function EnsureRoleIconStack(row, layout)
     SafeEnableMouse(stack, false)
   end
 
-  local rowLeft = SafeGetLeft(row)
-  if not rowLeft then return nil end
+  local left, right = ColumnOffsets(row, layout.columns.role)
+  if not left then return nil end
   local height = SafeGetHeightValue(row) or 18
   SaveObjectLayout(stack)
-  SafeSetSize(stack, GG_ROLE_COLUMN_WIDTH, height)
+  SafeSetSize(stack, math.max(1, right - left), height)
   SafeClearAllPoints(stack)
-  local center = ((layout.columns.role.left + layout.columns.role.right) / 2) - rowLeft
-  SafeSetPoint(stack, "CENTER", row, "LEFT", center, 0)
+  SafeSetPoint(stack, "CENTER", row, "LEFT", (left + right) / 2, 0)
   local baseLevel = SafeGetFrameLevel(row) or 1
   SafeSetFrameLevel(stack, baseLevel + 2)
   SafeShow(stack)
@@ -1330,7 +1376,9 @@ local function PositionRoleIconStack(row, icons, layout)
     SafeClearAllPoints(icon)
     SafeSetPoint(icon, "CENTER", stack, "CENTER", startX + ((index - 1) * (GG_ROLE_ICON_SIZE + GG_ROLE_ICON_GAP)), 0)
     SafeSetDrawLayer(icon, "OVERLAY", 5)
-    SafeShow(icon)
+    -- Do not call Show() here: Blizzard hides RoleIcon2/RoleIcon3 for
+    -- single-role applicants, and force-showing them displayed empty/stale
+    -- role art in the Role column.
   end
   row._ggRoleIconCount = count
   return true, nil
@@ -1392,6 +1440,11 @@ local function PositionApplicantRowColumns(row, contextFS)
   if ratingFS and layout.columns.rating then
     row._ggStockRatingFS = ratingFS
     ok = PositionFontStringUnderColumn(ratingFS, row, layout.columns.rating, 2) and ok
+  elseif ratingFS then
+    -- No Rating column in this listing: leave the stock font string exactly
+    -- where Blizzard put it instead of parking it on top of iLvl.
+    RestoreObjectLayout(ratingFS)
+    row._ggStockRatingFS = nil
   end
   row._ggColumnReflowApplied = ok and true or nil
   return ok
@@ -1412,15 +1465,22 @@ local function EnsureApplicantContextHeader()
   if headerFrame.Text and IsFontString(headerFrame.Text) then SafeSetText(headerFrame.Text, label) end
   if type(headerFrame.SetText) == "function" then pcall(headerFrame.SetText, headerFrame, label) end
 
-  local now = (GetTime and GetTime()) or 0
-  if viewer._ggApplicantColumnLayout and (viewer._ggHeaderReflowUntil or 0) > now then
+  -- Re-measure whenever the strip could have moved instead of blindly trusting
+  -- a short time window: a stale layout is exactly what shifts row values.
+  local signature = table_concat({
+    tostring(math_floor((SafeGetWidthValue(viewer) or 0) + 0.5)),
+    tostring(math_floor((SafeGetLeft(viewer) or 0) + 0.5)),
+    tostring(math_floor((SafeGetEffectiveScale(viewer) * 1000) + 0.5)),
+    (viewer.RatingColumnHeader and IsRegionShown(viewer.RatingColumnHeader)) and "r1" or "r0",
+  }, "|")
+  if viewer._ggApplicantColumnLayout and viewer._ggHeaderSignature == signature then
     SafeShow(headerFrame)
     SafeShow(fs)
     return
   end
 
   if ReflowApplicantColumnHeaders(viewer, headerFrame) then
-    viewer._ggHeaderReflowUntil = now + 0.25
+    viewer._ggHeaderSignature = signature
     SafeShow(headerFrame)
     SafeShow(fs)
   else
@@ -1469,10 +1529,8 @@ local function CleanupLegacyApplicantDecorations(frame)
     local clean = StripLegacySuffix(current)
     if clean and current ~= clean then SafeSetText(frame._ggStockIlvlFS, clean) end
   end
-  -- Restore legacy 4.2.12 rating overrides once, then leave the stock Rating column alone.
-  if frame._ggRatingOverridden and IsFontString(frame._ggStockRatingFS) then
-    SafeSetText(frame._ggStockRatingFS, frame._ggOriginalRatingText or "")
-  end
+  -- We never overwrite the stock Rating text any more, so there is nothing to
+  -- put back; just drop the references.
   frame._ggStockRatingFS = nil
   frame._ggOriginalRatingText = nil
   frame._ggRatingOverridden = nil
@@ -1780,11 +1838,7 @@ local function ApplyApplicantContextMetric(frame, applicantID, memberIdx)
   HideFontString(fs)
   if not (addon and addon.db and addon.db.applicant_context_progress) then return end
 
-  -- Keep the normal Rating column unchanged.
-  if frame._ggRatingOverridden and IsFontString(frame._ggStockRatingFS) then
-    SafeSetText(frame._ggStockRatingFS, frame._ggOriginalRatingText or "")
-    frame._ggRatingOverridden = nil
-  end
+  -- The stock Rating column is never rewritten by GroupGuard.
 
   applicantID = SafeNumber(applicantID, nil) or SafeNumber(frame._ggLastApplicantID, nil) or GetApplicantIDFromRow(frame)
   memberIdx = SafeNumber(memberIdx, nil) or SafeNumber(frame._ggLastMemberIdx, nil) or SafeNumber(frame.memberIdx, nil) or 1

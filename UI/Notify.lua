@@ -78,8 +78,8 @@ local function CreateBanner()
   iconBox:SetSize(60, 60)
   iconBox:SetPoint("TOP", f, "TOP", 0, -52)
   iconBox:SetBackdrop({
-    bgFile = "Interface\Buttons\WHITE8X8",
-    edgeFile = "Interface\Tooltips\UI-Tooltip-Border",
+    bgFile = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
     tile = false,
     edgeSize = 12,
     insets = { left = 3, right = 3, top = 3, bottom = 3 },

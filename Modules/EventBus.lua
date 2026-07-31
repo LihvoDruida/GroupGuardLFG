@@ -229,7 +229,9 @@ local function OnEvent(self, event, arg1, ...)
       if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
       if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
       if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, "addon_loaded") end
-    elseif arg1 == "Blizzard_LookingForGroupUI" then
+    elseif arg1 == "Blizzard_GroupFinder" or arg1 == "Blizzard_LookingForGroupUI" then
+      -- 12.x renamed the Blizzard group finder addon; keep the old name for
+      -- older clients so the LFG hooks still initialise there.
       if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
       if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
       if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end

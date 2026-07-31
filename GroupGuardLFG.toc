@@ -1,11 +1,11 @@
-## Interface: 120007
+## Interface: 120100, 120007
 ## Title: GroupGuard LFG
 ## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.2.40
-## X-Codename: Safe API and protected action hardening
-## X-Prev-Codename: PUG window fit and native kick button
-## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_LookingForGroupUI
+## Version: 4.3.0
+## X-Codename: Applicant grid alignment and Midnight 12.1 compatibility
+## X-Prev-Codename: Safe API and protected action hardening
+## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_GroupFinder, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg
