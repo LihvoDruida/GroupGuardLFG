@@ -218,32 +218,51 @@ function addon:SyncSettingsState(reason)
   if self.ScheduleRaidAssist then self:ScheduleRaidAssist(0, reason or "settings") end
 end
 
+-- Startup steps used to run as one unbroken chain: a Lua error in any of them
+-- (most often the settings pages, which touch the most Blizzard UI) silently
+-- killed every step after it, so buttons, LFG hooks and the applicant column
+-- simply never appeared. Each step is isolated now.
+local function SafeInit(label, method, ...)
+  if type(addon[method]) ~= "function" then return true end
+  local ok, err = pcall(addon[method], addon, ...)
+  if not ok then
+    addon._initFailures = addon._initFailures or {}
+    addon._initFailures[label] = tostring(err)
+    if addon.debug then
+      print(addon.printPrefix, "init failed:", label, tostring(err))
+    end
+  end
+  return ok
+end
+
+addon.SafeInitStep = SafeInit
+
 local function OnEvent(self, event, arg1, ...)
   if event == "ADDON_LOADED" then
     if arg1 == addonName then
       addon:EnsureDB()
       if addon.EnterStartupQuiet then addon:EnterStartupQuiet(addon.db and addon.db.startup_silent_seconds or 3.0, "addon_loaded") end
-      if not addon.configFrame then addon:InitSettingsPages() end
+      if not addon.configFrame then SafeInit("settings", "InitSettingsPages") end
       if Settings and addon.settingsRoot then addon.settingsCategory = addon.settingsRoot end
-      addon:CreateKickButton()
+      SafeInit("kick_button", "CreateKickButton")
       wasInGroup = SafeInGroupOrRaid()
-      addon:RequestGroupRefresh(0)
-      if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
-      addon:RequestLFGRefresh(nil, true, true)
-      if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
-      if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
-      if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
-      if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, "addon_loaded") end
+      SafeInit("group_refresh", "RequestGroupRefresh", 0)
+      SafeInit("frame_markers", "ScheduleFrameMarkerUpdate", 0.05)
+      SafeInit("lfg_refresh", "RequestLFGRefresh", nil, true, true)
+      SafeInit("lfg_enhancements", "LFG_InitEnhancements")
+      SafeInit("realm_insights", "LFG_InitRealmInsights")
+      SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
+      SafeInit("raid_assist", "ScheduleRaidAssist", 0.05, "addon_loaded")
     elseif arg1 == "Blizzard_GroupFinder" or arg1 == "Blizzard_LookingForGroupUI" then
       -- 12.x renamed the Blizzard group finder addon; keep the old name for
       -- older clients so the LFG hooks still initialise there.
-      if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
-      if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
-      if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
-      addon:RequestLFGRefresh(nil, true, true)
+      SafeInit("lfg_enhancements", "LFG_InitEnhancements")
+      SafeInit("realm_insights", "LFG_InitRealmInsights")
+      SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
+      SafeInit("lfg_refresh", "RequestLFGRefresh", nil, true, true)
     elseif arg1 == "PremadeGroupsFilter" then
-      if addon.InitPGFIntegration then addon:InitPGFIntegration() end
-      addon:RequestLFGRefresh(nil, false, true)
+      SafeInit("pgf", "InitPGFIntegration")
+      SafeInit("lfg_refresh", "RequestLFGRefresh", nil, false, true)
     end
     return
   end

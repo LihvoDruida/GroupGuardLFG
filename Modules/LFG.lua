@@ -1,6 +1,26 @@
 -- GroupGuard LFG — Modules / LFG
 local addonName, addon = ...
 
+-- An error raised inside a hooksecurefunc callback unwinds through the Blizzard
+-- function that was hooked, so everything that function had left to do -- laying
+-- out panels, showing tabs, filling rows -- silently never happens. Every hook
+-- installed from this file goes through this guard instead.
+local function GGHook(target, methodOrFunc, maybeFunc)
+  if type(hooksecurefunc) ~= "function" then return false end
+  local isGlobal = type(methodOrFunc) == "function"
+  local fn = isGlobal and methodOrFunc or maybeFunc
+  if type(fn) ~= "function" then return false end
+  local label = isGlobal and tostring(target) or tostring(methodOrFunc)
+  local guarded = (addon.WrapHookCallback and addon:WrapHookCallback(fn, label)) or fn
+  local ok
+  if isGlobal then
+    ok = pcall(hooksecurefunc, target, guarded)
+  else
+    ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
+  end
+  return ok and true or false
+end
+
 local C_Timer = C_Timer
 
 -- кеші/таймери LFG; сумісно з Premade Groups Filter через post-update hooks
@@ -260,7 +280,7 @@ local function HookRecycledLFGRow(row)
     row:HookScript("OnShow", HideRowDecorations)
   end
   if row.SetElementData and type(hooksecurefunc) == "function" then
-    hooksecurefunc(row, "SetElementData", HideRowDecorations)
+    GGHook(row, "SetElementData", HideRowDecorations)
   end
 end
 
@@ -287,7 +307,12 @@ function addon:EvaluateApplicantFlag(id)
   end
 
   local info = GetApplicantInfoSafe(id)
-  local num = info and SafeNumber(info.numMembers, 0) or 0
+  -- Without applicant info there is nothing to judge yet. Caching "clean" here
+  -- meant the applicant stayed unmarked until some later event happened to
+  -- clear the cache, which is why marks sometimes never appeared at all.
+  if type(info) ~= "table" then return false end
+  local num = SafeNumber(info.numMembers, 0) or 0
+  local memberDataMissing = false
 
   local function isIgnoredSocialName(name)
     if type(name) ~= "string" or name == "" or not self.ShouldIgnoreFilteredName then return false end
@@ -335,6 +360,7 @@ function addon:EvaluateApplicantFlag(id)
   if self.db and self.db.lfg_highlight_search_members and self.LFG_API_GetApplicantMemberInfo then
     for memberIndex = 1, num do
       local name = GetApplicantMemberNameSafe(id, memberIndex)
+      if type(name) ~= "string" or name == "" then memberDataMissing = true end
       local ignored = false
       if type(name) == "string" and self.ShouldIgnoreFilteredName then
         local okIgnore, isIgnored = pcall(function() return self:ShouldIgnoreFilteredName(name) end)
@@ -344,8 +370,12 @@ function addon:EvaluateApplicantFlag(id)
     end
   end
 
-  self._lfgFlagCache[id] = flagged
-  self._lfgFlagReasons[id] = reasons
+  -- A positive verdict is final, but a negative one is only trustworthy once
+  -- every member actually reported in. Otherwise the next pass re-checks.
+  if flagged or not memberDataMissing then
+    self._lfgFlagCache[id] = flagged
+    self._lfgFlagReasons[id] = reasons
+  end
   return flagged
 end
 
@@ -849,7 +879,7 @@ function addon:InitPGFIntegration()
         refreshResults(delay)
       end)
     elseif type(hooksecurefunc) == "function" then
-      ok = pcall(hooksecurefunc, tableRef, methodName, function() refreshResults(delay) end)
+      ok = GGHook(tableRef, methodName, function() refreshResults(delay) end)
     end
     hooked = hooked or ok
   end
@@ -931,13 +961,13 @@ function addon:LFG_HookViewer()
 
     if sb.HookScript then sb:HookScript("OnMouseWheel", function() addon:LFG_DebouncedHighlight(0.08) end) end
     if sb.FullUpdate and type(sb.FullUpdate) == "function" then
-      hooksecurefunc(sb, "FullUpdate", function() addon:LFG_DebouncedHighlight() end)
+      GGHook(sb, "FullUpdate", function() addon:LFG_DebouncedHighlight() end)
     end
     if sb.Update and type(sb.Update) == "function" then
-      hooksecurefunc(sb, "Update", function() addon:LFG_DebouncedHighlight() end)
+      GGHook(sb, "Update", function() addon:LFG_DebouncedHighlight() end)
     end
     if sb.Refresh and type(sb.Refresh) == "function" then
-      hooksecurefunc(sb, "Refresh", function() addon:LFG_DebouncedHighlight() end)
+      GGHook(sb, "Refresh", function() addon:LFG_DebouncedHighlight() end)
     end
   end
 
@@ -946,12 +976,12 @@ function addon:LFG_HookViewer()
     -- LFGListApplicationViewer_UpdateApplicants does not exist in Mainline;
     -- UpdateInfo and UpdateResults below are the real refresh points.
     if type(LFGListApplicationViewer_UpdateInfo) == "function" then
-      hooksecurefunc("LFGListApplicationViewer_UpdateInfo", function()
+      GGHook("LFGListApplicationViewer_UpdateInfo", function()
         addon:LFG_DebouncedHighlight()
       end)
     end
     if type(LFGListApplicationViewer_UpdateResults) == "function" then
-      hooksecurefunc("LFGListApplicationViewer_UpdateResults", function()
+      GGHook("LFGListApplicationViewer_UpdateResults", function()
         addon:LFG_DebouncedHighlight()
       end)
     end
@@ -966,20 +996,20 @@ function addon:LFG_HookSearchPanel()
 
     if sb.HookScript then sb:HookScript("OnMouseWheel", function() addon:LFG_DebouncedHighlightResults(0.08) end) end
     if sb.FullUpdate and type(sb.FullUpdate) == "function" then
-      hooksecurefunc(sb, "FullUpdate", function() addon:LFG_DebouncedHighlightResults(0.05) end)
+      GGHook(sb, "FullUpdate", function() addon:LFG_DebouncedHighlightResults(0.05) end)
     end
     if sb.Update and type(sb.Update) == "function" then
-      hooksecurefunc(sb, "Update", function() addon:LFG_DebouncedHighlightResults(0.05) end)
+      GGHook(sb, "Update", function() addon:LFG_DebouncedHighlightResults(0.05) end)
     end
     if sb.Refresh and type(sb.Refresh) == "function" then
-      hooksecurefunc(sb, "Refresh", function() addon:LFG_DebouncedHighlightResults(0.05) end)
+      GGHook(sb, "Refresh", function() addon:LFG_DebouncedHighlightResults(0.05) end)
     end
   end
 
 
   if not addon._ggTooltipHooked and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
     addon._ggTooltipHooked = true
-    hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+    GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
       if addon and addon.LFG_AddSearchTooltip then addon:LFG_AddSearchTooltip(tooltip, resultID) end
     end)
   end
@@ -991,17 +1021,17 @@ function addon:LFG_HookSearchPanel()
   addon._ggHookedSearchPanel = true
 
   if type(LFGListSearchPanel_UpdateResults) == "function" then
-    hooksecurefunc("LFGListSearchPanel_UpdateResults", function()
+    GGHook("LFGListSearchPanel_UpdateResults", function()
       addon:LFG_RetryHighlightSearchResults()
     end)
   end
   if type(LFGListSearchPanel_UpdateResultList) == "function" then
-    hooksecurefunc("LFGListSearchPanel_UpdateResultList", function()
+    GGHook("LFGListSearchPanel_UpdateResultList", function()
       addon:LFG_RetryHighlightSearchResults()
     end)
   end
   if type(LFGListSearchEntry_Update) == "function" then
-    hooksecurefunc("LFGListSearchEntry_Update", function()
+    GGHook("LFGListSearchEntry_Update", function()
       addon:LFG_DebouncedHighlightResults(0.08)
     end)
   end

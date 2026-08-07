@@ -2,6 +2,26 @@
 -- Adds the compact GroupGuard applicant column while keeping the default applicant list intact.
 local addonName, addon = ...
 
+-- An error raised inside a hooksecurefunc callback unwinds through the Blizzard
+-- function that was hooked, so everything that function had left to do -- laying
+-- out panels, showing tabs, filling rows -- silently never happens. Every hook
+-- installed from this file goes through this guard instead.
+local function GGHook(target, methodOrFunc, maybeFunc)
+  if type(hooksecurefunc) ~= "function" then return false end
+  local isGlobal = type(methodOrFunc) == "function"
+  local fn = isGlobal and methodOrFunc or maybeFunc
+  if type(fn) ~= "function" then return false end
+  local label = isGlobal and tostring(target) or tostring(methodOrFunc)
+  local guarded = (addon.WrapHookCallback and addon:WrapHookCallback(fn, label)) or fn
+  local ok
+  if isGlobal then
+    ok = pcall(hooksecurefunc, target, guarded)
+  else
+    ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
+  end
+  return ok and true or false
+end
+
 local C_Timer = C_Timer
 local table_concat = table.concat
 local math_floor = math.floor
@@ -866,6 +886,13 @@ end
 -- move them.
 local function SaveObjectLayout(obj)
   if not obj or APPLICANT_LAYOUT_RESTORE[obj] then return end
+  -- An object with no anchors yet has not been laid out by Blizzard. Recording
+  -- that as its "pristine" state meant a later restore cleared every point and
+  -- put nothing back, so the header silently vanished for the rest of the
+  -- session. Saving is deferred until real geometry exists.
+  local pointCount = SafeGetNumPoints(obj)
+  if pointCount < 1 then return end
+
   local isFontString = IsFontString(obj)
   local state = {
     isFontString = isFontString,
@@ -879,20 +906,27 @@ local function SaveObjectLayout(obj)
     state.height = SafeGetHeightValue(obj)
   end
   if type(obj.GetPoint) == "function" then
-    local count = SafeGetNumPoints(obj)
-    for i = 1, count do
+    for i = 1, pointCount do
       local ok, point, relativeTo, relativePoint, xOfs, yOfs = pcall(obj.GetPoint, obj, i)
       if ok and point then
         state.points[#state.points + 1] = { point, relativeTo, relativePoint, xOfs or 0, yOfs or 0 }
       end
     end
   end
+  -- If every GetPoint call failed we still know nothing usable; storing an
+  -- empty state would strand the object unanchored on restore.
+  if #state.points < 1 then return end
   APPLICANT_LAYOUT_RESTORE[obj] = state
 end
 
 local function RestoreObjectLayout(obj)
   local state = obj and APPLICANT_LAYOUT_RESTORE[obj]
   if not state then return end
+  -- Only drop the current anchors when there are saved ones to put back.
+  if not state.points or #state.points < 1 then
+    APPLICANT_LAYOUT_RESTORE[obj] = nil
+    return
+  end
   SafeClearAllPoints(obj)
   if state.isFontString then
     -- Hand auto-sizing back to the font string.
@@ -2147,20 +2181,20 @@ function addon:LFG_InitApplicantEnhancements()
       addon:SafeObserveScrollBox(sb, "applicant_minimal_hooks", onFramesChanged, cleanupThenSchedule)
     else
       if sb.HookScript then sb:HookScript("OnMouseWheel", cleanupThenSchedule) end
-      if sb.FullUpdate then hooksecurefunc(sb, "FullUpdate", cleanupThenSchedule) end
-      if sb.Update then hooksecurefunc(sb, "Update", cleanupThenSchedule) end
-      if sb.Refresh then hooksecurefunc(sb, "Refresh", cleanupThenSchedule) end
+      if sb.FullUpdate then GGHook(sb, "FullUpdate", cleanupThenSchedule) end
+      if sb.Update then GGHook(sb, "Update", cleanupThenSchedule) end
+      if sb.Refresh then GGHook(sb, "Refresh", cleanupThenSchedule) end
     end
   end
   -- LFGListApplicationViewer_UpdateApplicants has never existed in Mainline;
   -- UpdateResults is the function that actually repaints the applicant list.
   if type(LFGListApplicationViewer_UpdateResults) == "function" and not self._ggHookedUpdateApplicants then
     self._ggHookedUpdateApplicants = true
-    hooksecurefunc("LFGListApplicationViewer_UpdateResults", cleanupThenSchedule)
+    GGHook("LFGListApplicationViewer_UpdateResults", cleanupThenSchedule)
   end
   if type(LFGListApplicationViewer_UpdateApplicant) == "function" and not self._ggHookedUpdateApplicant then
     self._ggHookedUpdateApplicant = true
-    hooksecurefunc("LFGListApplicationViewer_UpdateApplicant", function(applicantFrame, applicantID)
+    GGHook("LFGListApplicationViewer_UpdateApplicant", function(applicantFrame, applicantID)
       if not addon or not applicantFrame then return end
       applicantID = SafeNumber(applicantID, nil) or GetApplicantIDFromRow(applicantFrame)
       if applicantID then applicantFrame._ggLastApplicantID = applicantID end
@@ -2179,7 +2213,7 @@ function addon:LFG_InitApplicantEnhancements()
   end
   if type(LFGListApplicationViewer_UpdateApplicantMember) == "function" and not self._ggHookedUpdateApplicantMember then
     self._ggHookedUpdateApplicantMember = true
-    hooksecurefunc("LFGListApplicationViewer_UpdateApplicantMember", function(memberFrame, applicantID, memberIdx)
+    GGHook("LFGListApplicationViewer_UpdateApplicantMember", function(memberFrame, applicantID, memberIdx)
       if not addon or not memberFrame then return end
       addon._ggApplicantMemberFrames = addon._ggApplicantMemberFrames or {}
       addon._ggApplicantMemberFrames[memberFrame] = true

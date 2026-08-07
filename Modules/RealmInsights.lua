@@ -2,6 +2,26 @@
 -- Optional technical realm-locale hints inspired by GroupfinderFlags, without replacing Blizzard/PGF UI.
 local addonName, addon = ...
 
+-- An error raised inside a hooksecurefunc callback unwinds through the Blizzard
+-- function that was hooked, so everything that function had left to do -- laying
+-- out panels, showing tabs, filling rows -- silently never happens. Every hook
+-- installed from this file goes through this guard instead.
+local function GGHook(target, methodOrFunc, maybeFunc)
+  if type(hooksecurefunc) ~= "function" then return false end
+  local isGlobal = type(methodOrFunc) == "function"
+  local fn = isGlobal and methodOrFunc or maybeFunc
+  if type(fn) ~= "function" then return false end
+  local label = isGlobal and tostring(target) or tostring(methodOrFunc)
+  local guarded = (addon.WrapHookCallback and addon:WrapHookCallback(fn, label)) or fn
+  local ok
+  if isGlobal then
+    ok = pcall(hooksecurefunc, target, guarded)
+  else
+    ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
+  end
+  return ok and true or false
+end
+
 local C_Timer = C_Timer
 
 local REGION_TO_DATASET = {
@@ -248,7 +268,7 @@ local function HookRealmRow(row)
     end)
   end
   if row.SetElementData and type(hooksecurefunc) == "function" then
-    hooksecurefunc(row, "SetElementData", function(frame)
+    GGHook(row, "SetElementData", function(frame)
       HideRealmBadge(frame)
       ScheduleRealmBadgeRefresh(frame)
     end)
@@ -332,7 +352,7 @@ function addon:LFG_InitRealmInsights()
   self._ggRealmInsightsHooked = true
 
   if type(hooksecurefunc) == "function" and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
-    hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+    GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
       if addon and addon.LFG_AppendRealmInsightTooltip then addon:LFG_AppendRealmInsightTooltip(tooltip, resultID) end
     end)
   end
@@ -353,11 +373,11 @@ function addon:LFG_InitRealmInsights()
   if sb and not sb._ggRealmHooked then
     sb._ggRealmHooked = true
     if sb.HookScript then sb:HookScript("OnMouseWheel", schedule) end
-    if sb.FullUpdate then hooksecurefunc(sb, "FullUpdate", schedule) end
-    if sb.Update then hooksecurefunc(sb, "Update", schedule) end
-    if sb.Refresh then hooksecurefunc(sb, "Refresh", schedule) end
+    if sb.FullUpdate then GGHook(sb, "FullUpdate", schedule) end
+    if sb.Update then GGHook(sb, "Update", schedule) end
+    if sb.Refresh then GGHook(sb, "Refresh", schedule) end
   end
-  if type(LFGListSearchPanel_UpdateResults) == "function" then hooksecurefunc("LFGListSearchPanel_UpdateResults", schedule) end
-  if type(LFGListSearchPanel_UpdateResultList) == "function" then hooksecurefunc("LFGListSearchPanel_UpdateResultList", schedule) end
+  if type(LFGListSearchPanel_UpdateResults) == "function" then GGHook("LFGListSearchPanel_UpdateResults", schedule) end
+  if type(LFGListSearchPanel_UpdateResultList) == "function" then GGHook("LFGListSearchPanel_UpdateResultList", schedule) end
   schedule()
 end

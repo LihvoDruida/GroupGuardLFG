@@ -2,6 +2,26 @@
 -- Lightweight ideas adapted from LFG quality-of-life addons without replacing Blizzard/PGF/Oak UI.
 local addonName, addon = ...
 
+-- An error raised inside a hooksecurefunc callback unwinds through the Blizzard
+-- function that was hooked, so everything that function had left to do -- laying
+-- out panels, showing tabs, filling rows -- silently never happens. Every hook
+-- installed from this file goes through this guard instead.
+local function GGHook(target, methodOrFunc, maybeFunc)
+  if type(hooksecurefunc) ~= "function" then return false end
+  local isGlobal = type(methodOrFunc) == "function"
+  local fn = isGlobal and methodOrFunc or maybeFunc
+  if type(fn) ~= "function" then return false end
+  local label = isGlobal and tostring(target) or tostring(methodOrFunc)
+  local guarded = (addon.WrapHookCallback and addon:WrapHookCallback(fn, label)) or fn
+  local ok
+  if isGlobal then
+    ok = pcall(hooksecurefunc, target, guarded)
+  else
+    ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
+  end
+  return ok and true or false
+end
+
 local C_Timer = C_Timer
 local math_floor = math.floor
 local string_format = string.format
@@ -312,7 +332,7 @@ function addon:LFG_HookEnhancedSearchTooltip()
   if type(hooksecurefunc) ~= "function" then return end
   if type(LFGListUtil_SetSearchEntryTooltip) ~= "function" then return end
   self._ggEnhancedTooltipHooked = true
-  hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+  GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
     if addon and addon.LFG_AppendSearchInsightTooltip then
       addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
     end

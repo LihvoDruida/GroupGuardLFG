@@ -1057,6 +1057,25 @@ local function PrintDebugInfo(mode)
 
   print(addon:Tr("CMD_DEBUG_TITLE"))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "debug", tostring(addon.debug == true)))
+
+  -- Failures used to be invisible: a broken step just meant a missing feature
+  -- with nothing in the log. /gg debug now names what did not come up.
+  local initFailures = addon._initFailures
+  if type(initFailures) == "table" and next(initFailures) then
+    for label, err in pairs(initFailures) do
+      print(addon:Tr("CMD_LFG_FRAME_STATE", "init FAILED: " .. tostring(label), tostring(err)))
+    end
+  else
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "init", addon:Tr("CMD_YES")))
+  end
+
+  local hookFailures = addon._hookFailures
+  if type(hookFailures) == "table" and next(hookFailures) then
+    for label, count in pairs(hookFailures) do
+      print(addon:Tr("CMD_BUTTON_COUNT", "hook errors: " .. tostring(label), tostring(count)))
+    end
+  end
+
   print(addon:Tr("CMD_LFG_FRAME_STATE", "LFGListFrame", LFGListFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "SearchPanel", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "ApplicationViewer", viewer and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))

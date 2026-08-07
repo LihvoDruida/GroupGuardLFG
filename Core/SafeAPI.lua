@@ -165,6 +165,27 @@ function SafeNS.GuildName(unit)
   return text
 end
 
+-- hooksecurefunc callbacks run inline inside the Blizzard function that was
+-- hooked. An error thrown there does not stay contained: it unwinds through
+-- Blizzard's own code, so whatever that function had left to do -- laying out
+-- panels, showing tabs, filling rows -- never happens. Every callback we install
+-- is wrapped so a bug on our side can never blank out someone else's UI.
+function addon:WrapHookCallback(fn, label)
+  if type(fn) ~= "function" then return nil end
+  return function(...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+      self._hookFailures = self._hookFailures or {}
+      local key = label or "hook"
+      self._hookFailures[key] = (self._hookFailures[key] or 0) + 1
+      -- Report once per hook so a repeating error cannot spam the chat frame.
+      if self.debug and self._hookFailures[key] == 1 then
+        print(self.printPrefix, "hook error:", key, tostring(err))
+      end
+    end
+  end
+end
+
 function addon:SafeHookOnce(key, target, methodOrFunc, maybeFunc)
   if type(hooksecurefunc) ~= "function" or not key then return false end
   self._safeHookKeys = self._safeHookKeys or {}
@@ -172,9 +193,9 @@ function addon:SafeHookOnce(key, target, methodOrFunc, maybeFunc)
 
   local ok = false
   if type(target) == "string" and type(methodOrFunc) == "function" then
-    ok = pcall(hooksecurefunc, target, methodOrFunc)
+    ok = pcall(hooksecurefunc, target, self:WrapHookCallback(methodOrFunc, key))
   elseif type(target) == "table" and type(methodOrFunc) == "string" and type(maybeFunc) == "function" and type(target[methodOrFunc]) == "function" then
-    ok = pcall(hooksecurefunc, target, methodOrFunc, maybeFunc)
+    ok = pcall(hooksecurefunc, target, methodOrFunc, self:WrapHookCallback(maybeFunc, key))
   end
 
   if ok then self._safeHookKeys[key] = true end
@@ -292,6 +313,10 @@ end
 function addon:_LFG_API_ApplicantInfoPositional(applicantID)
   local values = { pcall(C_LFGList.GetApplicantInfo, applicantID) }
   if not values[1] then return nil end
+  -- The call can succeed while returning nothing at all, which used to produce
+  -- a record full of nils. Callers read that as "applicant loaded, nothing to
+  -- flag" and cached the verdict, so the row stayed unmarked forever.
+  if values[2] == nil then return nil end
 
   local info = {
     applicantID = self:SafeNumber(values[2], applicantID) or applicantID,
@@ -515,10 +540,20 @@ local function CacheGet(self, name, key)
   end
   return false, nil
 end
+-- A nil result almost always means "the client has not sent this yet", not
+-- "there is nothing here". Caching that under the normal TTL made missing data
+-- stick around long after it arrived -- worst of all for activity info, whose
+-- 120s TTL left the GG column and role hints blank for two minutes after login.
+-- Misses are therefore retried quickly regardless of the caller's TTL.
+local CACHE_MISS_TTL = 0.25
 local function CacheSet(self, name, key, value, ttl)
   local bucket = CacheBucket(self, name)
   bucket.values[key] = value == nil and GG_NIL or value
-  bucket.expires[key] = CacheNow() + (ttl or 0.6)
+  if value == nil then
+    bucket.expires[key] = CacheNow() + math.min(ttl or CACHE_MISS_TTL, CACHE_MISS_TTL)
+  else
+    bucket.expires[key] = CacheNow() + (ttl or 0.6)
+  end
   return value
 end
 
@@ -617,7 +652,8 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
   local hit, value = CacheGet(self, "searchInfo", key)
   if hit then return value and value[1], value and value[2] or false end
   local info, ok = _rawGetSearchResultInfo(self, resultID)
-  CacheSet(self, "searchInfo", key, { info, ok }, 0.65)
+  -- The wrapper table is never nil, so the miss TTL has to be applied by hand.
+  CacheSet(self, "searchInfo", key, { info, ok }, info and 0.65 or CACHE_MISS_TTL)
   return info, ok
 end
 
@@ -747,12 +783,12 @@ function addon:LFG_InstallCensorHooks()
   if self._lfgCensorHooksInstalled then return end
   if not self:LFG_IsCensorshipSupported() then return end
   if type(hooksecurefunc) ~= "function" then return end
-  local ok = pcall(hooksecurefunc, C_LFGList, "RevealCensoredSearchResult", function(resultID)
+  local ok = pcall(hooksecurefunc, C_LFGList, "RevealCensoredSearchResult", self:WrapHookCallback(function(resultID)
     addon:LFG_ForgetSearchResult(resultID)
     if addon.LFG_RetryHighlightSearchResults then
       addon:LFG_RetryHighlightSearchResults(true)
     end
-  end)
+  end, "RevealCensoredSearchResult"))
   self._lfgCensorHooksInstalled = ok and true or false
 end
 

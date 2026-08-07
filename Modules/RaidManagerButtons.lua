@@ -363,7 +363,9 @@ end)
 if hooksecurefunc then
   local function HookManagerFunction(name)
     if type(_G[name]) == "function" then
-      pcall(hooksecurefunc, name, function() ScheduleRefresh(0.05) end)
+      local cb = addon.WrapHookCallback and addon:WrapHookCallback(function() ScheduleRefresh(0.05) end, name)
+        or function() ScheduleRefresh(0.05) end
+      pcall(hooksecurefunc, name, cb)
     end
   end
   HookManagerFunction("CompactRaidFrameManager_UpdateShown")
