@@ -15,14 +15,9 @@ end
 
 local function UnitIsAssistantOrLeader(unit)
   if not unit then return false end
-  if UnitIsGroupLeader then
-    local ok, v = pcall(UnitIsGroupLeader, unit)
-    if ok and v then return true end
-  end
-  if UnitIsGroupAssistant then
-    local ok, v = pcall(UnitIsGroupAssistant, unit)
-    if ok and v then return true end
-  end
+  -- 12.1: these return secrets for units with a secret identity.
+  local Safe = addon.Safe
+  if Safe and Safe.IsAssistantOrLeader then return Safe.IsAssistantOrLeader(unit) end
   return false
 end
 
@@ -35,12 +30,8 @@ end
 function addon:CanAutoRaidAssist()
   if not (self.db and self.db.raid_assist_enabled) then return false end
   if not SafeIsInRaid() then return false end
-  if UnitIsGroupLeader then
-    local ok, leader = pcall(UnitIsGroupLeader, "player")
-    if not ok or not leader then return false end
-  else
-    return false
-  end
+  local Safe = addon.Safe
+  if not (Safe and Safe.IsGroupLeader and Safe.IsGroupLeader("player")) then return false end
   return true
 end
 

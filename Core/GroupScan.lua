@@ -79,9 +79,8 @@ function addon:CheckGroup()
       sawNil = true
     else
       local guild_name = nil
-      if GetGuildInfo then
-        local okGuild, g = pcall(GetGuildInfo, unit)
-        if okGuild and (not self.CanAccess or self:CanAccess(g)) then guild_name = g end
+      if self.Safe and self.Safe.GuildName then
+        guild_name = self.Safe.GuildName(unit)
       end
       local realmForExempt = server or self.realm_name
       local ignoreSocial = self:ShouldIgnoreFilteredUnit(unit, name, guild_name)

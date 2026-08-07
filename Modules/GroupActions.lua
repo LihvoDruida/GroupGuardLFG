@@ -159,31 +159,21 @@ local function PlayerCanManageGroup()
   if addon and addon.PlayerCanManageGroup then
     return addon:PlayerCanManageGroup()
   end
-  if UnitIsGroupLeader then
-    local ok, leader = pcall(UnitIsGroupLeader, "player")
-    if ok and leader then return true end
-  end
-  if IsInRaid then
+  local Safe = addon and addon.Safe
+  if Safe and Safe.IsGroupLeader then
+    if Safe.IsGroupLeader("player") then return true end
     local okRaid, inRaid = pcall(IsInRaid)
-    if okRaid and inRaid and UnitIsGroupAssistant then
-      local ok, assistant = pcall(UnitIsGroupAssistant, "player")
-      if ok and assistant then return true end
-    end
+    if okRaid and inRaid and Safe.IsGroupAssistant("player") then return true end
   end
   return false
 end
 
 local function TryDemoteIfNeeded(target)
   if not (target and target.unit) then return end
-  local isLeader = false
-  if UnitIsGroupLeader then
-    local ok, leader = pcall(UnitIsGroupLeader, "player")
-    isLeader = ok and leader and true or false
-  end
-  if not isLeader then return end
-  if UnitIsGroupAssistant and DemoteAssistant then
-    local okAssist, assistant = pcall(UnitIsGroupAssistant, target.unit)
-    if okAssist and assistant then pcall(DemoteAssistant, target.unit) end
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.IsGroupLeader and Safe.IsGroupLeader("player")) then return end
+  if DemoteAssistant and Safe.IsGroupAssistant(target.unit) then
+    pcall(DemoteAssistant, target.unit)
   end
 end
 
@@ -493,9 +483,8 @@ function addon:ScanGroupOffenders()
     local okName, name, server = pcall(UnitName, unit)
     if okName and CanReadValue(name) then
       local guildName = nil
-      if GetGuildInfo then
-        local okGuild, g = pcall(GetGuildInfo, unit)
-        if okGuild and CanReadValue(g) then guildName = g end
+      if self.Safe and self.Safe.GuildName then
+        guildName = self.Safe.GuildName(unit)
       end
 
       local key = NameKey(name)

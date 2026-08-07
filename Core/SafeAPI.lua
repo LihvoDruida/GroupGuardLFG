@@ -90,15 +90,79 @@ function SafeNS.IsInGroup()
   local ok, value = pcall(IsInGroup)
   return ok and value and true or false
 end
+-- 12.1: UnitIsGroupLeader / UnitIsGroupAssistant / UnitIsRaidOfficer / UnitInRaid /
+-- UnitClass / UnitRace / UnitGroupRolesAssigned return secret values when the unit
+-- identity is secret. `value and true or false` would raise a Lua error on a secret,
+-- so every result has to go through SafeBool/SafeText first.
+function addon:SafeUnitBool(fn, unit)
+  if type(fn) ~= "function" then return false end
+  local ok, value = pcall(fn, unit or "player")
+  if not ok then return false end
+  return self:SafeBool(value)
+end
+
+function addon:SafeUnitString(fn, unit)
+  if type(fn) ~= "function" then return nil end
+  local ok, value = pcall(fn, unit or "player")
+  if not ok then return nil end
+  local text = self:SafeText(value)
+  if text == "" then return nil end
+  return text
+end
+
 function SafeNS.IsGroupLeader(unit)
-  if not UnitIsGroupLeader then return false end
-  local ok, value = pcall(UnitIsGroupLeader, unit or "player")
-  return ok and value and true or false
+  return addon:SafeUnitBool(UnitIsGroupLeader, unit)
 end
 function SafeNS.IsGroupAssistant(unit)
-  if not UnitIsGroupAssistant then return false end
-  local ok, value = pcall(UnitIsGroupAssistant, unit or "player")
-  return ok and value and true or false
+  return addon:SafeUnitBool(UnitIsGroupAssistant, unit)
+end
+function SafeNS.IsRaidOfficer(unit)
+  return addon:SafeUnitBool(UnitIsRaidOfficer, unit)
+end
+function SafeNS.IsAssistantOrLeader(unit)
+  if SafeNS.IsGroupLeader(unit) then return true end
+  if SafeNS.IsGroupAssistant(unit) then return true end
+  return false
+end
+function SafeNS.UnitInRaid(unit)
+  return addon:SafeUnitBool(UnitInRaid, unit)
+end
+
+-- Returns a plain, readable role string or nil. Never returns a secret, so the
+-- result is safe to use as a table key.
+function SafeNS.GroupRole(unit)
+  local role = addon:SafeUnitString(UnitGroupRolesAssigned, unit)
+  if role == "TANK" or role == "HEALER" or role == "DAMAGER" then return role end
+  return nil
+end
+
+function SafeNS.UnitClass(unit)
+  if type(UnitClass) ~= "function" then return nil, nil end
+  local ok, localized, fileName = pcall(UnitClass, unit)
+  if not ok then return nil, nil end
+  return addon:SafeText(localized), addon:SafeText(fileName)
+end
+
+-- 12.1: GetGuildInfo no longer accepts compound unit tokens (raid1target, partypet2...).
+-- Passing one now errors, so unsupported tokens are filtered out here.
+local COMPOUND_TOKEN_SUFFIX = { target = true, pet = true, focus = true }
+function SafeNS.IsSimpleUnitToken(unit)
+  if type(unit) ~= "string" or unit == "" then return false end
+  local lowered = unit:lower()
+  for suffix in pairs(COMPOUND_TOKEN_SUFFIX) do
+    if lowered:find(suffix, 1, true) and lowered ~= suffix then return false end
+  end
+  return true
+end
+
+function SafeNS.GuildName(unit)
+  if type(GetGuildInfo) ~= "function" then return nil end
+  if not SafeNS.IsSimpleUnitToken(unit) then return nil end
+  local ok, guildName = pcall(GetGuildInfo, unit)
+  if not ok then return nil end
+  local text = addon:SafeText(guildName)
+  if text == "" then return nil end
+  return text
 end
 
 function addon:SafeHookOnce(key, target, methodOrFunc, maybeFunc)
@@ -592,6 +656,105 @@ addon.LFG.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex
 addon.LFG.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex) end
 addon.LFG.GetSearchResultInfo = function(resultID) return addon:LFG_API_GetSearchResultInfo(resultID) end
 addon.LFG.GetSearchResultPlayerInfo = function(resultID, memberIndex) return addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) end
+
+-- 12.1 (Curse of Ula'tek): censored listings
+--------------------------------------------------
+-- LfgSearchResultData and LfgEntryData gained a `censored` flag. While it is set
+-- the client withholds name/comment/voiceChat and the row renders as
+-- "[Censored] Click to show" until RevealCensoredSearchResult is called.
+-- Rule matching on that hidden text would silently return "clean", so every
+-- consumer has to ask whether a listing is censored before trusting its text.
+
+function addon:LFG_IsCensorshipSupported()
+  return C_LFGList ~= nil and type(C_LFGList.RevealCensoredSearchResult) == "function"
+end
+
+function addon:LFG_IsSearchResultCensored(resultID, info)
+  if not self:LFG_IsCensorshipSupported() then return false end
+  if type(info) ~= "table" then
+    info = self:LFG_API_GetSearchResultInfo(resultID)
+  end
+  if type(info) ~= "table" then return false end
+  return self:SafeBool(info.censored)
+end
+
+function addon:LFG_IsActiveEntryCensored(entry)
+  if not self:LFG_IsCensorshipSupported() then return false end
+  if type(entry) ~= "table" then
+    entry = self:LFG_API_GetActiveEntryInfo()
+  end
+  if type(entry) ~= "table" then return false end
+  return self:SafeBool(entry.censored)
+end
+
+-- True when the player's own listing was censored and they have not yet chosen
+-- to edit or keep it. Blizzard blocks listing edits in that state.
+function addon:LFG_IsCensoredActiveEntryUnresolved()
+  if not (C_LFGList and type(C_LFGList.IsCensoredActiveEntryUnresolved) == "function") then return false end
+  local ok, unresolved = pcall(C_LFGList.IsCensoredActiveEntryUnresolved)
+  if not ok then return false end
+  return self:SafeBool(unresolved)
+end
+
+function addon:LFG_RevealSearchResult(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not resultID or not self:LFG_IsCensorshipSupported() then return false end
+  local ok = pcall(C_LFGList.RevealCensoredSearchResult, resultID)
+  if ok then self:LFG_ForgetSearchResult(resultID) end
+  return ok
+end
+
+-- Drops every cached verdict for one search result so the next pass re-reads the
+-- now-revealed text instead of the censored placeholder.
+function addon:LFG_ForgetSearchResult(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not resultID then return end
+
+  local cache = self._lfgAPICache
+  if cache then
+    for _, name in ipairs({ "searchInfo", "searchPlayer" }) do
+      local bucket = cache[name]
+      if bucket then
+        if name == "searchInfo" then
+          bucket.values[resultID] = nil
+          bucket.expires[resultID] = nil
+        else
+          for key in pairs(bucket.expires) do
+            if type(key) == "number" and math.floor(key / 64) == resultID then
+              bucket.values[key] = nil
+              bucket.expires[key] = nil
+            end
+          end
+        end
+      end
+    end
+  end
+
+  if self._lfgResultFlagCache then self._lfgResultFlagCache[resultID] = nil end
+  if self._lfgResultFlagReasons then self._lfgResultFlagReasons[resultID] = nil end
+  if self._lfgResultSocialCache then self._lfgResultSocialCache[resultID] = nil end
+  if self._lfgResultSocialReasons then self._lfgResultSocialReasons[resultID] = nil end
+end
+
+addon.LFG.IsSearchResultCensored = function(resultID, info) return addon:LFG_IsSearchResultCensored(resultID, info) end
+addon.LFG.IsActiveEntryCensored = function(entry) return addon:LFG_IsActiveEntryCensored(entry) end
+addon.LFG.IsCensoredActiveEntryUnresolved = function() return addon:LFG_IsCensoredActiveEntryUnresolved() end
+addon.LFG.RevealSearchResult = function(resultID) return addon:LFG_RevealSearchResult(resultID) end
+
+-- Blizzard reveals a listing from its own row click; mirror that so our cached
+-- verdict for the row is dropped at the same moment the text becomes readable.
+function addon:LFG_InstallCensorHooks()
+  if self._lfgCensorHooksInstalled then return end
+  if not self:LFG_IsCensorshipSupported() then return end
+  if type(hooksecurefunc) ~= "function" then return end
+  local ok = pcall(hooksecurefunc, C_LFGList, "RevealCensoredSearchResult", function(resultID)
+    addon:LFG_ForgetSearchResult(resultID)
+    if addon.LFG_RetryHighlightSearchResults then
+      addon:LFG_RetryHighlightSearchResults(true)
+    end
+  end)
+  self._lfgCensorHooksInstalled = ok and true or false
+end
 
 function addon:LFG_API_DebugDump()
   local buckets, entries = 0, 0

@@ -56,23 +56,24 @@ function addon:CallAPI(fn, ...)
 end
 
 function addon:PlayerCanManageGroup()
-  if UnitIsGroupLeader then
-    local ok, leader = pcall(UnitIsGroupLeader, "player")
-    if ok and leader then return true end
-  end
+  -- 12.1 returns secret values from these APIs when the unit identity is secret,
+  -- so results are funnelled through addon.Safe instead of being tested directly.
+  local Safe = self.Safe
+  if Safe and Safe.IsGroupLeader then
+    if Safe.IsGroupLeader("player") then return true end
 
-  if IsInRaid then
     local okRaid, inRaid = pcall(IsInRaid)
     if okRaid and inRaid then
-      if UnitIsGroupAssistant then
-        local ok, assistant = pcall(UnitIsGroupAssistant, "player")
-        if ok and assistant then return true end
-      end
-      if UnitIsRaidOfficer then
-        local ok, officer = pcall(UnitIsRaidOfficer, "player")
-        if ok and officer then return true end
-      end
+      if Safe.IsGroupAssistant("player") then return true end
+      if Safe.IsRaidOfficer and Safe.IsRaidOfficer("player") then return true end
     end
+    return false
+  end
+
+  -- SafeAPI is loaded right after Bootstrap; this path only runs if that failed.
+  if UnitIsGroupLeader then
+    local ok, leader = pcall(UnitIsGroupLeader, "player")
+    if ok and self:CanAccessValue(leader) and leader == true then return true end
   end
 
   return false
@@ -268,6 +269,11 @@ addon.L10N = {
     REALM_INSIGHTS_TITLE = "Realm hint",
     REALM_INSIGHTS_LEADER = "Leader realm: %s — %s",
     REALM_INSIGHTS_NOTE = "Realm hint is based on the public realm list. It is not an identity check.",
+    LFG_CENSORED_TITLE = "Text hidden by the game",
+    LFG_CENSORED_DETAIL = "Title and description are censored, so rules were not checked. Click the row to reveal it.",
+    LFG_CENSORED_SHORT = "censored",
+    LFG_CENSORED_ENTRY = "Your listing is censored. Open the group finder to edit or keep it.",
+    LFG_CENSORED_STATS = "Censored rows: %d",
     APPLICANT_TOOLTIP_SUPPLEMENT = "extra",
     APPLICANT_TOOLTIP_PARTY = "Party: T %d / H %d / DPS %d • members %d/%d",
     APPLICANT_TOOLTIP_LEAVER = "⚠ Leaver warning: %d",
@@ -438,6 +444,11 @@ addon.L10N = {
     REALM_INSIGHTS_TITLE = "Підказка реалму",
     REALM_INSIGHTS_LEADER = "Реалм лідера: %s — %s",
     REALM_INSIGHTS_NOTE = "Підказка реалму базується на публічному списку реалмів. Це не перевірка особистості.",
+    LFG_CENSORED_TITLE = "Текст приховано грою",
+    LFG_CENSORED_DETAIL = "Назву й опис зацензуровано, тому правила не перевірялися. Клікни рядок, щоб показати текст.",
+    LFG_CENSORED_SHORT = "цензура",
+    LFG_CENSORED_ENTRY = "Твоє оголошення зацензуровано. Відкрий пошук груп, щоб змінити або лишити його.",
+    LFG_CENSORED_STATS = "Зацензурованих рядків: %d",
     APPLICANT_TOOLTIP_SUPPLEMENT = "додатково",
     APPLICANT_TOOLTIP_PARTY = "Паті: T %d / H %d / DPS %d • учасники %d/%d",
     APPLICANT_TOOLTIP_LEAVER = "⚠ Попередження leaver: %d",

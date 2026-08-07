@@ -183,9 +183,9 @@ end
 
 local function PugRoleText(unit)
   local role = "NONE"
-  if UnitGroupRolesAssigned then
-    local ok, r = pcall(UnitGroupRolesAssigned, unit)
-    if ok and type(r) == "string" and r ~= "" then role = r end
+  local Safe = addon.Safe
+  if Safe and Safe.GroupRole then
+    role = Safe.GroupRole(unit) or "NONE"
   end
   if role == "TANK" then return "Tank" end
   if role == "HEALER" then return "Heal" end
@@ -217,10 +217,11 @@ function addon:ScanRaidPugs()
     if UnitExists and UnitExists(unit) then
       local fullName, shortName, realm = FullNameFromUnit(unit)
       if fullName and not (UnitIsUnit and UnitIsUnit(unit, "player")) then
+        -- 12.1: GetGuildInfo rejects compound unit tokens; Safe.GuildName filters them.
         local guildName
-        if GetGuildInfo then
-          local okGuild, g = pcall(GetGuildInfo, unit)
-          if okGuild and CanReadValue(g) then guildName = g end
+        local Safe = addon.Safe
+        if Safe and Safe.GuildName then
+          guildName = Safe.GuildName(unit)
         end
 
         local isGuild = false
@@ -231,10 +232,10 @@ function addon:ScanRaidPugs()
         if self.IsFriendName then isFriend = self:IsFriendName(fullName) and true or false end
 
         if not isGuild and not isFriend then
+          -- 12.1: UnitClass returns secrets for units with a secret identity.
           local className, classFile
-          if UnitClass then
-            local okClass, cn, cf = pcall(UnitClass, unit)
-            if okClass then className, classFile = cn, cf end
+          if Safe and Safe.UnitClass then
+            className, classFile = Safe.UnitClass(unit)
           end
 
           local online = true

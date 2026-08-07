@@ -1724,7 +1724,13 @@ local function GetActiveRaidContext()
       context.difficulty = context.difficulty or mapped.difficulty
     end
   end
-  local title = entry and (SafeText(entry.name) or SafeText(entry.questName) or SafeText(entry.comment))
+  -- 12.1: a censored listing hands back placeholder text for name/comment, so
+  -- deriving difficulty or a zone key from it would be guesswork. activityID
+  -- above is never censored and stays the reliable source.
+  local entryCensored = addon.LFG_IsActiveEntryCensored and addon:LFG_IsActiveEntryCensored(entry) or false
+  local title = (not entryCensored) and entry
+    and (SafeText(entry.name) or SafeText(entry.questName) or SafeText(entry.comment))
+    or nil
   if title then
     context.difficulty = context.difficulty or DetectDifficultyFromText(title)
     context.nameKey = context.nameKey or NormalizeNameKey(title)
@@ -2146,9 +2152,11 @@ function addon:LFG_InitApplicantEnhancements()
       if sb.Refresh then hooksecurefunc(sb, "Refresh", cleanupThenSchedule) end
     end
   end
-  if type(LFGListApplicationViewer_UpdateApplicants) == "function" and not self._ggHookedUpdateApplicants then
+  -- LFGListApplicationViewer_UpdateApplicants has never existed in Mainline;
+  -- UpdateResults is the function that actually repaints the applicant list.
+  if type(LFGListApplicationViewer_UpdateResults) == "function" and not self._ggHookedUpdateApplicants then
     self._ggHookedUpdateApplicants = true
-    hooksecurefunc("LFGListApplicationViewer_UpdateApplicants", cleanupThenSchedule)
+    hooksecurefunc("LFGListApplicationViewer_UpdateResults", cleanupThenSchedule)
   end
   if type(LFGListApplicationViewer_UpdateApplicant) == "function" and not self._ggHookedUpdateApplicant then
     self._ggHookedUpdateApplicant = true

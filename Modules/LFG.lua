@@ -407,6 +407,7 @@ function addon:LFG_ClearSearchCaches()
   self._lfgResultFlagReasons = {}
   self._lfgResultSocialCache = {}
   self._lfgResultSocialReasons = {}
+  self._lfgResultCensored = {}
   if self.LFG_API_ClearCaches then self:LFG_API_ClearCaches("search") end
 end
 
@@ -547,9 +548,19 @@ function addon:EvaluateSearchResultFlag(resultID)
     return false
   end
 
-  testField(addon:Tr("LABEL_TITLE"), info.name)
-  testField(addon:Tr("LABEL_COMMENT"), info.comment)
-  testField(addon:Tr("LABEL_VOICE"), info.voiceChat)
+  -- 12.1: while a listing is censored the client withholds name/comment/voiceChat,
+  -- so testing them would produce a false "clean" verdict. The row is recorded as
+  -- censored instead, and only the fields that stay readable are checked.
+  -- The verdict is dropped again as soon as the player reveals the listing.
+  self._lfgResultCensored = self._lfgResultCensored or {}
+  local censored = self:LFG_IsSearchResultCensored(resultID, info)
+  self._lfgResultCensored[resultID] = censored or nil
+
+  if not censored then
+    testField(addon:Tr("LABEL_TITLE"), info.name)
+    testField(addon:Tr("LABEL_COMMENT"), info.comment)
+    testField(addon:Tr("LABEL_VOICE"), info.voiceChat)
+  end
   testField(addon:Tr("LABEL_LEADER"), info.leaderName)
 
   if flagged then
@@ -661,6 +672,21 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
   return mode, pending
 end
 
+-- 12.1: told once per listing that the player's own group text was censored.
+-- Blizzard already shows its own dialog, so this stays a single quiet chat line
+-- rather than a banner or a sound.
+function addon:NotifyCensoredActiveEntry()
+  if not (self.db and self.db.lfg_tooltips ~= nil) then return end
+  if self.IsDisabledNow and self:IsDisabledNow() then return end
+  if self._censoredEntryNotified then return end
+  self._censoredEntryNotified = true
+  print(self.printPrefix, self:Tr("LFG_CENSORED_ENTRY"))
+end
+
+function addon:ClearCensoredEntryNotice()
+  self._censoredEntryNotified = false
+end
+
 function addon:LFG_AddSearchTooltip(tooltip, resultID)
   if not (self.db and self.db.lfg_tooltips) then return end
   if self.IsDisabledNow and self:IsDisabledNow() then return end
@@ -671,12 +697,17 @@ function addon:LFG_AddSearchTooltip(tooltip, resultID)
   if not mode and self.LFG_EvaluateSearchResultSocial then
     mode = self:LFG_EvaluateSearchResultSocial(resultID)
   end
-  if not mode then return end
+
+  -- 12.1: a censored row is worth a tooltip even with no verdict, otherwise the
+  -- player cannot tell "no rule matched" apart from "the text was unreadable".
+  local censored = self._lfgResultCensored and self._lfgResultCensored[resultID] or false
+  if not mode and not censored then return end
 
   local now = GetTime and GetTime() or 0
-  if tooltip._ggLastResultID == resultID and tooltip._ggLastMode == mode and (tooltip._ggLastAddedAt or 0) + 0.05 > now then return end
+  local cacheKey = (mode or "NONE") .. (censored and ":CENSORED" or "")
+  if tooltip._ggLastResultID == resultID and tooltip._ggLastMode == cacheKey and (tooltip._ggLastAddedAt or 0) + 0.05 > now then return end
   tooltip._ggLastResultID = resultID
-  tooltip._ggLastMode = mode
+  tooltip._ggLastMode = cacheKey
   tooltip._ggLastAddedAt = now
 
   tooltip:AddLine(" ")
@@ -684,8 +715,20 @@ function addon:LFG_AddSearchTooltip(tooltip, resultID)
     tooltip:AddLine("|cff44aaff" .. addon:Tr("TOOLTIP_FRIEND_GROUP") .. "|r")
   elseif mode == "GUILD" then
     tooltip:AddLine("|cff44ff77" .. addon:Tr("TOOLTIP_GUILD_GROUP") .. "|r")
-  else
+  elseif mode == "FLAG" then
     tooltip:AddLine("|cffff5544GroupGuard LFG|r")
+  else
+    tooltip:AddLine("|cffaaaaaaGroupGuard LFG|r")
+  end
+
+  if censored then
+    tooltip:AddLine("• " .. addon:Tr("LFG_CENSORED_TITLE"), 0.85, 0.85, 0.85, true)
+    tooltip:AddLine("  " .. addon:Tr("LFG_CENSORED_DETAIL"), 0.65, 0.65, 0.65, true)
+  end
+
+  if not mode then
+    tooltip:Show()
+    return
   end
 
   if self.db.lfg_tooltip_reasons then
@@ -800,11 +843,8 @@ function addon:InitPGFIntegration()
     local ok
     if addon.SafeHookOnce then
       ok = addon:SafeHookOnce(key, tableRef, methodName, function()
-        if resetCaches then
-          addon._lfgResultFlagCache = {}
-          addon._lfgResultFlagReasons = {}
-          addon._lfgResultSocialCache = {}
-          addon._lfgResultSocialReasons = {}
+        if resetCaches and addon.LFG_ClearSearchCaches then
+          addon:LFG_ClearSearchCaches()
         end
         refreshResults(delay)
       end)
@@ -834,10 +874,7 @@ function addon:LFG_RetryHighlightSearchResults(force)
   self._lfgResultRetryScheduled = true
   self._lfgResultRetryToken = (self._lfgResultRetryToken or 0) + 1
   local token = self._lfgResultRetryToken
-  self._lfgResultFlagCache = {}
-  self._lfgResultFlagReasons = {}
-  self._lfgResultSocialCache = {}
-  self._lfgResultSocialReasons = {}
+  self:LFG_ClearSearchCaches()
 
   local delays = { 0.08, 0.30 }
   if not (C_Timer and C_Timer.After) then
@@ -906,11 +943,8 @@ function addon:LFG_HookViewer()
 
   if not addon._hookedViewerUpdate then
     addon._hookedViewerUpdate = true
-    if type(LFGListApplicationViewer_UpdateApplicants) == "function" then
-      hooksecurefunc("LFGListApplicationViewer_UpdateApplicants", function()
-        addon:LFG_DebouncedHighlight()
-      end)
-    end
+    -- LFGListApplicationViewer_UpdateApplicants does not exist in Mainline;
+    -- UpdateInfo and UpdateResults below are the real refresh points.
     if type(LFGListApplicationViewer_UpdateInfo) == "function" then
       hooksecurefunc("LFGListApplicationViewer_UpdateInfo", function()
         addon:LFG_DebouncedHighlight()
@@ -950,6 +984,8 @@ function addon:LFG_HookSearchPanel()
     end)
   end
   if addon.InitPGFIntegration then addon:InitPGFIntegration() end
+  -- 12.1: keep our verdict in sync with Blizzard's reveal-on-click.
+  if addon.LFG_InstallCensorHooks then addon:LFG_InstallCensorHooks() end
 
   if addon._ggHookedSearchPanel then return end
   addon._ggHookedSearchPanel = true

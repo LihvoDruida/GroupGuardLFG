@@ -360,9 +360,9 @@ function addon:IsGuildUnit(unit, guildName)
     if ok and v then return true end
   end
 
-  if guildName and GetGuildInfo then
-    local ok, myGuild = pcall(GetGuildInfo, "player")
-    if ok and type(myGuild) == "string" and myGuild ~= "" and guildName == myGuild then
+  if guildName and self.Safe and self.Safe.GuildName then
+    local myGuild = self.Safe.GuildName("player")
+    if myGuild and guildName == myGuild then
       return true
     end
   end

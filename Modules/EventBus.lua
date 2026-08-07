@@ -55,6 +55,10 @@ SafeRegisterEvent("LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS")
 SafeRegisterEvent("LFG_LIST_ENTRY_EXPIRED_TIMEOUT")
 SafeRegisterEvent("LFG_LIST_SEARCH_RESULTS_RECEIVED")
 SafeRegisterEvent("LFG_LIST_SEARCH_RESULT_UPDATED")
+-- 12.1 (Curse of Ula'tek): censorship state of the player's own listing.
+-- Missing on older clients, which is why registration is wrapped in pcall.
+SafeRegisterEvent("LFG_LIST_CENSORED_ACTIVE_ENTRY_UPDATE")
+SafeRegisterEvent("LFG_LIST_REVEALED_CENSORED_ACTIVE_ENTRY")
 
 
 -- Group state evaluation / event scheduler
@@ -203,6 +207,7 @@ function addon:SyncSettingsState(reason)
   self._lfgResultFlagReasons = {}
   self._lfgResultSocialCache = {}
   self._lfgResultSocialReasons = {}
+  self._lfgResultCensored = {}
 
   if self.RequestGroupRefresh then self:RequestGroupRefresh(0) end
   if self.RequestLFGRefresh then self:RequestLFGRefresh(nil, true, true) end
@@ -315,6 +320,19 @@ local function OnEvent(self, event, arg1, ...)
       or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
     addon:RequestLFGRefresh(nil, false, true)
+
+  -- 12.1: the player's own listing was censored, or they just revealed it.
+  -- Either way the cached title/description verdict is stale.
+  elseif event == "LFG_LIST_CENSORED_ACTIVE_ENTRY_UPDATE"
+      or event == "LFG_LIST_REVEALED_CENSORED_ACTIVE_ENTRY" then
+    if addon.LFG_API_ClearCaches then addon:LFG_API_ClearCaches("activity") end
+    if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() end
+    if event == "LFG_LIST_CENSORED_ACTIVE_ENTRY_UPDATE" and arg1 == true then
+      if addon.NotifyCensoredActiveEntry then addon:NotifyCensoredActiveEntry() end
+    elseif addon.ClearCensoredEntryNotice then
+      addon:ClearCensoredEntryNotice()
+    end
+    addon:RequestLFGRefresh(nil, true, true)
 
   elseif event == "UNIT_NAME_UPDATE"
       or event == "UNIT_CONNECTION"

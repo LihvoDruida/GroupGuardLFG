@@ -30,9 +30,12 @@ local function SafeNumber(value, fallback)
 end
 
 local function GetPlayerRole()
-  if UnitGroupRolesAssigned then
-    local ok, role = pcall(UnitGroupRolesAssigned, "player")
-    if ok and role and role ~= "NONE" then return role end
+  -- 12.1: UnitGroupRolesAssigned can return a secret; Safe.GroupRole yields a
+  -- plain string or nil so the value stays usable as a table key.
+  local Safe = addon.Safe
+  if Safe and Safe.GroupRole then
+    local role = Safe.GroupRole("player")
+    if role then return role end
   end
   if GetSpecialization and GetSpecializationRole then
     local okSpec, spec = pcall(GetSpecialization)
@@ -64,9 +67,10 @@ local function GetCurrentGroupRoleNeeds()
   end
   for i = 1, count do
     local unit = inRaid and ("raid" .. i) or ("party" .. i)
-    if UnitExists and UnitExists(unit) and UnitGroupRolesAssigned then
-      local ok, role = pcall(UnitGroupRolesAssigned, unit)
-      if ok and needs[role] ~= nil then needs[role] = needs[role] + 1 end
+    local Safe = addon.Safe
+    if UnitExists and UnitExists(unit) and Safe and Safe.GroupRole then
+      local role = Safe.GroupRole(unit)
+      if role and needs[role] ~= nil then needs[role] = needs[role] + 1 end
     end
   end
   return needs
