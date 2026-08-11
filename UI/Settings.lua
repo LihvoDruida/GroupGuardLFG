@@ -1134,6 +1134,29 @@ local function PrintPerfInfo()
   print(addon:Tr("CMD_LFG_FRAME_STATE", "LFG API cache", tostring(dump.buckets) .. " buckets / " .. tostring(dump.entries) .. " entries"))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "PUG inspect cache", tostring(inspectCache)))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "last inspect request", tostring(addon._lastPugInspectRequest or 0)))
+
+  -- The rule memo is the single biggest performance lever: a warm memo turns
+  -- rule matching into a table lookup. A count stuck at 0 means something is
+  -- clearing it, which is worth seeing.
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "rule memo", tostring(addon._ruleMemoCount or 0) .. " / 512"))
+
+  local friends, guildies = 0, 0
+  if type(addon._friendCache) == "table" then for _ in pairs(addon._friendCache) do friends = friends + 1 end end
+  if type(addon._guildCache) == "table" then for _ in pairs(addon._guildCache) do guildies = guildies + 1 end end
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "social cache", tostring(friends) .. " friends / " .. tostring(guildies) .. " guild"))
+
+  if addon.GetFriendSystemState then
+    local enabled, legacy, bnet = addon:GetFriendSystemState()
+    print(addon:Tr("CMD_LFG_FRAME_STATE", "friend systems",
+      "all=" .. tostring(enabled) .. " legacy=" .. tostring(legacy) .. " bnet=" .. tostring(bnet)))
+  end
+
+  local hookFailures = addon._hookFailures
+  if type(hookFailures) == "table" then
+    for label, count in pairs(hookFailures) do
+      print(addon:Tr("CMD_LFG_FRAME_STATE", "hook errors: " .. tostring(label), tostring(count)))
+    end
+  end
 end
 
 local function HandleSlash(msg)

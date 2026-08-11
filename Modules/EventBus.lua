@@ -363,8 +363,14 @@ local function OnEvent(self, event, arg1, ...)
       or event == "BN_FRIEND_ACCOUNT_OFFLINE"
       or event == "BN_FRIEND_INFO_CHANGED"
       or event == "BN_CONNECTED" then
-    if addon.RebuildFriendCache then addon:RebuildFriendCache(true) end
-    if addon.RebuildGuildCache then addon:RebuildGuildCache(true) end
+    -- Marked stale rather than rebuilt: these events arrive in bursts, and the
+    -- caches rebuild themselves on the next lookup.
+    if addon.InvalidateSocialCaches then
+      addon:InvalidateSocialCaches()
+    else
+      if addon.RebuildFriendCache then addon:RebuildFriendCache(true) end
+      if addon.RebuildGuildCache then addon:RebuildGuildCache(true) end
+    end
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {} end
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {} end
     addon:RequestGroupRefresh(0)

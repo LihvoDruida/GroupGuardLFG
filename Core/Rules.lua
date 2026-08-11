@@ -156,6 +156,17 @@ local function SplitRules(text)
   return rules
 end
 
+local LANGUAGE_SCRIPT_DETECTORS = {
+  { key = "language_script_cyrillic", label = "Cyrillic", pattern = "[\208\209][\128-\191]" },
+  { key = "language_script_greek",    label = "Greek",    pattern = "[\206\207][\128-\191]" },
+  { key = "language_script_arabic",   label = "Arabic",   pattern = "[\216\217][\128-\191]" },
+  { key = "language_script_hebrew",   label = "Hebrew",   pattern = "\215[\144-\191]" },
+  { key = "language_script_cjk",      label = "CJK",      pattern = "[\228-\233][\128-\191][\128-\191]" },
+  { key = "language_script_kana",     label = "Kana",     pattern = "\227[\129-\131][\128-\191]" },
+  { key = "language_script_hangul",   label = "Hangul",   pattern = "[\234-\237][\128-\191][\128-\191]" },
+}
+addon.LANGUAGE_SCRIPT_DETECTORS = LANGUAGE_SCRIPT_DETECTORS
+
 -- PERF: the same names and comments are re-tested on every scroll tick and
 -- every panel refresh.  A bounded memo keyed on the raw text turns repeated
 -- passes into a single table lookup.  It is dropped whenever the rules or the
@@ -169,26 +180,39 @@ function addon:ClearRuleMemo()
   self._ruleMemoCount = 0
 end
 
-function addon:RebuildFlagRules()
-  self._flagRules = SplitRules(self.db and self.db.flag_rules or "")
-  self:ClearRuleMemo()
+-- The memo caches a full verdict, so it must be dropped when ANY input to that
+-- verdict changes -- not only the rule text, but the language toggles and every
+-- script detector checkbox too. Skipping that would trade a stale-results bug
+-- for the performance win, so all of them go into one signature.
+function addon:GetRuleSignature()
+  local db = self.db
+  if not db then return "" end
+  local parts = {
+    tostring(db.flag_rules or ""),
+    tostring(db.language_detect_rules or ""),
+    db.language_detect_enabled and "1" or "0",
+    db.language_detect_keywords and "1" or "0",
+    db.language_detect_scripts and "1" or "0",
+  }
+  for i = 1, #LANGUAGE_SCRIPT_DETECTORS do
+    parts[#parts + 1] = db[LANGUAGE_SCRIPT_DETECTORS[i].key] and "1" or "0"
+  end
+  return table.concat(parts, "\1")
 end
 
-function addon:RebuildLanguageRules()
-  self._languageRules = SplitRules(self.db and self.db.language_detect_rules or "")
-  self:ClearRuleMemo()
+function addon:RebuildFlagRules(force)
+  local source = self.db and self.db.flag_rules or ""
+  if not force and self._flagRules and self._flagRulesSource == source then return end
+  self._flagRules = SplitRules(source)
+  self._flagRulesSource = source
 end
 
-local LANGUAGE_SCRIPT_DETECTORS = {
-  { key = "language_script_cyrillic", label = "Cyrillic", pattern = "[\208\209][\128-\191]" },
-  { key = "language_script_greek",    label = "Greek",    pattern = "[\206\207][\128-\191]" },
-  { key = "language_script_arabic",   label = "Arabic",   pattern = "[\216\217][\128-\191]" },
-  { key = "language_script_hebrew",   label = "Hebrew",   pattern = "\215[\144-\191]" },
-  { key = "language_script_cjk",      label = "CJK",      pattern = "[\228-\233][\128-\191][\128-\191]" },
-  { key = "language_script_kana",     label = "Kana",     pattern = "\227[\129-\131][\128-\191]" },
-  { key = "language_script_hangul",   label = "Hangul",   pattern = "[\234-\237][\128-\191][\128-\191]" },
-}
-addon.LANGUAGE_SCRIPT_DETECTORS = LANGUAGE_SCRIPT_DETECTORS
+function addon:RebuildLanguageRules(force)
+  local source = self.db and self.db.language_detect_rules or ""
+  if not force and self._languageRules and self._languageRulesSource == source then return end
+  self._languageRules = SplitRules(source)
+  self._languageRulesSource = source
+end
 
 local function HasLuaPattern(text, pattern)
   if not text or not pattern then return false end
@@ -196,9 +220,11 @@ local function HasLuaPattern(text, pattern)
   return ok and pos ~= nil
 end
 
-function addon:GetLanguageKeywordReason(text)
+-- `haystack` lets callers that already normalized the text skip a second
+-- lowercase pass over the same string on every clean listing.
+function addon:GetLanguageKeywordReason(text, haystack)
   if not (self.db and self.db.language_detect_enabled and self.db.language_detect_keywords) then return nil end
-  local haystack = NormalizeForRules(text)
+  haystack = haystack or NormalizeForRules(text)
   if not haystack then return nil end
 
   local rules = self._languageRules
@@ -206,8 +232,10 @@ function addon:GetLanguageKeywordReason(text)
     self:RebuildLanguageRules()
     rules = self._languageRules
   end
+  if not rules then return nil end
 
-  for _, rule in ipairs(rules or {}) do
+  for i = 1, #rules do
+    local rule = rules[i]
     if rule ~= "" and string.find(haystack, rule, 1, true) then
       return self:Tr("REASON_LANGUAGE", rule)
     end
@@ -260,7 +288,7 @@ function addon:GetFlagReason(text)
   end
 
   if not flagged then
-    reason = self:GetLanguageKeywordReason(text) or self:GetLanguageScriptReason(text)
+    reason = self:GetLanguageKeywordReason(text, haystack) or self:GetLanguageScriptReason(text)
     if reason then flagged = true end
   end
 
@@ -290,5 +318,13 @@ function addon:RebuildCaches()
   self:InvalidateInstanceFlags()
   self:RebuildFlagRules()
   self:RebuildLanguageRules()
+
+  -- Only a real change to any verdict input drops the memo. Zoning, which is
+  -- what calls this most often, now leaves the warmed cache intact.
+  local signature = self:GetRuleSignature()
+  if signature ~= self._ruleSignature then
+    self._ruleSignature = signature
+    self:ClearRuleMemo()
+  end
 end
 

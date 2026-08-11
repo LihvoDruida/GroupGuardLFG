@@ -2,9 +2,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.5.1
-## X-Codename: Curse of Ula’tek 12.1 compatibility and startup resilience
-## X-Prev-Codename: Hot path optimization and applicant column tooltip
+## Version: 4.6.0
+## X-Codename: 12.1 diagnostics and hot path optimization
+## X-Prev-Codename: Curse of Ula’tek 12.1 compatibility and startup resilience
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_GroupFinder, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only

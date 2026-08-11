@@ -77,11 +77,46 @@ local function AddFriendName(cache, name)
   CacheName(cache, name, true)
 end
 
+-- 12.1 can disable the friend systems outright (parental controls, region
+-- restrictions, or simply the legacy list being retired). Enumerating a
+-- disabled system burns a pcall per index and always yields nothing, so each
+-- source is asked whether it is live before being walked.
+local function FriendSystemState()
+  local anyDisabled = false
+  if C_SocialRestrictions and type(C_SocialRestrictions.IsFriendsDisabled) == "function" then
+    local ok, disabled = pcall(C_SocialRestrictions.IsFriendsDisabled)
+    if ok and disabled == true then anyDisabled = true end
+  end
+
+  local legacy = true
+  if C_FriendList and type(C_FriendList.IsLegacyFriendSystemEnabled) == "function" then
+    local ok, enabled = pcall(C_FriendList.IsLegacyFriendSystemEnabled)
+    if ok and enabled == false then legacy = false end
+  end
+
+  local battleNet = true
+  if C_BattleNet and type(C_BattleNet.IsBattleNetFriendsListEnabled) == "function" then
+    local ok, enabled = pcall(C_BattleNet.IsBattleNetFriendsListEnabled)
+    if ok and enabled == false then battleNet = false end
+  end
+
+  if anyDisabled then return false, false, false end
+  return true, legacy, battleNet
+end
+
+addon.GetFriendSystemState = FriendSystemState
+
 function addon:RebuildFriendCache(force)
   local now = GetTime and GetTime() or 0
   if not force and self._friendCache and (self._friendCacheBuiltAt or 0) + 15 > now then return end
 
   local cache = {}
+  local enabled, legacyEnabled, battleNetEnabled = FriendSystemState()
+  if not enabled then
+    self._friendCache = cache
+    self._friendCacheBuiltAt = now
+    return
+  end
 
   if C_FriendList then
     if C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex then
@@ -100,7 +135,8 @@ function addon:RebuildFriendCache(force)
     end
   end
 
-  if GetNumFriends and GetFriendInfo then
+  -- Pre-Retail global API; skipped when the legacy list is switched off.
+  if legacyEnabled and GetNumFriends and GetFriendInfo then
     local okN, n = pcall(GetNumFriends)
     n = okN and tonumber(n) or 0
     for i = 1, n do
@@ -109,7 +145,7 @@ function addon:RebuildFriendCache(force)
     end
   end
 
-  if C_BattleNet and C_BattleNet.GetFriendNumGameAccounts and C_BattleNet.GetFriendGameAccountInfo and C_BattleNet.GetNumFriends then
+  if battleNetEnabled and C_BattleNet and C_BattleNet.GetFriendNumGameAccounts and C_BattleNet.GetFriendGameAccountInfo and C_BattleNet.GetNumFriends then
     local okN, n = pcall(C_BattleNet.GetNumFriends)
     n = okN and tonumber(n) or 0
     for i = 1, n do
@@ -124,7 +160,7 @@ function addon:RebuildFriendCache(force)
     end
   end
 
-  if BNGetNumFriends and BNGetNumFriendGameAccounts and BNGetFriendGameAccountInfo then
+  if battleNetEnabled and BNGetNumFriends and BNGetNumFriendGameAccounts and BNGetFriendGameAccountInfo then
     local okN, n = pcall(BNGetNumFriends)
     n = okN and tonumber(n) or 0
     for i = 1, n do
@@ -352,6 +388,22 @@ function addon:IsFriendName(name)
   if not key then return false end
   self:RebuildFriendCache(false)
   return CacheLookup(self._friendCache, name) and true or false
+end
+
+-- PERF: BN_FRIEND_INFO_CHANGED and GUILD_ROSTER_UPDATE fire constantly -- every
+-- friend logging in, changing zone or going AFK, and every guild roster tick.
+-- Forcing a full rebuild on each one walked the entire friend list (a pcall per
+-- friend per game account) and the whole guild roster, often several times a
+-- second, to produce the same table. Marking the caches stale collapses a burst
+-- of events into a single rebuild on the next actual lookup.
+function addon:InvalidateSocialCaches()
+  -- Zeroing the timestamp would NOT work: GetTime() is seconds since login, so
+  -- during the first 15s the TTL check still passes and the stale cache is kept.
+  -- Dropping the table itself is unambiguous.
+  self._friendCache = nil
+  self._friendCacheBuiltAt = 0
+  self._guildCache = nil
+  self._guildCacheBuiltAt = 0
 end
 
 function addon:IsGuildUnit(unit, guildName)
