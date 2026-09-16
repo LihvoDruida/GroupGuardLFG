@@ -3,21 +3,21 @@ local addonName, addon = ...
 
 
 local function CanReadValue(value)
-  if value == nil then return false end
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
 end
 
 local function SafeNumber(value, fallback)
   fallback = fallback or 0
-  if value == nil or not CanReadValue(value) then return fallback end
+  if not CanReadValue(value) then return fallback end
   local valueType = type(value)
   if valueType == "number" then return value end
   if valueType == "string" then return tonumber(value) or fallback end
@@ -38,8 +38,13 @@ local FRAME_MARKER_ICON = "Interface\\AddOns\\GroupGuardLFG\\Media\\warning_mark
 
 local function SafeUnitName(unit)
   if not unit then return nil end
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitFullName then
+    local _, shortName = Safe.UnitFullName(unit)
+    return shortName
+  end
   local ok, name = pcall(UnitName, unit)
-  if ok and CanReadValue(name) then return name end
+  if ok and CanReadValue(name) then return addon:SafeText(name) end
   return nil
 end
 
@@ -48,21 +53,34 @@ local function IsUsableFrame(frame)
   -- Marker parents must be real frames only.
   local t = type(frame)
   if t ~= "table" and t ~= "userdata" then return false end
-  return type(frame.CreateTexture) == "function"
-     and type(frame.GetObjectType) == "function"
-     and type(frame.GetFrameLevel) == "function"
-     and type(frame.GetHeight) == "function"
+  if addon and addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(frame) then return false end
+  local method = addon and addon.Safe and addon.Safe.ObjectMethod
+  if method then
+    return method(frame, "CreateTexture") ~= nil
+       and method(frame, "GetObjectType") ~= nil
+       and method(frame, "GetFrameLevel") ~= nil
+       and method(frame, "GetHeight") ~= nil
+  end
+  local ok, usable = pcall(function()
+    return type(frame.CreateTexture) == "function"
+       and type(frame.GetObjectType) == "function"
+       and type(frame.GetFrameLevel) == "function"
+       and type(frame.GetHeight) == "function"
+  end)
+  return ok and usable or false
 end
 
 local function ShouldSuppressFrameMarkers()
   if addon and addon.IsDisabledNow and addon:IsDisabledNow() then return true end
-  if type(InCombatLockdown) == "function" then
-    local ok, locked = pcall(InCombatLockdown)
-    if ok and locked then return true end
-  end
-  if type(UnitAffectingCombat) == "function" then
-    local ok, inCombat = pcall(UnitAffectingCombat, "player")
-    if ok and inCombat then return true end
+  local Safe = addon and addon.Safe
+  if Safe then
+    if Safe.InCombatLockdown and Safe.InCombatLockdown() then return true end
+    if Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then return true end
+  else
+    if type(InCombatLockdown) == "function" then
+      local ok, locked = pcall(InCombatLockdown)
+      if ok and locked == true then return true end
+    end
   end
   return false
 end
@@ -107,7 +125,8 @@ end
 
 local function EnsureFrameMarker(frame)
   if not IsUsableFrame(frame) then return nil end
-  if frame.GroupGuardLFGMarker then return frame.GroupGuardLFGMarker end
+  local okExisting, existing = pcall(function() return frame.GroupGuardLFGMarker end)
+  if okExisting and existing then return existing end
 
   local marker = CreateFrame("Frame", nil, frame)
   local strata = "MEDIUM"
@@ -138,7 +157,7 @@ local function EnsureFrameMarker(frame)
 
   EnsurePulseAnimation(marker)
 
-  frame.GroupGuardLFGMarker = marker
+  pcall(function() frame.GroupGuardLFGMarker = marker end)
   addon._frameMarkerFrames = addon._frameMarkerFrames or {}
   addon._frameMarkerFrames[frame] = true
   return marker
@@ -213,13 +232,16 @@ end
 local function GetFramePlayerName(frame)
   if not IsUsableFrame(frame) then return nil end
 
-  local unit = frame.unit or frame.displayedUnit or frame.unitToken
+  local okUnit, unit = pcall(function() return frame.unit or frame.displayedUnit or frame.unitToken end)
+  if not okUnit then return nil end
   local name = SafeUnitName(unit)
   if name then return name end
 
-  local label = frame.name or frame.Name or frame.nameText or frame.NameText
-  if label and label.GetText then
-    local ok, value = pcall(label.GetText, label)
+  local okLabel, label = pcall(function() return frame.name or frame.Name or frame.nameText or frame.NameText end)
+  if not okLabel then return nil end
+  local getText = addon and addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(label, "GetText")
+  if getText then
+    local ok, value = pcall(getText, label)
     if ok and CanReadValue(value) then return value end
   end
 
@@ -229,8 +251,9 @@ end
 function addon:ClearFrameMarkers()
   if not self._frameMarkerFrames then return end
   for frame in pairs(self._frameMarkerFrames) do
-    if frame and frame.GroupGuardLFGMarker then
-      HideFrameMarker(frame.GroupGuardLFGMarker)
+    if IsUsableFrame(frame) then
+      local ok, marker = pcall(function() return frame.GroupGuardLFGMarker end)
+      if ok and marker then HideFrameMarker(marker) end
     end
   end
 end

@@ -7,7 +7,7 @@ local function SafeIsInRaid()
   if addon and addon.Safe and addon.Safe.IsInRaid then return addon.Safe.IsInRaid() end
   if not IsInRaid then return false end
   local ok, value = pcall(IsInRaid)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 local function SafeGroupCount()
@@ -18,7 +18,16 @@ local function SafeGroupCount()
 end
 
 local function CanReadValue(value)
-  return addon and addon.Safe and addon.Safe.CanReadValue and addon.Safe.CanReadValue(value) or value ~= nil
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
+  if type(canaccessvalue) == "function" then
+    local ok, allowed = pcall(canaccessvalue, value)
+    if not ok or allowed ~= true then return false end
+  end
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if not ok or secret == true then return false end
+  end
+  return value ~= nil
 end
 
 local function ShortName(name)
@@ -27,20 +36,9 @@ local function ShortName(name)
 end
 
 local function FullNameFromUnit(unit)
-  local name, realm
-  if UnitFullName then
-    local ok, n, r = pcall(UnitFullName, unit)
-    if ok then name, realm = n, r end
-  end
-  if not name and UnitName then
-    local ok, n, r = pcall(UnitName, unit)
-    if ok then name, realm = n, r end
-  end
-  if not CanReadValue(name) or type(name) ~= "string" or name == "" then return nil end
-  if CanReadValue(realm) and type(realm) == "string" and realm ~= "" then
-    return name .. "-" .. realm, name, realm
-  end
-  return name, name, realm
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitFullName then return Safe.UnitFullName(unit) end
+  return nil, nil, nil
 end
 
 local function ClassColor(classFile)
@@ -64,6 +62,8 @@ local function SafeGetTime()
 end
 
 local function SafeUnitGUID(unit)
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitGUID then return Safe.UnitGUID(unit) end
   if UnitGUID then
     local ok, guid = pcall(UnitGUID, unit)
     if ok and CanReadValue(guid) and type(guid) == "string" and guid ~= "" then return guid end
@@ -73,13 +73,14 @@ end
 
 local function ReadInspectItemLevel(unit)
   local value
+  local Safe = addon and addon.Safe
   if C_PaperDollInfo and type(C_PaperDollInfo.GetInspectItemLevel) == "function" then
     local ok, result = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
-    if ok then value = tonumber(result) end
+    if ok then value = Safe and Safe.Number and Safe.Number(result, nil) or nil end
   end
   if (not value or value <= 0) and type(GetInspectItemLevel) == "function" then
     local ok, result = pcall(GetInspectItemLevel, unit)
-    if ok then value = tonumber(result) end
+    if ok then value = Safe and Safe.Number and Safe.Number(result, nil) or nil end
   end
   if value and value > 0 then return math.floor(value + 0.5) end
   return nil
@@ -87,18 +88,10 @@ end
 
 local function CanRequestInspect(unit)
   if not unit then return false end
-  if type(InCombatLockdown) == "function" then
-    local ok, locked = pcall(InCombatLockdown)
-    if ok and locked then return false end
-  end
-  if UnitAffectingCombat then
-    local ok, inCombat = pcall(UnitAffectingCombat, "player")
-    if ok and inCombat then return false end
-  end
-  if CanInspect then
-    local ok, value = pcall(CanInspect, unit, false)
-    if ok and not value then return false end
-  end
+  local Safe = addon and addon.Safe
+  if Safe and Safe.InCombatLockdown and Safe.InCombatLockdown() then return false end
+  if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then return false end
+  if Safe and Safe.CanInspect and not Safe.CanInspect(unit) then return false end
   return type(NotifyInspect) == "function"
 end
 
@@ -214,9 +207,10 @@ function addon:ScanRaidPugs()
 
   for i = 1, num do
     local unit = "raid" .. i
-    if UnitExists and UnitExists(unit) then
+    local Safe = self.Safe
+    if Safe and Safe.UnitExists and Safe.UnitExists(unit) then
       local fullName, shortName, realm = FullNameFromUnit(unit)
-      if fullName and not (UnitIsUnit and UnitIsUnit(unit, "player")) then
+      if fullName and not (Safe.UnitIsUnit and Safe.UnitIsUnit(unit, "player")) then
         -- 12.1: GetGuildInfo rejects compound unit tokens; Safe.GuildName filters them.
         local guildName
         local Safe = addon.Safe
@@ -238,17 +232,9 @@ function addon:ScanRaidPugs()
             className, classFile = Safe.UnitClass(unit)
           end
 
-          local online = true
-          if UnitIsConnected then
-            local okOnline, value = pcall(UnitIsConnected, unit)
-            if okOnline then online = value and true or false end
-          end
+          local online = Safe.UnitIsConnected and Safe.UnitIsConnected(unit) or false
 
-          local subgroup = nil
-          if GetRaidRosterInfo then
-            local okRoster, _, _, sg = pcall(GetRaidRosterInfo, i)
-            if okRoster then subgroup = tonumber(sg) end
-          end
+          local subgroup = Safe.GetRaidSubgroup and Safe.GetRaidSubgroup(i) or nil
 
           local itemLevel, itemLevelPending = self:GetPugItemLevel(unit, fullName)
 

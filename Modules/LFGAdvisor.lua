@@ -9,20 +9,33 @@ local ROLE_REMAINING_KEY = {
 }
 
 local function CanReadValue(value)
-  if value == nil then return false end
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
+end
+
+local function CanAccessTable(value)
+  if addon and addon.Safe and addon.Safe.CanAccessTable then return addon.Safe.CanAccessTable(value) end
+  return type(value) == "table"
+end
+
+local function TableField(t, key)
+  if addon and addon.Safe and addon.Safe.TableField then return addon.Safe.TableField(t, key) end
+  if not CanAccessTable(t) then return nil end
+  local ok, value = pcall(function() return t[key] end)
+  if ok and CanReadValue(value) then return value end
+  return nil
 end
 
 local function SafeNumber(value, fallback)
-  if value == nil or not CanReadValue(value) then return fallback end
+  if not CanReadValue(value) then return fallback end
   if type(value) == "number" then return value end
   if type(value) == "string" then return tonumber(value) or fallback end
   local ok, n = pcall(tonumber, value)
@@ -49,26 +62,14 @@ end
 
 local function GetCurrentGroupRoleNeeds()
   local needs = { TANK = 0, HEALER = 0, DAMAGER = 0 }
-  local inGroup = false
-  if IsInGroup then
-    local ok, value = pcall(IsInGroup)
-    inGroup = ok and value and true or false
-  end
+  local Safe = addon.Safe
+  local inGroup = Safe and Safe.IsInGroup and Safe.IsInGroup() or false
   if not inGroup then return needs end
-  local count = 0
-  if GetNumGroupMembers then
-    local ok, value = pcall(GetNumGroupMembers)
-    count = ok and tonumber(value) or 0
-  end
-  local inRaid = false
-  if IsInRaid then
-    local ok, value = pcall(IsInRaid)
-    inRaid = ok and value and true or false
-  end
+  local count = addon.GetGroupMemberCount and addon:GetGroupMemberCount() or 0
+  local inRaid = Safe and Safe.IsInRaid and Safe.IsInRaid() or false
   for i = 1, count do
     local unit = inRaid and ("raid" .. i) or ("party" .. i)
-    local Safe = addon.Safe
-    if UnitExists and UnitExists(unit) and Safe and Safe.GroupRole then
+    if Safe and Safe.UnitExists and Safe.UnitExists(unit) and Safe.GroupRole then
       local role = Safe.GroupRole(unit)
       if role and needs[role] ~= nil then needs[role] = needs[role] + 1 end
     end
@@ -83,9 +84,11 @@ function addon:LFG_GetSearchResultRoleFit(resultID, info)
   if not playerRole or not ROLE_REMAINING_KEY[playerRole] then return nil end
 
   local ok, counts = pcall(C_LFGList.GetSearchResultMemberCounts, resultID)
-  if not ok or type(counts) ~= "table" then return nil end
+  if not ok or not CanAccessTable(counts) then return nil end
   local remainingKey = ROLE_REMAINING_KEY[playerRole]
-  local remaining = SafeNumber(counts[remainingKey] or counts[remainingKey:lower()] or counts[playerRole .. "Remaining"], nil)
+  local remaining = SafeNumber(TableField(counts, remainingKey), nil)
+    or SafeNumber(TableField(counts, remainingKey:lower()), nil)
+    or SafeNumber(TableField(counts, playerRole .. "Remaining"), nil)
   if remaining == nil then return nil end
 
   local text
@@ -123,16 +126,8 @@ function addon:LFG_PrintAdvisorStats()
   local sp = LFGListFrame and LFGListFrame.SearchPanel
   local sb = sp and sp.ScrollBox
   local frames = nil
-  if sb then
-    if addon and addon.SafeEnumerateScrollBoxFrames then
-      frames = addon:SafeEnumerateScrollBoxFrames(sb)
-    elseif sb.GetFrames then
-      local okFrames, got = pcall(sb.GetFrames, sb)
-      frames = okFrames and got or nil
-    elseif sb.EnumerateFrames then
-      frames = {}
-      pcall(function() for f in sb:EnumerateFrames() do frames[#frames+1] = f end end)
-    end
+  if sb and addon and addon.SafeEnumerateScrollBoxFrames then
+    frames = addon:SafeEnumerateScrollBoxFrames(sb)
   end
   if not frames then
     print((self.printPrefix or "GroupGuard LFG:"), self:Tr("LFG_STATS_NO_RESULTS"))
@@ -141,14 +136,20 @@ function addon:LFG_PrintAdvisorStats()
   local total, fit, full = 0, 0, 0
   for _, row in ipairs(frames) do
     local rid
-    if addon and addon.SafeGetElementData then
+    local keys = { "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID" }
+    if addon and addon.SafeGetElementData and addon.Safe and addon.Safe.TableField then
       local ed = addon:SafeGetElementData(row)
-      if type(ed) == "table" then rid = ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID end
-    elseif row.GetElementData then
-      local okEd, ed = pcall(row.GetElementData, row)
-      if okEd and type(ed) == "table" then rid = ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID end
+      for i = 1, #keys do
+        rid = SafeNumber(addon.Safe.TableField(ed, keys[i]), nil)
+        if rid then break end
+      end
     end
-    rid = rid or row.resultID or row.resultId or row.id or row.ID
+    if not rid and addon and addon.Safe and addon.Safe.ObjectField then
+      for i = 1, #keys do
+        rid = SafeNumber(addon.Safe.ObjectField(row, keys[i]), nil)
+        if rid then break end
+      end
+    end
     if rid then
       total = total + 1
       local state = self:LFG_GetSearchResultRoleFit(rid)

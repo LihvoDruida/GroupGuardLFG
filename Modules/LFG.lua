@@ -16,6 +16,7 @@ local function GGHook(target, methodOrFunc, maybeFunc)
   if isGlobal then
     ok = pcall(hooksecurefunc, target, guarded)
   else
+    if addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(target) then return false end
     ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
   end
   return ok and true or false
@@ -49,16 +50,15 @@ end
 
 function addon:LFG_HasActiveListing()
   if not C_LFGList then return false end
-  if C_LFGList.GetActiveEntryInfo then
-    local okCall, info = pcall(C_LFGList.GetActiveEntryInfo)
-    if okCall then
-      if type(info) == "table" then return true end
-      if type(info) == "boolean" then return info and true or false end
-    end
+  -- Never inspect the raw GetActiveEntryInfo return here. Midnight may attach
+  -- protected/secret members to Blizzard-owned LFG tables; the SafeAPI wrapper
+  -- proves table access before exposing it to feature modules.
+  if self.LFG_API_GetActiveEntryInfo and self:LFG_API_GetActiveEntryInfo() then
+    return true
   end
   if C_LFGList.HasActiveEntryInfo then
     local okCall, has = pcall(C_LFGList.HasActiveEntryInfo)
-    return okCall and has and true or false
+    return okCall and self:SafeBool(has) or false
   end
   return false
 end
@@ -67,9 +67,8 @@ function addon:LFG_CanManageApplicants()
   if self.IsDisabledNow and self:IsDisabledNow() then return false end
   if not self:LFG_HasActiveListing() then return false end
 
-  local inGroup = false
-  if IsInGroup then local ok, v = pcall(IsInGroup); inGroup = ok and v and true or false end
-  if not inGroup and IsInRaid then local ok, v = pcall(IsInRaid); inGroup = ok and v and true or false end
+  local Safe = self.Safe
+  local inGroup = Safe and ((Safe.IsInGroup and Safe.IsInGroup()) or (Safe.IsInRaid and Safe.IsInRaid())) or false
   if not inGroup then return true end
 
   if self.PlayerCanManageGroup then return self:PlayerCanManageGroup() end
@@ -77,33 +76,48 @@ function addon:LFG_CanManageApplicants()
 end
 
 local function EnumerateScrollBoxFrames(sb)
-  if not sb then return nil end
-  if sb.GetFrames then
-    return sb:GetFrames()
-  elseif sb.EnumerateFrames then
-    local frames = {}
-    for f in sb:EnumerateFrames() do frames[#frames + 1] = f end
-    return frames
+  if addon and addon.SafeEnumerateScrollBoxFrames then return addon:SafeEnumerateScrollBoxFrames(sb) end
+  return {}
+end
+
+local function CanAccessObject(object)
+  if not object then return false end
+  if addon and addon.Safe and addon.Safe.CanAccessObject then return addon.Safe.CanAccessObject(object) end
+  return true
+end
+
+local function SafeField(object, ...)
+  if not CanAccessObject(object) then return nil end
+  local keys = { ... }
+  for i = 1, #keys do
+    local candidate
+    if addon and addon.Safe and addon.Safe.ObjectField then
+      candidate = addon.Safe.ObjectField(object, keys[i])
+    else
+      local ok, value = pcall(function() return object[keys[i]] end)
+      if ok and addon and addon.SafeCanRead and addon:SafeCanRead(value) then candidate = value end
+    end
+    if candidate ~= nil then return candidate end
   end
   return nil
 end
 
 local function CanReadValue(value)
-  if value == nil then return false end
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
 end
 
 local function SafeNumber(value, fallback)
   fallback = fallback or 0
-  if value == nil or not CanReadValue(value) then return fallback end
+  if not CanReadValue(value) then return fallback end
 
   local valueType = type(value)
   if valueType == "number" then return value end
@@ -115,27 +129,38 @@ local function SafeNumber(value, fallback)
 end
 
 local function ResolveIDFromElementData(ed, wanted)
-  if type(ed) ~= "table" then return nil end
+  if not (addon and addon.Safe and addon.Safe.CanAccessTable and addon.Safe.CanAccessTable(ed)) then return nil end
+  local keys
   if wanted == "applicant" then
-    local direct = ed.applicantID or ed.applicantId or ed.ApplicantID or ed.id or ed.ID
-    if direct then return direct end
+    keys = { "applicantID", "applicantId", "ApplicantID", "id", "ID" }
   else
-    local direct = ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
-    if direct then return direct end
+    keys = { "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID" }
   end
-  local nested = ed.info or ed.data or ed.elementData or ed.applicantInfo or ed.applicationInfo or ed.searchResultInfo
-  if type(nested) == "table" then return ResolveIDFromElementData(nested, wanted) end
+  for i = 1, #keys do
+    local value = addon.Safe.TableField(ed, keys[i])
+    local id = SafeNumber(value, nil)
+    if id then return id end
+  end
+  local nestedKeys = { "info", "data", "elementData", "applicantInfo", "applicationInfo", "searchResultInfo" }
+  for i = 1, #nestedKeys do
+    local nested = addon.Safe.TableField(ed, nestedKeys[i])
+    if addon.Safe.CanAccessTable(nested) then
+      local id = ResolveIDFromElementData(nested, wanted)
+      if id then return id end
+    end
+  end
   return nil
 end
 
 local function GetApplicantIDFromRow(frame)
-  if not frame then return nil end
-  local direct = SafeNumber(frame._ggLastApplicantID or frame.applicantID or frame.applicantId or frame.ApplicantID or frame.id or frame.ID, nil)
+  if not CanAccessObject(frame) then return nil end
+  local direct = SafeNumber(SafeField(frame, "_ggLastApplicantID", "applicantID", "applicantId", "ApplicantID", "id", "ID"), nil)
   if direct then return direct end
-  if frame.GetParent then
-    local ok, parent = pcall(frame.GetParent, frame)
+  local getParent = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(frame, "GetParent")
+  if getParent then
+    local ok, parent = pcall(getParent, frame)
     if ok and parent then
-      local parentID = SafeNumber(parent._ggLastApplicantID or parent.applicantID or parent.applicantId or parent.ApplicantID, nil)
+      local parentID = SafeNumber(SafeField(parent, "_ggLastApplicantID", "applicantID", "applicantId", "ApplicantID"), nil)
       if parentID then return parentID end
     end
   end
@@ -144,8 +169,8 @@ local function GetApplicantIDFromRow(frame)
 end
 
 local function GetResultIDFromRow(frame)
-  if not frame then return nil end
-  local direct = SafeNumber(frame.resultID or frame.resultId or frame.searchResultID or frame.searchResultId or frame.id or frame.ID, nil)
+  if not CanAccessObject(frame) then return nil end
+  local direct = SafeNumber(SafeField(frame, "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID"), nil)
   if direct then return direct end
   local ed = addon and addon.SafeGetElementData and addon:SafeGetElementData(frame) or nil
   return SafeNumber(ResolveIDFromElementData(ed, "result"), nil)
@@ -189,44 +214,55 @@ local LFG_HIGHLIGHT_COLORS = {
 }
 
 local function GetGGHighlightHost(rowFrame)
-  if not rowFrame then return nil end
-  local host = rowFrame.Contents or rowFrame.Content or rowFrame.Button or rowFrame
-  if host and not host.CreateTexture and host.GetParent then
-    host = host:GetParent()
+  if not CanAccessObject(rowFrame) then return nil end
+  local host = SafeField(rowFrame, "Contents", "Content", "Button") or rowFrame
+  local createTexture = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(host, "CreateTexture")
+  if not createTexture then
+    local getParent = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(host, "GetParent")
+    if getParent then
+      local ok, parent = pcall(getParent, host)
+      if ok and CanAccessObject(parent) then host = parent end
+    end
   end
-  if host and host.CreateTexture then return host end
-  if rowFrame.CreateTexture then return rowFrame end
+  if addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(host, "CreateTexture") then return host end
+  if addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(rowFrame, "CreateTexture") then return rowFrame end
   return nil
 end
 
 local function EnsureGGHighlight(host)
-  if not host then return nil end
+  if not CanAccessObject(host) then return nil end
 
-  if not host._ggHL then
-    local fill = host:CreateTexture(nil, "BACKGROUND", nil, 1)
+  local existing = SafeField(host, "_ggHL")
+  if not existing then
+    local createTexture = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(host, "CreateTexture")
+    if not createTexture then return nil end
+    local fill = createTexture(host, nil, "BACKGROUND", nil, 1)
     fill:ClearAllPoints()
     fill:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -3)
     fill:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -4, 0)
     fill:SetColorTexture(0.17, 0.56, 0.96, 0.18)
 
-    local top = host:CreateTexture(nil, "BORDER")
+    local top = createTexture(host, nil, "BORDER")
     top:SetHeight(1)
     top:SetPoint("TOPLEFT", fill, "TOPLEFT", 0, 0)
     top:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
     top:SetColorTexture(0.34, 0.52, 0.72, 0.24)
 
-    local bottom = host:CreateTexture(nil, "BORDER")
+    local bottom = createTexture(host, nil, "BORDER")
     bottom:SetHeight(1)
     bottom:SetPoint("BOTTOMLEFT", fill, "BOTTOMLEFT", 0, 0)
     bottom:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
     bottom:SetColorTexture(0.34, 0.52, 0.72, 0.18)
 
-    host._ggHL = fill
-    host._ggHLTop = top
-    host._ggHLBottom = bottom
+    local stored = pcall(function()
+      host._ggHL = fill
+      host._ggHLTop = top
+      host._ggHLBottom = bottom
+    end)
+    if not stored then return nil end
   end
 
-  return host._ggHL, host._ggHLTop, host._ggHLBottom
+  return SafeField(host, "_ggHL"), SafeField(host, "_ggHLTop"), SafeField(host, "_ggHLBottom")
 end
 
 local function PaintGGHighlight(rowFrame, mode)
@@ -273,13 +309,14 @@ local function HideRowDecorations(row)
 end
 
 local function HookRecycledLFGRow(row)
-  if not row or row._ggRecycleSafeHooked then return end
-  row._ggRecycleSafeHooked = true
-  if row.HookScript then
-    row:HookScript("OnHide", HideRowDecorations)
-    row:HookScript("OnShow", HideRowDecorations)
+  if not CanAccessObject(row) or SafeField(row, "_ggRecycleSafeHooked") then return end
+  pcall(function() row._ggRecycleSafeHooked = true end)
+  local hookScript = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(row, "HookScript")
+  if hookScript then
+    pcall(hookScript, row, "OnHide", HideRowDecorations)
+    pcall(hookScript, row, "OnShow", HideRowDecorations)
   end
-  if row.SetElementData and type(hooksecurefunc) == "function" then
+  if addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(row, "SetElementData") and type(hooksecurefunc) == "function" then
     GGHook(row, "SetElementData", HideRowDecorations)
   end
 end
@@ -342,7 +379,7 @@ function addon:EvaluateApplicantFlag(id)
   local reasons = {}
 
   local function testField(label, value)
-    if type(value) ~= "string" or value == "" or not CanReadValue(value) then return false end
+    if not CanReadValue(value) or type(value) ~= "string" or value == "" then return false end
     local ok, reason = self:GetFlagReason(value)
     if ok then
       flagged = true
@@ -393,7 +430,7 @@ function addon:LFG_EvaluateApplicantSocial(id)
   local reasons = {}
 
   local function testName(label, name)
-    if type(name) ~= "string" or name == "" or not CanReadValue(name) then return nil end
+    if not CanReadValue(name) or type(name) ~= "string" or name == "" then return nil end
     local status = GetSocialStatusForName(name)
     if status == "FRIEND" and IsLFGSocialModeAllowed("FRIEND") then
       mode = mode or "FRIEND"
@@ -568,7 +605,7 @@ function addon:EvaluateSearchResultFlag(resultID)
   local flagged = false
   local reasons = {}
   local function testField(label, value)
-    if type(value) ~= "string" or value == "" or not CanReadValue(value) then return false end
+    if not CanReadValue(value) or type(value) ~= "string" or value == "" then return false end
     local ok, reason = self:GetFlagReason(value)
     if ok then
       flagged = true
@@ -628,7 +665,7 @@ function addon:EvaluateSearchResultFlag(resultID)
         self._lfgResultFlagReasons[resultID] = reasons
         return true, false
       end
-      if type(name) == "string" and name ~= "" and CanReadValue(name) then
+      if CanReadValue(name) and type(name) == "string" and name ~= "" then
         loaded = loaded + 1
       end
     end
@@ -660,7 +697,7 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
   local loaded = 0
 
   local function testName(label, name)
-    if type(name) ~= "string" or name == "" or not CanReadValue(name) then return nil end
+    if not CanReadValue(name) or type(name) ~= "string" or name == "" then return nil end
     local status = GetSocialStatusForName(name)
     if status == "FRIEND" and IsLFGSocialModeAllowed("FRIEND") then
       mode = mode or "FRIEND"
@@ -686,7 +723,7 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
       if type(playerInfo) == "table" then
         local name = playerInfo.name
         testName(addon:Tr("LABEL_MEMBER"), name)
-        if type(name) == "string" and name ~= "" and CanReadValue(name) then
+        if CanReadValue(name) and type(name) == "string" and name ~= "" then
           loaded = loaded + 1
         end
       end
@@ -840,13 +877,21 @@ function addon:LFG_AddApplicantTooltip(row)
 end
 
 function addon:LFG_HookApplicantTooltip(row)
-  if not row or row._ggApplicantTooltipHooked or not row.HookScript then return end
-  row._ggApplicantTooltipHooked = true
-  row:HookScript("OnEnter", function(frame)
+  local Safe = self.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(row)) then return end
+  if Safe.ObjectField and Safe.ObjectField(row, "_ggApplicantTooltipHooked") == true then return end
+  local hookScript = Safe.ObjectMethod and Safe.ObjectMethod(row, "HookScript")
+  if not hookScript then return end
+  local okFlag = pcall(function() row._ggApplicantTooltipHooked = true end)
+  if not okFlag then return end
+  pcall(hookScript, row, "OnEnter", function(frame)
     if addon and addon.LFG_AddApplicantTooltip then addon:LFG_AddApplicantTooltip(frame) end
   end)
-  row:HookScript("OnLeave", function(frame)
-    if GameTooltip and GameTooltip:GetOwner() == frame then GameTooltip:Hide() end
+  pcall(hookScript, row, "OnLeave", function(frame)
+    if GameTooltip and GameTooltip.GetOwner and GameTooltip.Hide then
+      local okOwner, owner = pcall(GameTooltip.GetOwner, GameTooltip)
+      if okOwner and owner == frame then pcall(GameTooltip.Hide, GameTooltip) end
+    end
   end)
 end
 
@@ -956,19 +1001,12 @@ function addon:LFG_HookViewer()
   if not viewer then return end
 
   local sb = viewer.ScrollBox
-  if sb and not sb._ggHooked then
-    sb._ggHooked = true
-
-    if sb.HookScript then sb:HookScript("OnMouseWheel", function() addon:LFG_DebouncedHighlight(0.08) end) end
-    if sb.FullUpdate and type(sb.FullUpdate) == "function" then
-      GGHook(sb, "FullUpdate", function() addon:LFG_DebouncedHighlight() end)
-    end
-    if sb.Update and type(sb.Update) == "function" then
-      GGHook(sb, "Update", function() addon:LFG_DebouncedHighlight() end)
-    end
-    if sb.Refresh and type(sb.Refresh) == "function" then
-      GGHook(sb, "Refresh", function() addon:LFG_DebouncedHighlight() end)
-    end
+  if sb and self.SafeObserveScrollBox then
+    self:SafeObserveScrollBox(sb, "lfg:applicant-viewer", function()
+      addon:LFG_DebouncedHighlight(0.05)
+    end, function()
+      addon:LFG_DebouncedHighlight(0.08)
+    end)
   end
 
   if not addon._hookedViewerUpdate then
@@ -991,19 +1029,12 @@ end
 function addon:LFG_HookSearchPanel()
   local sp = LFGListFrame and LFGListFrame.SearchPanel
   local sb = sp and sp.ScrollBox
-  if sb and not sb._ggHooked then
-    sb._ggHooked = true
-
-    if sb.HookScript then sb:HookScript("OnMouseWheel", function() addon:LFG_DebouncedHighlightResults(0.08) end) end
-    if sb.FullUpdate and type(sb.FullUpdate) == "function" then
-      GGHook(sb, "FullUpdate", function() addon:LFG_DebouncedHighlightResults(0.05) end)
-    end
-    if sb.Update and type(sb.Update) == "function" then
-      GGHook(sb, "Update", function() addon:LFG_DebouncedHighlightResults(0.05) end)
-    end
-    if sb.Refresh and type(sb.Refresh) == "function" then
-      GGHook(sb, "Refresh", function() addon:LFG_DebouncedHighlightResults(0.05) end)
-    end
+  if sb and self.SafeObserveScrollBox then
+    self:SafeObserveScrollBox(sb, "lfg:search-panel", function()
+      addon:LFG_DebouncedHighlightResults(0.05)
+    end, function()
+      addon:LFG_DebouncedHighlightResults(0.08)
+    end)
   end
 
 
@@ -1041,6 +1072,7 @@ function addon:LFG_LayoutButton()
   local btn = self.lfgButton
   local parent = LFGListFrame and LFGListFrame.ApplicationViewer
   if not btn or not parent then return end
+  if self.Safe and self.Safe.CanAccessObject and not self.Safe.CanAccessObject(parent) then return end
 
   btn:ClearAllPoints()
   btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -28)
@@ -1055,12 +1087,20 @@ function addon:LFG_CreateButton()
 
   local parent = LFGListFrame and LFGListFrame.ApplicationViewer
   if not parent then return end
+  local Safe = self.Safe
+  if Safe and Safe.CanAccessObject and not Safe.CanAccessObject(parent) then return end
 
   local btn = CreateFrame("Button", "GroupGuardLFGDeclineBtn", parent, "UIPanelButtonTemplate")
   btn:SetSize(172, 20)
   btn:SetText(addon:Tr("LFG_DECLINE_BUTTON_FMT", 0))
   btn:SetFrameStrata("DIALOG")
-  btn:SetFrameLevel(parent:GetFrameLevel() + 10)
+  local parentLevel = 1
+  local getLevel = Safe and Safe.ObjectMethod and Safe.ObjectMethod(parent, "GetFrameLevel")
+  if getLevel then
+    local okLevel, value = pcall(getLevel, parent)
+    parentLevel = okLevel and (self:SafeNumber(value, 1) or 1) or 1
+  end
+  btn:SetFrameLevel(parentLevel + 10)
   if btn.SetNormalFontObject then btn:SetNormalFontObject(GameFontNormalSmall) end
   if btn.SetHighlightFontObject then btn:SetHighlightFontObject(GameFontHighlightSmall) end
   btn:SetHitRectInsets(0, 0, 0, 0)
@@ -1072,8 +1112,14 @@ function addon:LFG_CreateButton()
   self.lfgButton = btn
 
   self:LFG_LayoutButton()
-  parent:HookScript("OnShow", function() addon:LFG_LayoutButton() end)
-  parent:HookScript("OnSizeChanged", function() addon:LFG_LayoutButton() end)
+  -- Layout is a frame-script concern, not a method-call concern. Hook the two
+  -- scripts directly so template internals may call Show/SetSize freely without
+  -- making GroupGuard part of those protected method paths.
+  local hookScript = Safe and Safe.ObjectMethod and Safe.ObjectMethod(parent, "HookScript")
+  if hookScript then
+    pcall(hookScript, parent, "OnShow", function() addon:LFG_LayoutButton() end)
+    pcall(hookScript, parent, "OnSizeChanged", function() addon:LFG_LayoutButton() end)
+  end
   self:LFG_HookViewer()
 end
 

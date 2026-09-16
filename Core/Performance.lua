@@ -4,13 +4,28 @@ local unpack = unpack or table.unpack
 
 addon._debounceTimers = addon._debounceTimers or {}
 
+function addon:RunSafeAsync(label, callback, ...)
+  if type(callback) ~= "function" then return false end
+  local args = { ... }
+  local ok, err = pcall(function() callback(unpack(args)) end)
+  if not ok then
+    self._asyncFailures = self._asyncFailures or {}
+    local key = label or "async"
+    self._asyncFailures[key] = (self._asyncFailures[key] or 0) + 1
+    if self.debug and self._asyncFailures[key] == 1 then
+      print(self.printPrefix or "GroupGuard LFG:", "async error:", key, tostring(err))
+    end
+  end
+  return ok
+end
+
 function addon:RunDebounced(key, delay, callback)
   if not key or type(callback) ~= "function" then return end
   delay = tonumber(delay) or 0
   if delay > 0 and delay < 0.03 then delay = 0.03 end
 
   if not (C_Timer and C_Timer.NewTimer) then
-    callback()
+    self:RunSafeAsync("debounce:" .. tostring(key), callback)
     return
   end
 
@@ -26,11 +41,17 @@ function addon:RunDebounced(key, delay, callback)
 
   local bucket = { callback = callback }
   self._debounceTimers[key] = bucket
-  bucket.timer = C_Timer.NewTimer(delay, function()
+  local okTimer, timer = pcall(C_Timer.NewTimer, delay, function()
     local cb = bucket.callback
     addon._debounceTimers[key] = nil
-    if type(cb) == "function" then cb() end
+    if type(cb) == "function" then addon:RunSafeAsync("debounce:" .. tostring(key), cb) end
   end)
+  if okTimer then
+    bucket.timer = timer
+  else
+    self._debounceTimers[key] = nil
+    self:RunSafeAsync("debounce:" .. tostring(key), callback)
+  end
 end
 
 function addon:CancelDebounce(key)

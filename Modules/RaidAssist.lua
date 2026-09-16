@@ -22,9 +22,10 @@ local function UnitIsAssistantOrLeader(unit)
 end
 
 local function SafeIsInRaid()
+  if addon and addon.Safe and addon.Safe.IsInRaid then return addon.Safe.IsInRaid() end
   if not IsInRaid then return false end
   local ok, value = pcall(IsInRaid)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 function addon:CanAutoRaidAssist()
@@ -38,16 +39,13 @@ end
 function addon:ApplyRaidAssistNow(reason)
   if not self:CanAutoRaidAssist() then return 0 end
 
-  if UnitAffectingCombat then
-    local okCombat, inCombat = pcall(UnitAffectingCombat, "player")
-    if okCombat and inCombat then
-      self._raidAssistQueued = true
-      return 0
-    end
+  local Safe = self.Safe
+  if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then
+    self._raidAssistQueued = true
+    return 0
   end
 
-  local inGuild = false
-  if IsInGuild then local okGuild, value = pcall(IsInGuild); inGuild = okGuild and value and true or false end
+  local inGuild = Safe and Safe.IsInGuild and Safe.IsInGuild() or false
   if inGuild and GuildRoster then pcall(GuildRoster) end
   if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
@@ -58,13 +56,10 @@ function addon:ApplyRaidAssistNow(reason)
 
   for i = 1, num do
     local unit = "raid" .. i
-    local okName, name = pcall(UnitName, unit)
-    if okName and type(name) == "string" and name ~= "" then
-      local isPlayer = false
-      if UnitIsUnit then
-        local okSame, same = pcall(UnitIsUnit, unit, "player")
-        isPlayer = okSame and same and true or false
-      end
+    local name
+    if Safe and Safe.UnitFullName then _, name = Safe.UnitFullName(unit) end
+    if name then
+      local isPlayer = Safe and Safe.UnitIsUnit and Safe.UnitIsUnit(unit, "player") or false
       if not isPlayer and not UnitIsAssistantOrLeader(unit) then
         local okGive, give, why = pcall(function() return self:ShouldGiveRaidAssist(name) end)
         if okGive and give then

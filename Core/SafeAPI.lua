@@ -5,27 +5,42 @@ local addonName, addon = ...
 local type, tostring, tonumber, pairs, ipairs = type, tostring, tonumber, pairs, ipairs
 
 function addon:SafeCanRead(value)
-  if value == nil then return false end
+  -- Never compare/test a possibly-secret value before asking Blizzard whether
+  -- addon code may read it. In Midnight, the guard itself must be the first
+  -- operation performed on the value.
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
+  end
+  return value ~= nil
+end
+
+function addon:SafeCanAccessTable(value)
+  if type(value) ~= "table" then return false end
+  if type(canaccesstable) == "function" then
+    local ok, allowed = pcall(canaccesstable, value)
+    if not ok or allowed ~= true then return false end
+  end
+  if type(issecrettable) == "function" then
+    local ok, secret = pcall(issecrettable, value)
+    if not ok or secret == true then return false end
   end
   return true
 end
 
 function addon:SafeText(value, fallback)
-  if value == nil or not self:SafeCanRead(value) then return fallback end
+  if not self:SafeCanRead(value) then return fallback end
   if type(value) == "string" then return value end
   local ok, result = pcall(tostring, value)
   return ok and result or fallback
 end
 
 function addon:SafeNumber(value, fallback)
-  if value == nil or not self:SafeCanRead(value) then return fallback end
+  if not self:SafeCanRead(value) then return fallback end
   if type(value) == "number" then return value end
   if type(value) == "string" then return tonumber(value) or fallback end
   local ok, result = pcall(tonumber, value)
@@ -33,14 +48,54 @@ function addon:SafeNumber(value, fallback)
 end
 
 function addon:SafeBool(value)
-  if value == nil or not self:SafeCanRead(value) then return false end
+  if not self:SafeCanRead(value) then return false end
   return value == true
 end
 
+-- Midnight 12.1 introduced object access constraints/forbidden aspects. Reading
+-- methods or fields from a restricted Blizzard object can itself raise a Lua
+-- error in a tainted execution path, so object access is checked before we
+-- inspect or decorate frames returned by Blizzard UI code.
+function addon:SafeCanAccessObject(object)
+  if object == nil then return false end
+  local objectType = type(object)
+  if objectType ~= "table" and objectType ~= "userdata" then return false end
+
+  local okMethod, method = pcall(function() return object.CanBeAccessedInContext end)
+  if not okMethod then return false end
+  if type(method) == "function" then
+    local okAccess, canAccess = pcall(method, object)
+    if not okAccess or canAccess ~= true then return false end
+  end
+  return true
+end
+
+function addon:SafeObjectMethod(object, methodName)
+  if not self:SafeCanAccessObject(object) or type(methodName) ~= "string" then return nil end
+  local ok, method = pcall(function() return object[methodName] end)
+  if ok and type(method) == "function" then return method end
+  return nil
+end
+
+function addon:SafeObjectField(object, key)
+  if not self:SafeCanAccessObject(object) then return nil end
+  local ok, value = pcall(function() return object[key] end)
+  if not ok or not self:SafeCanRead(value) then return nil end
+  return value
+end
+
+function addon:SafeTableField(tbl, key)
+  if not self:SafeCanAccessTable(tbl) then return nil end
+  local ok, value = pcall(function() return tbl[key] end)
+  if not ok or not self:SafeCanRead(value) then return nil end
+  return value
+end
+
 function addon:SafeGetElementData(frame)
-  if not frame or type(frame.GetElementData) ~= "function" then return nil end
-  local ok, data = pcall(frame.GetElementData, frame)
-  if ok and type(data) == "table" then return data end
+  local method = self:SafeObjectMethod(frame, "GetElementData")
+  if not method then return nil end
+  local ok, data = pcall(method, frame)
+  if ok and self:SafeCanAccessTable(data) then return data end
   return nil
 end
 
@@ -55,27 +110,36 @@ end
 addon.Safe = addon.Safe or {}
 local SafeNS = addon.Safe
 function SafeNS.CanReadValue(value) return addon:SafeCanRead(value) end
+function SafeNS.CanAccessTable(value) return addon:SafeCanAccessTable(value) end
 function SafeNS.Text(value, fallback) return addon:SafeText(value, fallback) end
 function SafeNS.Number(value, fallback) return addon:SafeNumber(value, fallback) end
 function SafeNS.Bool(value) return addon:SafeBool(value) end
 function SafeNS.Call(fn, ...) return addon:SafeCall(fn, ...) end
+function SafeNS.CanAccessObject(object) return addon:SafeCanAccessObject(object) end
+function SafeNS.ObjectMethod(object, methodName) return addon:SafeObjectMethod(object, methodName) end
+function SafeNS.ObjectField(object, key) return addon:SafeObjectField(object, key) end
+function SafeNS.TableField(tbl, key) return addon:SafeTableField(tbl, key) end
 function SafeNS.UnitExists(unit)
   if not UnitExists then return false end
   local ok, exists = pcall(UnitExists, unit)
-  return ok and exists and true or false
+  return ok and addon:SafeBool(exists) or false
 end
 function SafeNS.UnitFullName(unit)
   local name, realm
   if UnitFullName then
     local ok, n, r = pcall(UnitFullName, unit)
-    if ok then name, realm = n, r end
+    if ok then
+      name = addon:SafeText(n)
+      realm = addon:SafeText(r)
+    end
   end
   if not name and UnitName then
     local ok, n, r = pcall(UnitName, unit)
-    if ok then name, realm = n, r end
+    if ok then
+      name = addon:SafeText(n)
+      realm = addon:SafeText(r)
+    end
   end
-  name = addon:SafeText(name)
-  realm = addon:SafeText(realm)
   if not name or name == "" then return nil, nil, nil end
   if realm and realm ~= "" then return name .. "-" .. realm, name, realm end
   return name, name, realm
@@ -83,12 +147,55 @@ end
 function SafeNS.IsInRaid()
   if not IsInRaid then return false end
   local ok, value = pcall(IsInRaid)
-  return ok and value and true or false
+  return ok and addon:SafeBool(value) or false
 end
 function SafeNS.IsInGroup()
   if not IsInGroup then return false end
   local ok, value = pcall(IsInGroup)
-  return ok and value and true or false
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.UnitIsUnit(unitA, unitB)
+  if type(UnitIsUnit) ~= "function" then return false end
+  local ok, value = pcall(UnitIsUnit, unitA, unitB)
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.UnitIsConnected(unit)
+  if type(UnitIsConnected) ~= "function" then return false end
+  local ok, value = pcall(UnitIsConnected, unit)
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.UnitAffectingCombat(unit)
+  if type(UnitAffectingCombat) ~= "function" then return false end
+  local ok, value = pcall(UnitAffectingCombat, unit or "player")
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.InCombatLockdown()
+  if type(InCombatLockdown) ~= "function" then return false end
+  local ok, value = pcall(InCombatLockdown)
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.CanInspect(unit)
+  if type(CanInspect) ~= "function" then return false end
+  local ok, value = pcall(CanInspect, unit, false)
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.UnitGUID(unit)
+  if type(UnitGUID) ~= "function" then return nil end
+  local ok, value = pcall(UnitGUID, unit)
+  if not ok then return nil end
+  local guid = addon:SafeText(value)
+  return guid ~= "" and guid or nil
+end
+function SafeNS.IsInGuild()
+  if type(IsInGuild) ~= "function" then return false end
+  local ok, value = pcall(IsInGuild)
+  return ok and addon:SafeBool(value) or false
+end
+function SafeNS.GetRaidSubgroup(index)
+  if type(GetRaidRosterInfo) ~= "function" then return nil end
+  local ok, _, _, subgroup = pcall(GetRaidRosterInfo, index)
+  if not ok then return nil end
+  return addon:SafeNumber(subgroup, nil)
 end
 -- 12.1: UnitIsGroupLeader / UnitIsGroupAssistant / UnitIsRaidOfficer / UnitInRaid /
 -- UnitClass / UnitRace / UnitGroupRolesAssigned return secret values when the unit
@@ -194,8 +301,11 @@ function addon:SafeHookOnce(key, target, methodOrFunc, maybeFunc)
   local ok = false
   if type(target) == "string" and type(methodOrFunc) == "function" then
     ok = pcall(hooksecurefunc, target, self:WrapHookCallback(methodOrFunc, key))
-  elseif type(target) == "table" and type(methodOrFunc) == "string" and type(maybeFunc) == "function" and type(target[methodOrFunc]) == "function" then
-    ok = pcall(hooksecurefunc, target, methodOrFunc, self:WrapHookCallback(maybeFunc, key))
+  elseif (type(target) == "table" or type(target) == "userdata") and type(methodOrFunc) == "string" and type(maybeFunc) == "function" then
+    local method = self:SafeObjectMethod(target, methodOrFunc)
+    if method then
+      ok = pcall(hooksecurefunc, target, methodOrFunc, self:WrapHookCallback(maybeFunc, key))
+    end
   end
 
   if ok then self._safeHookKeys[key] = true end
@@ -203,15 +313,19 @@ function addon:SafeHookOnce(key, target, methodOrFunc, maybeFunc)
 end
 
 function addon:SafeEnumerateScrollBoxFrames(scrollBox)
-  if not scrollBox then return {} end
-  if type(scrollBox.GetFrames) == "function" then
-    local ok, frames = pcall(scrollBox.GetFrames, scrollBox)
-    if ok and type(frames) == "table" then return frames end
+  if not self:SafeCanAccessObject(scrollBox) then return {} end
+  local getFrames = self:SafeObjectMethod(scrollBox, "GetFrames")
+  if getFrames then
+    local ok, frames = pcall(getFrames, scrollBox)
+    if ok and self:SafeCanAccessTable(frames) then return frames end
   end
-  if type(scrollBox.EnumerateFrames) == "function" then
+  local enumerateFrames = self:SafeObjectMethod(scrollBox, "EnumerateFrames")
+  if enumerateFrames then
     local frames = {}
     local ok = pcall(function()
-      for frame in scrollBox:EnumerateFrames() do frames[#frames + 1] = frame end
+      for frame in enumerateFrames(scrollBox) do
+        if self:SafeCanAccessObject(frame) then frames[#frames + 1] = frame end
+      end
     end)
     if ok then return frames end
   end
@@ -219,7 +333,7 @@ function addon:SafeEnumerateScrollBoxFrames(scrollBox)
 end
 
 function addon:SafeObserveScrollBox(scrollBox, key, onFramesChanged, onScroll)
-  if not scrollBox or not key then return false end
+  if not key or not self:SafeCanAccessObject(scrollBox) then return false end
   self._observedScrollBoxes = self._observedScrollBoxes or {}
   if self._observedScrollBoxes[key] then return true end
   self._observedScrollBoxes[key] = true
@@ -245,10 +359,11 @@ function addon:SafeObserveScrollBox(scrollBox, key, onFramesChanged, onScroll)
     end
   end
 
-  if type(scrollBox.HookScript) == "function" then
-    pcall(scrollBox.HookScript, scrollBox, "OnMouseWheel", callScroll)
-    pcall(scrollBox.HookScript, scrollBox, "OnShow", callFrames)
-    pcall(scrollBox.HookScript, scrollBox, "OnHide", callFrames)
+  local hookScript = self:SafeObjectMethod(scrollBox, "HookScript")
+  if hookScript then
+    pcall(hookScript, scrollBox, "OnMouseWheel", callScroll)
+    pcall(hookScript, scrollBox, "OnShow", callFrames)
+    pcall(hookScript, scrollBox, "OnHide", callFrames)
   end
   self:SafeHookOnce(key .. ":FullUpdate", scrollBox, "FullUpdate", callFrames)
   self:SafeHookOnce(key .. ":Update", scrollBox, "Update", callFrames)
@@ -258,14 +373,48 @@ function addon:SafeObserveScrollBox(scrollBox, key, onFramesChanged, onScroll)
   return true
 end
 
+local function SafeTableValue(self, t, key)
+  if not self:SafeCanAccessTable(t) then return nil end
+  local ok, value = pcall(function() return t[key] end)
+  if not ok or not self:SafeCanRead(value) then return nil end
+  return value
+end
+
+local function FirstSafeTableValue(self, t, keys)
+  if not self:SafeCanAccessTable(t) then return nil end
+  for i = 1, #keys do
+    local value = SafeTableValue(self, t, keys[i])
+    if value ~= nil then return value end
+  end
+  return nil
+end
+
+local function FirstSafeTableText(self, t, keys)
+  for i = 1, #keys do
+    local text = self:SafeText(SafeTableValue(self, t, keys[i]))
+    if text and text ~= "" then return text end
+  end
+  return nil
+end
+
+local function FirstSafeTableNumber(self, t, keys, fallback)
+  for i = 1, #keys do
+    local n = self:SafeNumber(SafeTableValue(self, t, keys[i]), nil)
+    if n ~= nil then return n end
+  end
+  return fallback
+end
+
 local APPLICATION_STATUS_KNOWN = {
   applied = true,
   invited = true,
+  failed = true,
   inviteaccepted = true,
   invitedeclined = true,
   cancelled = true,
   declined = true,
   declined_full = true,
+  declined_delisted = true,
   timedout = true,
 }
 
@@ -273,7 +422,14 @@ function addon:LFG_API_GetApplicants()
   if not (C_LFGList and type(C_LFGList.GetApplicants) == "function") then return {} end
   local values = { pcall(C_LFGList.GetApplicants) }
   if not values[1] then return {} end
-  if type(values[2]) == "table" then return values[2] end
+  if self:SafeCanAccessTable(values[2]) then
+    local out = {}
+    for i = 1, #values[2] do
+      local id = self:SafeNumber(values[2][i], nil)
+      if id then out[#out + 1] = id end
+    end
+    return out
+  end
   local out = {}
   for i = 2, #values do
     local id = self:SafeNumber(values[i], nil)
@@ -289,21 +445,20 @@ function addon:LFG_API_GetApplicantInfo(applicantID)
   -- vararg capture below.
   local ok, first = pcall(C_LFGList.GetApplicantInfo, applicantID)
   if not ok then return nil end
-  if type(first) ~= "table" then
+  if not self:SafeCanAccessTable(first) then
     return self:_LFG_API_ApplicantInfoPositional(applicantID)
   end
 
   do
     local t = first
     return {
-      applicantID = self:SafeNumber(t.applicantID or t.id or applicantID, applicantID),
-      applicationStatus = self:SafeText(t.applicationStatus or t.status),
-      pendingApplicationStatus = self:SafeText(t.pendingApplicationStatus),
-      numMembers = self:SafeNumber(t.numMembers or t.memberCount or t.numApplicants, nil),
-      isNew = self:SafeBool(t.isNew),
-      comment = self:SafeText(t.comment),
-      displayOrderID = self:SafeNumber(t.displayOrderID or t.displayOrderId, nil),
-      raw = t,
+      applicantID = FirstSafeTableNumber(self, t, { "applicantID", "id" }, applicantID),
+      applicationStatus = FirstSafeTableText(self, t, { "applicationStatus", "status" }),
+      pendingApplicationStatus = FirstSafeTableText(self, t, { "pendingApplicationStatus" }),
+      numMembers = FirstSafeTableNumber(self, t, { "numMembers", "memberCount", "numApplicants" }, nil),
+      isNew = self:SafeBool(SafeTableValue(self, t, "isNew")),
+      comment = self:SafeText(SafeTableValue(self, t, "comment")),
+      displayOrderID = FirstSafeTableNumber(self, t, { "displayOrderID", "displayOrderId" }, nil),
     }
   end
 end
@@ -316,7 +471,7 @@ function addon:_LFG_API_ApplicantInfoPositional(applicantID)
   -- The call can succeed while returning nothing at all, which used to produce
   -- a record full of nils. Callers read that as "applicant loaded, nothing to
   -- flag" and cached the verdict, so the row stayed unmarked forever.
-  if values[2] == nil then return nil end
+  if not self:SafeCanRead(values[2]) then return nil end
 
   local info = {
     applicantID = self:SafeNumber(values[2], applicantID) or applicantID,
@@ -355,27 +510,26 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   if not ok then return nil end
 
   local m
-  if type(v1) == "table" then
+  if self:SafeCanAccessTable(v1) then
     local t = v1
     m = {
-      name = t.name or t.memberName or t.playerName or t.fullName,
-      classFilename = t.classFilename or t.classFileName or t.classFile or t.class,
-      localizedClass = t.localizedClass or t.className,
-      level = t.level,
-      itemLevel = t.itemLevel or t.ilvl,
-      honorLevel = t.honorLevel,
-      tank = t.tank,
-      healer = t.healer,
-      damage = t.damage or t.damager,
-      assignedRole = t.assignedRole or t.role or t.lfgRole,
-      relationship = t.relationship,
-      dungeonScore = t.dungeonScore or t.mythicPlusScore or t.mplusScore,
-      pvpItemLevel = t.pvpItemLevel,
-      factionGroup = t.factionGroup or t.faction,
-      raceID = t.raceID or t.raceId,
-      specID = t.specID or t.specId,
-      isLeaver = t.isLeaver,
-      raw = t,
+      name = FirstSafeTableValue(self, t, { "name", "memberName", "playerName", "fullName" }),
+      classFilename = FirstSafeTableValue(self, t, { "classFilename", "classFileName", "classFile", "class" }),
+      localizedClass = FirstSafeTableValue(self, t, { "localizedClass", "className" }),
+      level = SafeTableValue(self, t, "level"),
+      itemLevel = FirstSafeTableValue(self, t, { "itemLevel", "ilvl" }),
+      honorLevel = SafeTableValue(self, t, "honorLevel"),
+      tank = SafeTableValue(self, t, "tank"),
+      healer = SafeTableValue(self, t, "healer"),
+      damage = FirstSafeTableValue(self, t, { "damage", "damager" }),
+      assignedRole = FirstSafeTableValue(self, t, { "assignedRole", "role", "lfgRole" }),
+      relationship = SafeTableValue(self, t, "relationship"),
+      dungeonScore = FirstSafeTableValue(self, t, { "dungeonScore", "mythicPlusScore", "mplusScore" }),
+      pvpItemLevel = SafeTableValue(self, t, "pvpItemLevel"),
+      factionGroup = FirstSafeTableValue(self, t, { "factionGroup", "faction" }),
+      raceID = FirstSafeTableValue(self, t, { "raceID", "raceId" }),
+      specID = FirstSafeTableValue(self, t, { "specID", "specId" }),
+      isLeaver = SafeTableValue(self, t, "isLeaver"),
     }
   else
     m = {
@@ -407,7 +561,7 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   m.itemLevel = self:SafeNumber(m.itemLevel, nil)
   m.honorLevel = self:SafeNumber(m.honorLevel, nil)
   m.assignedRole = self:SafeText(m.assignedRole)
-  m.relationship = self:SafeText(m.relationship)
+  m.relationship = self:SafeBool(m.relationship)
   m.dungeonScore = self:SafeNumber(m.dungeonScore, nil)
   m.pvpItemLevel = self:SafeNumber(m.pvpItemLevel, nil)
   m.factionGroup = self:SafeText(m.factionGroup)
@@ -421,7 +575,7 @@ end
 function addon:LFG_API_GetActiveEntryInfo()
   if not (C_LFGList and type(C_LFGList.GetActiveEntryInfo) == "function") then return nil end
   local ok, entry = pcall(C_LFGList.GetActiveEntryInfo)
-  if ok and type(entry) == "table" then return entry end
+  if ok and self:SafeCanAccessTable(entry) then return entry end
   return nil
 end
 
@@ -430,7 +584,27 @@ function addon:LFG_API_GetActivityInfoTable(activityID)
   if not activityID then return nil end
   if C_LFGList and type(C_LFGList.GetActivityInfoTable) == "function" then
     local ok, info = pcall(C_LFGList.GetActivityInfoTable, activityID)
-    if ok and type(info) == "table" then return info end
+    if ok and self:SafeCanAccessTable(info) then
+      -- Return an addon-owned snapshot rather than the Blizzard table itself.
+      -- This prevents later modules from accidentally comparing a secret field.
+      return {
+        fullName = FirstSafeTableText(self, info, { "fullName", "name" }),
+        shortName = FirstSafeTableText(self, info, { "shortName" }),
+        categoryID = FirstSafeTableNumber(self, info, { "categoryID", "categoryId" }, nil),
+        groupID = FirstSafeTableNumber(self, info, { "groupID", "groupId" }, nil),
+        itemLevel = FirstSafeTableNumber(self, info, { "itemLevel" }, nil),
+        filters = FirstSafeTableNumber(self, info, { "filters" }, nil),
+        minLevel = FirstSafeTableNumber(self, info, { "minLevel" }, nil),
+        maxPlayers = FirstSafeTableNumber(self, info, { "maxPlayers" }, nil),
+        displayType = FirstSafeTableNumber(self, info, { "displayType" }, nil),
+        orderIndex = FirstSafeTableNumber(self, info, { "orderIndex" }, nil),
+        useHonorLevel = self:SafeBool(SafeTableValue(self, info, "useHonorLevel")),
+        showQuickJoinToast = self:SafeBool(SafeTableValue(self, info, "showQuickJoinToast")),
+        isMythicPlusActivity = self:SafeBool(SafeTableValue(self, info, "isMythicPlusActivity")),
+        isRatedPvpActivity = self:SafeBool(SafeTableValue(self, info, "isRatedPvpActivity")),
+        isCurrentRaidActivity = self:SafeBool(SafeTableValue(self, info, "isCurrentRaidActivity")),
+      }
+    end
   end
   if C_LFGList and type(C_LFGList.GetActivityInfo) == "function" then
     local values = { pcall(C_LFGList.GetActivityInfo, activityID) }
@@ -463,12 +637,12 @@ function addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberInd
   activityID = self:SafeNumber(activityID, nil)
   if not (C_LFGList and type(C_LFGList.GetApplicantDungeonScoreForListing) == "function" and applicantID and memberIndex and memberIndex >= 1 and activityID) then return nil end
   local ok, scoreInfo = pcall(C_LFGList.GetApplicantDungeonScoreForListing, applicantID, memberIndex, activityID)
-  if ok and type(scoreInfo) == "table" then
+  if ok and self:SafeCanAccessTable(scoreInfo) then
     return {
-      mapScore = self:SafeNumber(scoreInfo.mapScore, 0) or 0,
-      bestRunLevel = self:SafeNumber(scoreInfo.bestRunLevel or scoreInfo.level or scoreInfo.bestLevel, 0) or 0,
-      finishedSuccess = self:SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed),
-      bestLevelIncrement = self:SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, 0) or 0,
+      mapScore = FirstSafeTableNumber(self, scoreInfo, { "mapScore" }, 0) or 0,
+      bestRunLevel = FirstSafeTableNumber(self, scoreInfo, { "bestRunLevel", "level", "bestLevel" }, 0) or 0,
+      finishedSuccess = self:SafeBool(FirstSafeTableValue(self, scoreInfo, { "finishedSuccess", "wasTimed" })),
+      bestLevelIncrement = FirstSafeTableNumber(self, scoreInfo, { "bestLevelIncrement", "levelIncrement" }, 0) or 0,
       raw = scoreInfo,
     }
   end
@@ -480,13 +654,13 @@ function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not (C_LFGList and type(C_LFGList.GetApplicantBestDungeonScore) == "function" and applicantID and memberIndex and memberIndex >= 1) then return nil end
   local ok, scoreInfo = pcall(C_LFGList.GetApplicantBestDungeonScore, applicantID, memberIndex)
-  if ok and type(scoreInfo) == "table" then
+  if ok and self:SafeCanAccessTable(scoreInfo) then
     return {
-      mapScore = self:SafeNumber(scoreInfo.mapScore, 0) or 0,
-      mapName = self:SafeText(scoreInfo.mapName),
-      bestRunLevel = self:SafeNumber(scoreInfo.bestRunLevel or scoreInfo.level or scoreInfo.bestLevel, 0) or 0,
-      finishedSuccess = self:SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed),
-      bestLevelIncrement = self:SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, 0) or 0,
+      mapScore = FirstSafeTableNumber(self, scoreInfo, { "mapScore" }, 0) or 0,
+      mapName = FirstSafeTableText(self, scoreInfo, { "mapName" }),
+      bestRunLevel = FirstSafeTableNumber(self, scoreInfo, { "bestRunLevel", "level", "bestLevel" }, 0) or 0,
+      finishedSuccess = self:SafeBool(FirstSafeTableValue(self, scoreInfo, { "finishedSuccess", "wasTimed" })),
+      bestLevelIncrement = FirstSafeTableNumber(self, scoreInfo, { "bestLevelIncrement", "levelIncrement" }, 0) or 0,
       raw = scoreInfo,
     }
   end
@@ -497,17 +671,42 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
   resultID = self:SafeNumber(resultID, nil)
   if not (C_LFGList and type(C_LFGList.GetSearchResultInfo) == "function" and resultID) then return nil, false end
   local ok, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
-  if ok and type(info) == "table" then return info, true end
-  return nil, ok and true or false
+  if not ok or not self:SafeCanAccessTable(info) then return nil, ok == true end
+
+  -- Return an addon-owned table containing only values that were proven
+  -- readable. Modules may safely compare/concatenate these fields.
+  return {
+    searchResultID = resultID,
+    name = FirstSafeTableText(self, info, { "name" }),
+    comment = FirstSafeTableText(self, info, { "comment" }),
+    voiceChat = FirstSafeTableText(self, info, { "voiceChat" }),
+    leaderName = FirstSafeTableText(self, info, { "leaderName" }),
+    numMembers = FirstSafeTableNumber(self, info, { "numMembers" }, nil),
+    age = FirstSafeTableNumber(self, info, { "age" }, nil),
+    numBNetFriends = FirstSafeTableNumber(self, info, { "numBNetFriends" }, 0) or 0,
+    numCharFriends = FirstSafeTableNumber(self, info, { "numCharFriends" }, 0) or 0,
+    numGuildMates = FirstSafeTableNumber(self, info, { "numGuildMates" }, 0) or 0,
+    censored = self:SafeBool(SafeTableValue(self, info, "censored")),
+  }, true
 end
 
 function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   resultID = self:SafeNumber(resultID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
-  if not (C_LFGList and type(C_LFGList.GetSearchResultPlayerInfo) == "function" and resultID and memberIndex) then return nil end
+  if not (C_LFGList and type(C_LFGList.GetSearchResultPlayerInfo) == "function" and resultID and memberIndex and memberIndex >= 1) then return nil end
   local ok, info = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, memberIndex)
-  if ok and type(info) == "table" then return info end
-  return nil
+  if not ok or not self:SafeCanAccessTable(info) then return nil end
+
+  local role = FirstSafeTableText(self, info, { "assignedRole", "role", "lfgRole" })
+  local classFile = FirstSafeTableText(self, info, { "classFilename", "classFileName", "classFile", "class" })
+  return {
+    name = FirstSafeTableText(self, info, { "name", "memberName", "playerName", "fullName" }),
+    assignedRole = role, role = role, lfgRole = role,
+    classFilename = classFile, classFileName = classFile, classFile = classFile,
+    className = FirstSafeTableText(self, info, { "className", "localizedClass" }),
+    specName = FirstSafeTableText(self, info, { "specName", "specializationName" }),
+    isLeader = self:SafeBool(SafeTableValue(self, info, "isLeader")),
+  }
 end
 
 

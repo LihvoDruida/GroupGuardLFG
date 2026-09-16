@@ -109,6 +109,18 @@ GroupGuard is designed to run beside common LFG addons.
 GroupGuard does not identify a player’s nationality, ethnicity, religion, origin or personal identity. Optional text checks are based only on visible text such as group titles, comments, character names, guild names and user-configured rules. Text and realm hints can be wrong, so rules should be reviewed carefully.
 
 
+## Release notes — 4.7.0
+
+- Added Retail 12.1.5 PTR interface `120105` while keeping 12.1.0 (`120100`) compatibility.
+- Hardened secret-value and secret-table handling before comparisons, casts, string conversion or boolean evaluation.
+- Added `FrameScriptObject:CanBeAccessedInContext()` guards for Blizzard-owned LFG and ScrollBox objects.
+- Sanitized LFG search/player/applicant data into addon-owned readable values before feature modules consume them.
+- Removed unsafe duplicate ScrollBox fallback access paths and consolidated guarded observation.
+- Updated applicant handling for current 12.1 API shapes/statuses, including `relationship`, `isLeaver` and `declined_delisted`.
+- Isolated asynchronous/debounced callback failures so a single Blizzard/UI timing error does not break the addon event flow.
+- Confirmed use of `C_LFGList.GetSearchResultPlayerInfo` rather than removed legacy member APIs.
+- Added dedicated Midnight 12.1 regression tests for secret data, forbidden frames and LFG API normalization.
+
 ## Release notes — 4.2.41
 
 - Reworked applicant list GG column as a measured stock-grid reflow instead of an overlay.

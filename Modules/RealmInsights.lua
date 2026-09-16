@@ -17,6 +17,7 @@ local function GGHook(target, methodOrFunc, maybeFunc)
   if isGlobal then
     ok = pcall(hooksecurefunc, target, guarded)
   else
+    if addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(target) then return false end
     ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
   end
   return ok and true or false
@@ -58,20 +59,20 @@ local REALM_BADGE_SHORT = {
 }
 
 local function CanReadValue(value)
-  if value == nil then return false end
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
 end
 
 local function SafeText(value)
-  if value == nil or not CanReadValue(value) then return nil end
+  if not CanReadValue(value) then return nil end
   if type(value) == "string" then return value end
   local ok, result = pcall(tostring, value)
   if ok then return result end
@@ -176,52 +177,72 @@ end
 
 local function GetResultIDFromRow(frame)
   if not frame then return nil end
-  if addon and addon.SafeGetElementData then
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(frame)) then return nil end
+  local keys = { "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID" }
+  if addon.SafeGetElementData and Safe.TableField then
     local ed = addon:SafeGetElementData(frame)
-    if type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
-    end
-  elseif frame.GetElementData then
-    local ok, ed = pcall(frame.GetElementData, frame)
-    if ok and type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
+    for i = 1, #keys do
+      local id = Safe.Number(Safe.TableField(ed, keys[i]), nil)
+      if id then return id end
     end
   end
-  return frame.resultID or frame.resultId or frame.id or frame.ID
-end
-
-local function EnumerateScrollBoxFrames(sb)
-  if not sb then return nil end
-  if sb.GetFrames then
-    return sb:GetFrames()
-  elseif sb.EnumerateFrames then
-    local frames = {}
-    for f in sb:EnumerateFrames() do frames[#frames + 1] = f end
-    return frames
+  if Safe.ObjectField then
+    for i = 1, #keys do
+      local id = Safe.Number(Safe.ObjectField(frame, keys[i]), nil)
+      if id then return id end
+    end
   end
   return nil
 end
 
+local function EnumerateScrollBoxFrames(sb)
+  if addon and addon.SafeEnumerateScrollBoxFrames then return addon:SafeEnumerateScrollBoxFrames(sb) end
+  return nil
+end
+
+local function SafeSetField(object, key, value)
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(object)) then return false end
+  return pcall(function() object[key] = value end)
+end
+
 local function EnsureRealmBadge(row)
-  if not row or not row.CreateFontString then return nil end
-  if not row._ggRealmBadge then
-    local badge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    badge:SetJustifyH("RIGHT")
-    badge:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -5)
-    badge:SetTextColor(0.85, 0.85, 0.85, 0.95)
-    if badge.SetWordWrap then badge:SetWordWrap(false) end
-    if badge.SetNonSpaceWrap then badge:SetNonSpaceWrap(false) end
-    row._ggRealmBadge = badge
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(row)) then return nil end
+  local badge = Safe.ObjectField and Safe.ObjectField(row, "_ggRealmBadge") or nil
+  if badge and Safe.CanAccessObject and not Safe.CanAccessObject(badge) then badge = nil end
+  if not badge then
+    local create = Safe.ObjectMethod and Safe.ObjectMethod(row, "CreateFontString")
+    if not create then return nil end
+    local okCreate, created = pcall(create, row, nil, "OVERLAY", "GameFontNormalSmall")
+    if not okCreate or not created or not Safe.CanAccessObject(created) then return nil end
+    badge = created
+    local justify = Safe.ObjectMethod(badge, "SetJustifyH")
+    local setPoint = Safe.ObjectMethod(badge, "SetPoint")
+    local setColor = Safe.ObjectMethod(badge, "SetTextColor")
+    if justify then pcall(justify, badge, "RIGHT") end
+    if setPoint then pcall(setPoint, badge, "TOPRIGHT", row, "TOPRIGHT", -8, -5) end
+    if setColor then pcall(setColor, badge, 0.85, 0.85, 0.85, 0.95) end
+    local wordWrap = Safe.ObjectMethod(badge, "SetWordWrap")
+    if wordWrap then pcall(wordWrap, badge, false) end
+    local nonSpaceWrap = Safe.ObjectMethod(badge, "SetNonSpaceWrap")
+    if nonSpaceWrap then pcall(nonSpaceWrap, badge, false) end
+    if not SafeSetField(row, "_ggRealmBadge", badge) then return nil end
   end
-  return row._ggRealmBadge
+  return badge
 end
 
 local function HideRealmBadge(row)
-  if row and row._ggRealmBadge then
-    row._ggRealmBadge._ggOwnerResultID = nil
-    row._ggRealmBadge:SetText("")
-    row._ggRealmBadge:Hide()
-  end
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(row)) then return end
+  local badge = Safe.ObjectField and Safe.ObjectField(row, "_ggRealmBadge") or nil
+  if not badge or not Safe.CanAccessObject(badge) then return end
+  SafeSetField(badge, "_ggOwnerResultID", nil)
+  local setText = Safe.ObjectMethod(badge, "SetText")
+  local hide = Safe.ObjectMethod(badge, "Hide")
+  if setText then pcall(setText, badge, "") end
+  if hide then pcall(hide, badge) end
 end
 
 -- PERF: this used to allocate a closure and a C_Timer per row on every OnShow
@@ -237,14 +258,16 @@ local function FlushRealmBadgeRefresh()
   pendingRealmRows = {}
   if not (addon and addon.LFG_PaintRealmBadge) then return end
   for row in pairs(rows) do
-    if row.IsShown and row:IsShown() then
-      addon:LFG_PaintRealmBadge(row, GetResultIDFromRow(row))
-    end
+    local Safe = addon.Safe
+    local isShown = Safe and Safe.ObjectMethod and Safe.ObjectMethod(row, "IsShown")
+    local okShown, shown = false, false
+    if isShown then okShown, shown = pcall(isShown, row) end
+    if okShown and shown == true then addon:LFG_PaintRealmBadge(row, GetResultIDFromRow(row)) end
   end
 end
 
 local function ScheduleRealmBadgeRefresh(row)
-  if not row then return end
+  if not row or not (addon.Safe and addon.Safe.CanAccessObject and addon.Safe.CanAccessObject(row)) then return end
   if not (C_Timer and C_Timer.After) then
     if addon and addon.LFG_PaintRealmBadge then
       addon:LFG_PaintRealmBadge(row, GetResultIDFromRow(row))
@@ -258,16 +281,19 @@ local function ScheduleRealmBadgeRefresh(row)
 end
 
 local function HookRealmRow(row)
-  if not row or row._ggRealmRecycleHooked then return end
-  row._ggRealmRecycleHooked = true
-  if row.HookScript then
-    row:HookScript("OnHide", HideRealmBadge)
-    row:HookScript("OnShow", function(frame)
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(row)) then return end
+  if Safe.ObjectField(row, "_ggRealmRecycleHooked") == true then return end
+  if not SafeSetField(row, "_ggRealmRecycleHooked", true) then return end
+  local hookScript = Safe.ObjectMethod(row, "HookScript")
+  if hookScript then
+    pcall(hookScript, row, "OnHide", HideRealmBadge)
+    pcall(hookScript, row, "OnShow", function(frame)
       HideRealmBadge(frame)
       ScheduleRealmBadgeRefresh(frame)
     end)
   end
-  if row.SetElementData and type(hooksecurefunc) == "function" then
+  if Safe.ObjectMethod(row, "SetElementData") and type(hooksecurefunc) == "function" then
     GGHook(row, "SetElementData", function(frame)
       HideRealmBadge(frame)
       ScheduleRealmBadgeRefresh(frame)
@@ -276,33 +302,36 @@ local function HookRealmRow(row)
 end
 
 function addon:LFG_PaintRealmBadge(row, resultID)
-  if not row then return end
+  local Safe = self.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(row)) then return end
   HideRealmBadge(row)
   if not (self.db and self.db.realm_insights and self.db.realm_badges) then return end
-  if row.IsShown and not row:IsShown() then return end
+  local isShown = Safe.ObjectMethod(row, "IsShown")
+  if isShown then
+    local okShown, shown = pcall(isShown, row)
+    if okShown and shown ~= true then return end
+  end
   if not resultID then return end
   local realm = GetSearchResultLeaderRealm(resultID)
   local hint = realm and self:GetRealmHintFromFullName("x-" .. realm) or nil
-  if not hint then
-    if row._ggRealmBadge then row._ggRealmBadge:Hide() end
-    return
-  end
-  if self.db.realm_same_locale_only == false then
-    -- show all known realms
-  else
-    local ownLabel, ownCode = self:GetRealmLocaleLabel(OwnRealm())
-    if ownCode and ownCode == hint.code then
-      if row._ggRealmBadge then row._ggRealmBadge:Hide() end
-      return
-    end
+  if not hint then return end
+  if self.db.realm_same_locale_only ~= false then
+    local _, ownCode = self:GetRealmLocaleLabel(OwnRealm())
+    if ownCode and ownCode == hint.code then return end
   end
   local badge = EnsureRealmBadge(row)
   if not badge then return end
-  badge._ggOwnerResultID = resultID
+  SafeSetField(badge, "_ggOwnerResultID", resultID)
+  local setColor = Safe.ObjectMethod(badge, "SetTextColor")
   local c = REALM_BADGE_COLORS[hint.code]
-  if c then badge:SetTextColor(c[1], c[2], c[3], 0.95) else badge:SetTextColor(0.85, 0.85, 0.85, 0.95) end
-  badge:SetText("[" .. (hint.short or "RL") .. "]")
-  badge:Show()
+  if setColor then
+    if c then pcall(setColor, badge, c[1], c[2], c[3], 0.95)
+    else pcall(setColor, badge, 0.85, 0.85, 0.85, 0.95) end
+  end
+  local setText = Safe.ObjectMethod(badge, "SetText")
+  local show = Safe.ObjectMethod(badge, "Show")
+  if setText then pcall(setText, badge, "[" .. (hint.short or "RL") .. "]") end
+  if show then pcall(show, badge) end
 end
 
 function addon:LFG_AppendRealmInsightTooltip(tooltip, resultID)
@@ -370,12 +399,8 @@ function addon:LFG_InitRealmInsights()
 
   local sp = LFGListFrame and LFGListFrame.SearchPanel
   local sb = sp and sp.ScrollBox
-  if sb and not sb._ggRealmHooked then
-    sb._ggRealmHooked = true
-    if sb.HookScript then sb:HookScript("OnMouseWheel", schedule) end
-    if sb.FullUpdate then GGHook(sb, "FullUpdate", schedule) end
-    if sb.Update then GGHook(sb, "Update", schedule) end
-    if sb.Refresh then GGHook(sb, "Refresh", schedule) end
+  if sb and self.SafeObserveScrollBox then
+    self:SafeObserveScrollBox(sb, "realm-insights-search", function() schedule() end, schedule)
   end
   if type(LFGListSearchPanel_UpdateResults) == "function" then GGHook("LFGListSearchPanel_UpdateResults", schedule) end
   if type(LFGListSearchPanel_UpdateResultList) == "function" then GGHook("LFGListSearchPanel_UpdateResultList", schedule) end

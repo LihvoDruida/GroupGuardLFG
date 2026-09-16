@@ -4,15 +4,17 @@ local addonName, addon = ...
 local C_Timer = C_Timer
 
 local function SafeIsInRaid()
+  if addon and addon.Safe and addon.Safe.IsInRaid then return addon.Safe.IsInRaid() end
   if not IsInRaid then return false end
   local ok, value = pcall(IsInRaid)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 local function SafeIsInGroup()
+  if addon and addon.Safe and addon.Safe.IsInGroup then return addon.Safe.IsInGroup() end
   if not IsInGroup then return false end
   local ok, value = pcall(IsInGroup)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 local function SafeGroupCount()
@@ -23,21 +25,21 @@ local function SafeGroupCount()
 end
 
 local function CanReadValue(value)
-  if value == nil then return false end
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
 end
 
 local function SafeNumber(value, fallback)
   fallback = fallback or 0
-  if value == nil or not CanReadValue(value) then return fallback end
+  if not CanReadValue(value) then return fallback end
   local valueType = type(value)
   if valueType == "number" then return value end
   if valueType == "string" then return tonumber(value) or fallback end
@@ -64,16 +66,14 @@ end
 
 local function FullNameFromUnit(unit, fallbackName, fallbackRealm)
   local name, realm
-  if UnitFullName then
-    local ok, n, r = pcall(UnitFullName, unit)
-    if ok then name, realm = n, r end
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitFullName then
+    local _, shortName, unitRealm = Safe.UnitFullName(unit)
+    name, realm = shortName, unitRealm
   end
 
-  if not name and UnitName then
-    local ok, n, r = pcall(UnitName, unit)
-    if ok then name, realm = n, r end
-  end
-
+  fallbackName = addon and addon.SafeText and addon:SafeText(fallbackName) or (type(fallbackName) == "string" and fallbackName or nil)
+  fallbackRealm = addon and addon.SafeText and addon:SafeText(fallbackRealm) or (type(fallbackRealm) == "string" and fallbackRealm or nil)
   name = name or fallbackName
   realm = realm or fallbackRealm
 
@@ -105,7 +105,8 @@ local function FindGroupMemberTarget(target)
     wantedFull = target.fullName or target.name
     wantedKey = NormalizeUnitName(wantedFull)
     wantedShortKey = NormalizeUnitName(wantedName)
-    if target.unit and UnitExists and UnitExists(target.unit) then
+    local Safe = addon and addon.Safe
+    if target.unit and Safe and Safe.UnitExists and Safe.UnitExists(target.unit) then
       local t = BuildUnitTarget(target.unit)
       if t and ((wantedKey and (t.key == wantedKey or t.shortKey == wantedKey))
           or (wantedShortKey and (t.shortKey == wantedShortKey or t.key == wantedShortKey))) then
@@ -122,7 +123,8 @@ local function FindGroupMemberTarget(target)
   if not wantedKey and not wantedShortKey then return nil end
 
   local function checkUnit(unit)
-    if not unit or (UnitExists and not UnitExists(unit)) then return nil end
+    local Safe = addon and addon.Safe
+    if not unit or (Safe and Safe.UnitExists and not Safe.UnitExists(unit)) then return nil end
     local t = BuildUnitTarget(unit)
     if not t then return nil end
     if (wantedKey and t.key == wantedKey)
@@ -162,8 +164,7 @@ local function PlayerCanManageGroup()
   local Safe = addon and addon.Safe
   if Safe and Safe.IsGroupLeader then
     if Safe.IsGroupLeader("player") then return true end
-    local okRaid, inRaid = pcall(IsInRaid)
-    if okRaid and inRaid and Safe.IsGroupAssistant("player") then return true end
+    if Safe.IsInRaid and Safe.IsInRaid() and Safe.IsGroupAssistant("player") then return true end
   end
   return false
 end
@@ -182,7 +183,8 @@ local function TryUninviteTarget(target)
   local resolved = FindGroupMemberTarget(target)
   if not resolved then return false, "not_found", nil end
 
-  if UnitIsUnit and resolved.unit and UnitIsUnit(resolved.unit, "player") then
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitIsUnit and resolved.unit and Safe.UnitIsUnit(resolved.unit, "player") then
     return false, "self", resolved
   end
 
@@ -227,7 +229,8 @@ function addon:KickNamesSequential(targets, delayStep)
   if type(targets) ~= "table" or #targets == 0 then return end
   delayStep = tonumber(delayStep) or 0.15
 
-  if UnitAffectingCombat and UnitAffectingCombat("player") then
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then
     self._kickQueue = self._kickQueue or {}
     for _, n in ipairs(targets) do table.insert(self._kickQueue, n) end
     self._kickQueueNeedsClick = true
@@ -308,7 +311,8 @@ function addon:ProcessKickQueue()
   -- as PLAYER_REGEN_ENABLED. Keep the queue and ask the raid leader to click a
   -- real button or run /ggremove after combat.
   if not self._kickQueue or #self._kickQueue == 0 then return end
-  if UnitAffectingCombat and UnitAffectingCombat("player") then return end
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then return end
   self._kickQueueNeedsClick = true
   local now = GetTime and GetTime() or 0
   if (self._lastKickQueueNoticeAt or 0) + 4 <= now then
@@ -319,7 +323,8 @@ end
 
 function addon:RunQueuedKicksFromUserAction()
   if not self._kickQueue or #self._kickQueue == 0 then return false end
-  if UnitAffectingCombat and UnitAffectingCombat("player") then
+  local Safe = addon and addon.Safe
+  if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then
     print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_COMBAT"))
     return false
   end
@@ -413,7 +418,8 @@ function addon:CreateKickButton()
     end
     if #toKick == 0 then return end
 
-    if UnitAffectingCombat and UnitAffectingCombat("player") then
+    local Safe = addon and addon.Safe
+    if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then
       addon._kickQueue = addon._kickQueue or {}
       for _, n in ipairs(toKick) do table.insert(addon._kickQueue, n) end
       print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_COMBAT"))
@@ -480,8 +486,10 @@ function addon:ScanGroupOffenders()
 
   for i = 1, num do
     local unit = unitPrefix .. i
-    local okName, name, server = pcall(UnitName, unit)
-    if okName and CanReadValue(name) then
+    local Safe = self.Safe
+    local fullName, name, server
+    if Safe and Safe.UnitFullName then fullName, name, server = Safe.UnitFullName(unit) end
+    if name then
       local guildName = nil
       if self.Safe and self.Safe.GuildName then
         guildName = self.Safe.GuildName(unit)
@@ -504,14 +512,14 @@ function addon:ScanGroupOffenders()
         socialKeys[key] = socialStatus
       end
 
-      local realm = server or self.realm_name
+      local realm = server or (self.SafeText and self:SafeText(self.realm_name) or self.realm_name)
       local exempt = self:IsExemptUnit(name, realm, guildName)
       local nameFlag = self.db.scan_group_names and self:IsFlaggedText(name)
       local guildFlag = self.db.scan_group_guilds and guildName and self:IsFlaggedText(guildName)
 
       if not ignoreSocial and not exempt and (nameFlag or guildFlag) then
         local target = BuildUnitTarget(unit, name, server)
-        local displayName = (target and target.fullName) or name
+        local displayName = (target and target.fullName) or fullName or name
         offenders[displayName] = true
         offenderTargets[displayName] = target or { name = name, fullName = displayName, unit = unit }
         if key then offenderKeys[key] = true end

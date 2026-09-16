@@ -17,6 +17,7 @@ local function GGHook(target, methodOrFunc, maybeFunc)
   if isGlobal then
     ok = pcall(hooksecurefunc, target, guarded)
   else
+    if addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(target) then return false end
     ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
   end
   return ok and true or false
@@ -37,21 +38,34 @@ local CLASS_SET = {}
 for _, classFile in ipairs(CLASS_ORDER) do CLASS_SET[classFile] = true end
 
 local function CanReadValue(value)
-  if value == nil then return false end
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
+end
+
+local function CanAccessTable(value)
+  if addon and addon.Safe and addon.Safe.CanAccessTable then return addon.Safe.CanAccessTable(value) end
+  return type(value) == "table"
+end
+
+local function TableField(t, key)
+  if addon and addon.Safe and addon.Safe.TableField then return addon.Safe.TableField(t, key) end
+  if not CanAccessTable(t) then return nil end
+  local ok, value = pcall(function() return t[key] end)
+  if ok and CanReadValue(value) then return value end
+  return nil
 end
 
 local function SafeNumber(value, fallback)
   fallback = fallback or 0
-  if value == nil or not CanReadValue(value) then return fallback end
+  if not CanReadValue(value) then return fallback end
   if type(value) == "number" then return value end
   if type(value) == "string" then return tonumber(value) or fallback end
   local ok, n = pcall(tonumber, value)
@@ -59,7 +73,7 @@ local function SafeNumber(value, fallback)
 end
 
 local function SafeText(value)
-  if value == nil or not CanReadValue(value) then return nil end
+  if not CanReadValue(value) then return nil end
   if type(value) == "string" then return value end
   local ok, result = pcall(tostring, value)
   if ok then return result end
@@ -68,29 +82,25 @@ end
 
 local function GetResultIDFromRow(frame)
   if not frame then return nil end
-  if addon and addon.SafeGetElementData then
+  local keys = { "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID" }
+  if addon and addon.SafeGetElementData and addon.Safe and addon.Safe.TableField then
     local ed = addon:SafeGetElementData(frame)
-    if type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
-    end
-  elseif frame.GetElementData then
-    local ok, ed = pcall(frame.GetElementData, frame)
-    if ok and type(ed) == "table" then
-      return ed.resultID or ed.resultId or ed.searchResultID or ed.searchResultId or ed.id or ed.ID
+    for i = 1, #keys do
+      local id = SafeNumber(addon.Safe.TableField(ed, keys[i]), nil)
+      if id then return id end
     end
   end
-  return frame.resultID or frame.resultId or frame.id or frame.ID
+  if addon and addon.Safe and addon.Safe.ObjectField then
+    for i = 1, #keys do
+      local id = SafeNumber(addon.Safe.ObjectField(frame, keys[i]), nil)
+      if id then return id end
+    end
+  end
+  return nil
 end
 
 local function EnumerateScrollBoxFrames(sb)
-  if not sb then return nil end
-  if sb.GetFrames then
-    return sb:GetFrames()
-  elseif sb.EnumerateFrames then
-    local frames = {}
-    for f in sb:EnumerateFrames() do frames[#frames + 1] = f end
-    return frames
-  end
+  if addon and addon.SafeEnumerateScrollBoxFrames then return addon:SafeEnumerateScrollBoxFrames(sb) end
   return nil
 end
 
@@ -140,12 +150,13 @@ end
 local function ReadMemberCountsFromAPI(resultID, roleCounts, classCounts)
   if not (C_LFGList and C_LFGList.GetSearchResultMemberCounts) then return false end
   local ok, counts = pcall(C_LFGList.GetSearchResultMemberCounts, resultID)
-  if not ok or type(counts) ~= "table" then return false end
+  if not ok or not CanAccessTable(counts) then return false end
 
   local readAny = false
   for _, role in ipairs(ROLE_ORDER) do
-    local n = counts[role] or counts[role:lower()] or counts[ROLE_SHORT[role]]
-    n = SafeNumber(n, nil)
+    local n = SafeNumber(TableField(counts, role), nil)
+      or SafeNumber(TableField(counts, role:lower()), nil)
+      or SafeNumber(TableField(counts, ROLE_SHORT[role]), nil)
     if n ~= nil and n > 0 then
       roleCounts[role] = math.max(roleCounts[role], n)
       readAny = true
@@ -153,9 +164,10 @@ local function ReadMemberCountsFromAPI(resultID, roleCounts, classCounts)
   end
 
   -- Some clients expose classesByRole, others expose class totals directly.
-  if type(counts.classesByRole) == "table" then
-    for role, classMap in pairs(counts.classesByRole) do
-      if type(classMap) == "table" then
+  local classesByRole = TableField(counts, "classesByRole")
+  if CanAccessTable(classesByRole) then
+    for role, classMap in pairs(classesByRole) do
+      if CanAccessTable(classMap) then
         local roleTotal = 0
         for classFile, n in pairs(classMap) do
           n = SafeNumber(n, 0)
@@ -175,8 +187,9 @@ local function ReadMemberCountsFromAPI(resultID, roleCounts, classCounts)
     end
   end
 
-  for classFile, n in pairs(counts) do
-    if type(n) == "number" and CLASS_SET[tostring(classFile):upper()] then
+  for classFile, rawCount in pairs(counts) do
+    local n = SafeNumber(rawCount, nil)
+    if n and CanReadValue(classFile) and CLASS_SET[tostring(classFile):upper()] then
       AddClassCount(classCounts, classFile, n)
       readAny = true
     end

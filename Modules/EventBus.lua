@@ -12,15 +12,17 @@ local function SafeRegisterEvent(event)
 end
 
 local function SafeIsInRaid()
+  if addon and addon.Safe and addon.Safe.IsInRaid then return addon.Safe.IsInRaid() end
   if not IsInRaid then return false end
   local ok, value = pcall(IsInRaid)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 local function SafeIsInGroup()
+  if addon and addon.Safe and addon.Safe.IsInGroup then return addon.Safe.IsInGroup() end
   if not IsInGroup then return false end
   local ok, value = pcall(IsInGroup)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 local function SafeInGroupOrRaid()
@@ -126,6 +128,11 @@ function addon:RequestGroupRefresh(delay)
   end
 
   if delay <= 0.01 then
+    -- An immediate refresh supersedes any older delayed refresh. Without
+    -- cancelling it the same roster is scanned twice: once now and once when
+    -- the stale debounce fires.
+    if self.CancelDebounce then self:CancelDebounce("group_refresh") end
+    self._groupRefreshPending = false
     run()
     return
   end

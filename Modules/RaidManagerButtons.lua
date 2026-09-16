@@ -17,21 +17,30 @@ local function IsRaidManagerAvailable()
 end
 
 local function IsRaidGroup()
+  if addon and addon.Safe and addon.Safe.IsInRaid then return addon.Safe.IsInRaid() end
   if type(IsInRaid) ~= "function" then return false end
   local ok, value = pcall(IsInRaid)
-  return ok and value and true or false
+  return ok and value == true or false
 end
 
 local function SafeCall(frame, method, ...)
-  if not frame or type(frame[method]) ~= "function" then return nil end
-  local ok, value = pcall(frame[method], frame, ...)
+  if not frame then return nil end
+  local fn
+  if addon and addon.Safe and addon.Safe.ObjectMethod then
+    fn = addon.Safe.ObjectMethod(frame, method)
+  else
+    local okLookup, value = pcall(function() return frame[method] end)
+    if okLookup and type(value) == "function" then fn = value end
+  end
+  if not fn then return nil end
+  local ok, value = pcall(fn, frame, ...)
   if ok then return value end
   return nil
 end
 
 local function SafeNumber(frame, method, fallback)
   local value = SafeCall(frame, method)
-  value = tonumber(value)
+  if addon and addon.Safe and addon.Safe.Number then value = addon.Safe.Number(value, nil) else value = tonumber(value) end
   if value then return value end
   return fallback or 0
 end
@@ -41,9 +50,11 @@ local function GetButtonText(button)
   local text = SafeCall(button, "GetText")
   if type(text) == "string" and text ~= "" then return text end
 
-  local fontString = button.Text or button.text or button.label
-  if fontString and type(fontString.GetText) == "function" then
-    local ok, value = pcall(fontString.GetText, fontString)
+  local okLabel, fontString = pcall(function() return button.Text or button.text or button.label end)
+  if okLabel and fontString then
+    local getText = addon and addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(fontString, "GetText")
+    local ok, value = false, nil
+    if getText then ok, value = pcall(getText, fontString) end
     if ok and type(value) == "string" and value ~= "" then return value end
   end
 
@@ -76,7 +87,10 @@ local function LooksLikeLeaveButton(text)
 end
 
 local function CollectLeaveButtons(parent, results, depth)
-  if not parent or type(parent.GetNumChildren) ~= "function" or type(parent.GetChildren) ~= "function" then return results end
+  if not parent then return results end
+  if addon and addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(parent) then return results end
+  local getChildren = addon and addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(parent, "GetChildren")
+  if not getChildren or not (addon.Safe.ObjectMethod(parent, "GetNumChildren")) then return results end
   results = results or {}
   depth = depth or 0
   if depth > 6 then return results end
@@ -84,13 +98,14 @@ local function CollectLeaveButtons(parent, results, depth)
   local count = SafeCall(parent, "GetNumChildren")
   if not count or count <= 0 then return results end
 
-  local children = { pcall(parent.GetChildren, parent) }
+  local children = { pcall(getChildren, parent) }
   if not children[1] then return results end
   table.remove(children, 1)
 
   for _, child in ipairs(children) do
-    if child and type(child.IsObjectType) == "function" then
-      local okButton, isButton = pcall(child.IsObjectType, child, "Button")
+    local isObjectType = child and addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(child, "IsObjectType")
+    if isObjectType then
+      local okButton, isButton = pcall(isObjectType, child, "Button")
       if okButton and isButton and LooksLikeLeaveButton(GetButtonText(child)) then
         table.insert(results, child)
       end

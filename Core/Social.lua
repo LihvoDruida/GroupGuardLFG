@@ -186,8 +186,7 @@ function addon:RebuildGuildCache(force)
   local rankNameCache = {}
   local rankNameByIndex = {}
 
-  local inGuild = false
-  if IsInGuild then local okGuild, value = pcall(IsInGuild); inGuild = okGuild and value and true or false end
+  local inGuild = self.Safe and self.Safe.IsInGuild and self.Safe.IsInGuild() or false
   if inGuild and GuildRoster then
     pcall(GuildRoster)
   end
@@ -281,8 +280,7 @@ function addon:SetRaidAssistRankSelected(rankIndex, selected)
 end
 
 function addon:GetGuildRankOptions()
-  local inGuild = false
-  if IsInGuild then local okGuild, value = pcall(IsInGuild); inGuild = okGuild and value and true or false end
+  local inGuild = self.Safe and self.Safe.IsInGuild and self.Safe.IsInGuild() or false
   if inGuild and GuildRoster then pcall(GuildRoster) end
   if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
@@ -409,7 +407,7 @@ end
 function addon:IsGuildUnit(unit, guildName)
   if unit and UnitIsInMyGuild then
     local ok, v = pcall(UnitIsInMyGuild, unit)
-    if ok and v then return true end
+    if ok and self:SafeBool(v) then return true end
   end
 
   if guildName and self.Safe and self.Safe.GuildName then
@@ -435,9 +433,8 @@ function addon:GetSocialDebugInfo()
 end
 
 function addon:GetUnitSocialStatus(unit, name, guildName)
-  if unit and UnitIsUnit then
-    local ok, same = pcall(UnitIsUnit, unit, "player")
-    if ok and same then return nil end
+  if unit and self.Safe and self.Safe.UnitIsUnit and self.Safe.UnitIsUnit(unit, "player") then
+    return nil
   end
 
   if name and self:IsFriendName(name) then

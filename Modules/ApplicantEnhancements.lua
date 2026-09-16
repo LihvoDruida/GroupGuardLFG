@@ -17,6 +17,7 @@ local function GGHook(target, methodOrFunc, maybeFunc)
   if isGlobal then
     ok = pcall(hooksecurefunc, target, guarded)
   else
+    if addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(target) then return false end
     ok = pcall(hooksecurefunc, target, methodOrFunc, guarded)
   end
   return ok and true or false
@@ -35,6 +36,8 @@ local APPLICATION_DONE = {
   invitedeclined = true,
   declined = true,
   declined_full = true,
+  declined_delisted = true,
+  failed = true,
 }
 
 local GG_CONTEXT_COLUMN_WIDTH = 32
@@ -80,19 +83,59 @@ local RAID_ACTIVITY_MAP = {
 }
 
 local function CanReadValue(value)
-  return addon and addon.Safe and addon.Safe.CanReadValue and addon.Safe.CanReadValue(value) or value ~= nil
+  if addon and addon.Safe and addon.Safe.CanReadValue then return addon.Safe.CanReadValue(value) end
+  if type(canaccessvalue) == "function" then
+    local ok, allowed = pcall(canaccessvalue, value)
+    if not ok or allowed ~= true then return false end
+  end
+  if type(issecretvalue) == "function" then
+    local ok, secret = pcall(issecretvalue, value)
+    if not ok or secret == true then return false end
+  end
+  return value ~= nil
+end
+
+local function CanAccessTable(value)
+  if addon and addon.Safe and addon.Safe.CanAccessTable then return addon.Safe.CanAccessTable(value) end
+  if type(value) ~= "table" then return false end
+  if type(canaccesstable) == "function" then
+    local ok, allowed = pcall(canaccesstable, value)
+    if not ok or allowed ~= true then return false end
+  end
+  if type(issecrettable) == "function" then
+    local ok, secret = pcall(issecrettable, value)
+    if not ok or secret == true then return false end
+  end
+  return true
+end
+
+local function TableField(t, key)
+  if addon and addon.Safe and addon.Safe.TableField then return addon.Safe.TableField(t, key) end
+  if not CanAccessTable(t) then return nil end
+  local ok, value = pcall(function() return t[key] end)
+  if ok and CanReadValue(value) then return value end
+  return nil
+end
+
+local function FirstTableField(t, keys)
+  for i = 1, #keys do
+    local value = TableField(t, keys[i])
+    if value ~= nil then return value end
+  end
+  return nil
 end
 
 local function SafeNumber(value, fallback)
   if addon and addon.Safe and addon.Safe.Number then return addon.Safe.Number(value, fallback) end
-  if value == nil then return fallback end
+  if not CanReadValue(value) then return fallback end
   if type(value) == "number" then return value end
-  return tonumber(value) or fallback
+  local ok, n = pcall(tonumber, value)
+  return ok and n or fallback
 end
 
 local function SafeText(value)
   if addon and addon.Safe and addon.Safe.Text then return addon.Safe.Text(value) end
-  if value == nil then return nil end
+  if not CanReadValue(value) then return nil end
   if type(value) == "string" then return value end
   local ok, result = pcall(tostring, value)
   if ok then return result end
@@ -101,6 +144,7 @@ end
 
 local function SafeBool(value)
   if addon and addon.Safe and addon.Safe.Bool then return addon.Safe.Bool(value) end
+  if not CanReadValue(value) then return false end
   return value == true
 end
 
@@ -182,19 +226,25 @@ local function GetActiveActivityIDs()
     end
   end
   local function scan(value, depth)
-    if value == nil or (depth or 0) > 2 then return end
-    if type(value) == "number" or type(value) == "string" then
-      add(value)
-    elseif type(value) == "table" then
-      add(value.activityID or value.activityId or value.id or value.ID)
+    if (depth or 0) > 2 then return end
+    local valueType = type(value)
+    if valueType == "number" or valueType == "string" then
+      if CanReadValue(value) then add(value) end
+    elseif valueType == "table" and CanAccessTable(value) then
+      local keys = { "activityID", "activityId", "id", "ID" }
+      for i = 1, #keys do
+        local candidate = addon.Safe and addon.Safe.TableField and addon.Safe.TableField(value, keys[i]) or nil
+        local id = SafeNumber(candidate, nil)
+        if id then add(id) break end
+      end
       for _, child in pairs(value) do scan(child, (depth or 0) + 1) end
     end
   end
-  scan(entry.activityIDs, 0)
-  scan(entry.activityIds, 0)
-  scan(entry.activities, 0)
-  scan(entry.activityInfo, 0)
-  add(entry.activityID or entry.activityId)
+  scan(TableField(entry, "activityIDs"), 0)
+  scan(TableField(entry, "activityIds"), 0)
+  scan(TableField(entry, "activities"), 0)
+  scan(TableField(entry, "activityInfo"), 0)
+  add(FirstTableField(entry, { "activityID", "activityId" }))
   return ids, entry
 end
 
@@ -262,7 +312,7 @@ local DUNGEON_INCREMENT_KEYS = {
 }
 
 local function ReadNumberDeep(t, keys, depth)
-  if type(t) ~= "table" or (depth or 0) > 3 then return nil end
+  if not CanAccessTable(t) or (depth or 0) > 3 then return nil end
   for _, key in ipairs(keys or {}) do
     local value = SafeNumber(t[key], nil)
     if value ~= nil then return value end
@@ -277,7 +327,7 @@ local function ReadNumberDeep(t, keys, depth)
 end
 
 local function ReadTextDeep(t, keys, depth)
-  if type(t) ~= "table" or (depth or 0) > 2 then return nil end
+  if not CanAccessTable(t) or (depth or 0) > 2 then return nil end
   for _, key in ipairs(keys or {}) do
     local value = SafeText(t[key])
     if value and value ~= "" then return value end
@@ -301,9 +351,10 @@ local function NormalizeDungeonScoreInfo(scoreInfo, activityID, source)
     mapScore = mapScore,
     mapName = SafeText(scoreInfo.mapName) or ReadTextDeep(raw, { "mapName", "dungeonName", "name" }, 0),
     bestRunLevel = runLevel,
-    finishedSuccess = SafeBool(scoreInfo.finishedSuccess or scoreInfo.wasTimed or raw.finishedSuccess or raw.wasTimed),
-    bestLevelIncrement = SafeNumber(scoreInfo.bestLevelIncrement or scoreInfo.levelIncrement, nil) or ReadNumberDeep(raw, DUNGEON_INCREMENT_KEYS, 0) or 0,
-    activityID = SafeNumber(scoreInfo.activityID or scoreInfo.activityId, nil) or activityID,
+    finishedSuccess = SafeBool(FirstTableField(scoreInfo, { "finishedSuccess", "wasTimed" }))
+      or SafeBool(FirstTableField(raw, { "finishedSuccess", "wasTimed" })),
+    bestLevelIncrement = SafeNumber(FirstTableField(scoreInfo, { "bestLevelIncrement", "levelIncrement" }), nil) or ReadNumberDeep(raw, DUNGEON_INCREMENT_KEYS, 0) or 0,
+    activityID = SafeNumber(FirstTableField(scoreInfo, { "activityID", "activityId" }), nil) or activityID,
     source = source or SafeText(scoreInfo.source) or "blizzard",
     raw = raw,
   }
@@ -364,16 +415,17 @@ local RAID_PROGRESS_KILL_KEYS = { "kills", "killed", "numKilled", "numBossesKill
 local RAID_PROGRESS_TOTAL_KEYS = { "total", "bossCount", "numBosses", "totalBosses", "encounterCount", "numEncounters", "totalEncounters", "max", "required" }
 
 local function ReadFirstNumberField(t, keys)
-  if type(t) ~= "table" then return nil end
+  if not CanAccessTable(t) then return nil end
   for _, key in ipairs(keys or {}) do
-    local value = SafeNumber(t[key], nil)
+    local raw = addon.Safe and addon.Safe.TableField and addon.Safe.TableField(t, key) or nil
+    local value = SafeNumber(raw, nil)
     if value ~= nil then return value end
   end
   return nil
 end
 
 local function ExtractRaidProgressFromStats(stats, depth)
-  if type(stats) ~= "table" or (depth or 0) > 3 then return nil end
+  if not CanAccessTable(stats) or (depth or 0) > 3 then return nil end
   local kills = ReadFirstNumberField(stats, RAID_PROGRESS_KILL_KEYS)
   local total = ReadFirstNumberField(stats, RAID_PROGRESS_TOTAL_KEYS)
   if kills ~= nil and total ~= nil and total > 0 and kills >= 0 and kills <= total then
@@ -407,7 +459,7 @@ local function ReadApplicantMember(applicantID, index)
   m.itemLevel = SafeNumber(m.itemLevel, nil)
   m.honorLevel = SafeNumber(m.honorLevel, nil)
   m.assignedRole = NormalizeRole(m.assignedRole, m.tank, m.healer, m.damage)
-  m.relationship = SafeText(m.relationship)
+  m.relationship = SafeBool(m.relationship)
   m.dungeonScore = SafeNumber(m.dungeonScore, nil)
   m.pvpItemLevel = SafeNumber(m.pvpItemLevel, nil)
   m.factionGroup = SafeText(m.factionGroup)
@@ -420,12 +472,20 @@ local function ReadApplicantMember(applicantID, index)
 end
 
 local function ResolveApplicantIDFromElementData(ed)
-  if type(ed) ~= "table" then return nil end
-  local direct = SafeNumber(ed.applicantID or ed.applicantId or ed.ApplicantID or ed.id or ed.ID, nil)
-  if direct then return direct end
-  local nested = ed.applicantInfo or ed.applicationInfo or ed.info or ed.data or ed.elementData
-  if type(nested) == "table" then
-    return ResolveApplicantIDFromElementData(nested)
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessTable and Safe.CanAccessTable(ed) and Safe.TableField) then return nil end
+  local keys = { "applicantID", "applicantId", "ApplicantID", "id", "ID" }
+  for i = 1, #keys do
+    local id = SafeNumber(Safe.TableField(ed, keys[i]), nil)
+    if id then return id end
+  end
+  local nestedKeys = { "applicantInfo", "applicationInfo", "info", "data", "elementData" }
+  for i = 1, #nestedKeys do
+    local nested = Safe.TableField(ed, nestedKeys[i])
+    if Safe.CanAccessTable(nested) then
+      local id = ResolveApplicantIDFromElementData(nested)
+      if id then return id end
+    end
   end
   return nil
 end
@@ -435,38 +495,33 @@ local function EnumerateApplicantRows()
   local sb = viewer and viewer.ScrollBox
   if not sb then return nil end
   if addon and addon.SafeEnumerateScrollBoxFrames then return addon:SafeEnumerateScrollBoxFrames(sb) end
-  if sb.GetFrames then return sb:GetFrames() end
-  if sb.EnumerateFrames then
-    local frames = {}
-    for f in sb:EnumerateFrames() do frames[#frames + 1] = f end
-    return frames
-  end
   return nil
 end
 
 local function GetApplicantIDFromRow(frame)
-  if not frame then return nil end
-  local cached = SafeNumber(frame._ggLastApplicantID, nil)
-  if cached then return cached end
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(frame)) then return nil end
+  local keys = { "_ggLastApplicantID", "applicantID", "applicantId", "ApplicantID", "id", "ID" }
+  for i = 1, #keys do
+    local id = SafeNumber(Safe.ObjectField and Safe.ObjectField(frame, keys[i]), nil)
+    if id then return id end
+  end
 
-  local direct = SafeNumber(frame.applicantID or frame.applicantId or frame.ApplicantID or frame.id or frame.ID, nil)
-  if direct then return direct end
-
-  if frame.GetParent then
-    local okParent, parent = pcall(frame.GetParent, frame)
-    if okParent and parent then
-      local parentID = SafeNumber(parent.applicantID or parent.applicantId or parent.ApplicantID or parent._ggLastApplicantID, nil)
-      if parentID then return parentID end
+  local getParent = Safe.ObjectMethod and Safe.ObjectMethod(frame, "GetParent")
+  if getParent then
+    local okParent, parent = pcall(getParent, frame)
+    if okParent and parent and Safe.CanAccessObject(parent) then
+      local parentKeys = { "applicantID", "applicantId", "ApplicantID", "_ggLastApplicantID" }
+      for i = 1, #parentKeys do
+        local id = SafeNumber(Safe.ObjectField(parent, parentKeys[i]), nil)
+        if id then return id end
+      end
     end
   end
 
-  if frame.GetElementData then
-    local ok, ed = pcall(frame.GetElementData, frame)
-    if ok then
-      local id = ResolveApplicantIDFromElementData(ed)
-      if id then return id end
-    end
-  end
+  local ed = addon.SafeGetElementData and addon:SafeGetElementData(frame) or nil
+  local fromData = ResolveApplicantIDFromElementData(ed)
+  if fromData then return fromData end
 
   local rows = EnumerateApplicantRows()
   local apps = GetApplicantsSafe()
@@ -482,19 +537,24 @@ local function GetApplicantIDFromRow(frame)
 end
 
 local function IsFontString(obj)
-  return type(obj) == "table" and type(obj.GetText) == "function" and type(obj.SetText) == "function"
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(obj)) then return false end
+  return Safe.ObjectMethod(obj, "GetText") ~= nil and Safe.ObjectMethod(obj, "SetText") ~= nil
 end
 
 local function SafeGetText(fs)
   if not IsFontString(fs) then return nil end
-  local ok, text = pcall(fs.GetText, fs)
+  local method = addon.Safe.ObjectMethod(fs, "GetText")
+  local ok, text = pcall(method, fs)
   if ok then return SafeText(text) end
   return nil
 end
 
 local function SafeSetText(fs, text)
   if not IsFontString(fs) then return false end
-  return pcall(fs.SetText, fs, text or "")
+  local method = addon.Safe.ObjectMethod(fs, "SetText")
+  if not method then return false end
+  return pcall(method, fs, text or "")
 end
 
 local function StripLegacySuffix(text)
@@ -505,108 +565,138 @@ local function StripLegacySuffix(text)
   return text
 end
 
+local function ObjectMethod(obj, methodName)
+  local Safe = addon and addon.Safe
+  if Safe and Safe.ObjectMethod then return Safe.ObjectMethod(obj, methodName) end
+  return nil
+end
+
+local function ObjectField(obj, key)
+  local Safe = addon and addon.Safe
+  if Safe and Safe.ObjectField then return Safe.ObjectField(obj, key) end
+  return nil
+end
+
+local function SetObjectField(obj, key, value)
+  local Safe = addon and addon.Safe
+  if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(obj)) then return false end
+  return pcall(function() obj[key] = value end)
+end
+
 local function HideFontString(fs)
   if IsFontString(fs) then
     SafeSetText(fs, "")
-    if type(fs.Hide) == "function" then pcall(fs.Hide, fs) end
+    local hide = ObjectMethod(fs, "Hide")
+    if hide then pcall(hide, fs) end
   end
 end
 
 local function SafeSetSize(frame, width, height)
-  if not frame or type(frame.SetSize) ~= "function" then return false end
-  return pcall(frame.SetSize, frame, width, height)
+  local method = ObjectMethod(frame, "SetSize")
+  return method and pcall(method, frame, width, height) or false
 end
 
 local function SafeSetWidth(frame, width)
-  if not frame or type(frame.SetWidth) ~= "function" then return false end
-  return pcall(frame.SetWidth, frame, width)
+  local method = ObjectMethod(frame, "SetWidth")
+  return method and pcall(method, frame, width) or false
 end
 
 local function SafeClearAllPoints(frame)
-  if frame and type(frame.ClearAllPoints) == "function" then return pcall(frame.ClearAllPoints, frame) end
-  return false
+  local method = ObjectMethod(frame, "ClearAllPoints")
+  return method and pcall(method, frame) or false
 end
 
 local function SafeSetPoint(frame, ...)
-  if frame and type(frame.SetPoint) == "function" then return pcall(frame.SetPoint, frame, ...) end
-  return false
+  local method = ObjectMethod(frame, "SetPoint")
+  return method and pcall(method, frame, ...) or false
 end
 
 local function SafeSetHeight(frame, height)
-  if not frame or type(frame.SetHeight) ~= "function" then return false end
-  return pcall(frame.SetHeight, frame, height)
+  local method = ObjectMethod(frame, "SetHeight")
+  return method and pcall(method, frame, height) or false
 end
 
 local function SafeSetFrameLevel(frame, level)
-  if not frame or type(frame.SetFrameLevel) ~= "function" then return false end
-  return pcall(frame.SetFrameLevel, frame, level)
+  local method = ObjectMethod(frame, "SetFrameLevel")
+  return method and pcall(method, frame, level) or false
 end
 
 local function SafeGetFrameLevel(frame)
-  if not frame or type(frame.GetFrameLevel) ~= "function" then return nil end
-  local ok, value = pcall(frame.GetFrameLevel, frame)
-  return (ok and type(value) == "number") and value or nil
+  local method = ObjectMethod(frame, "GetFrameLevel")
+  if not method then return nil end
+  local ok, value = pcall(method, frame)
+  return ok and SafeNumber(value, nil) or nil
 end
 
 local function SafeEnableMouse(frame, enabled)
-  if frame and type(frame.EnableMouse) == "function" then pcall(frame.EnableMouse, frame, enabled and true or false) end
-  if frame and type(frame.SetMouseClickEnabled) == "function" then pcall(frame.SetMouseClickEnabled, frame, enabled and true or false) end
-  if frame and type(frame.SetMouseMotionEnabled) == "function" then pcall(frame.SetMouseMotionEnabled, frame, enabled and true or false) end
+  local value = enabled and true or false
+  for _, methodName in ipairs({ "EnableMouse", "SetMouseClickEnabled", "SetMouseMotionEnabled" }) do
+    local method = ObjectMethod(frame, methodName)
+    if method then pcall(method, frame, value) end
+  end
 end
 
 local function SafeSetBackdrop(frame, backdrop)
-  if frame and type(frame.SetBackdrop) == "function" then return pcall(frame.SetBackdrop, frame, backdrop) end
-  return false
+  local method = ObjectMethod(frame, "SetBackdrop")
+  return method and pcall(method, frame, backdrop) or false
 end
 
 local function SafeSetBackdropColor(frame, r, g, b, a)
-  if frame and type(frame.SetBackdropColor) == "function" then pcall(frame.SetBackdropColor, frame, r, g, b, a) end
+  local method = ObjectMethod(frame, "SetBackdropColor")
+  if method then pcall(method, frame, r, g, b, a) end
 end
 
 local function SafeSetBackdropBorderColor(frame, r, g, b, a)
-  if frame and type(frame.SetBackdropBorderColor) == "function" then pcall(frame.SetBackdropBorderColor, frame, r, g, b, a) end
+  local method = ObjectMethod(frame, "SetBackdropBorderColor")
+  if method then pcall(method, frame, r, g, b, a) end
 end
 
 local function SafeCreateFrame(kind, name, parent, template)
   if type(CreateFrame) ~= "function" then return nil end
+  if parent and addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(parent) then return nil end
   local ok, frame = pcall(CreateFrame, kind or "Frame", name, parent, template)
-  return ok and frame or nil
+  if not ok then return nil end
+  if addon.Safe and addon.Safe.CanAccessObject and not addon.Safe.CanAccessObject(frame) then return nil end
+  return frame
 end
 
 local FindItemLevelFontString
 local SafeGetHeightValue
 
 local function CanPositionObject(obj)
-  return type(obj) == "table" and type(obj.GetLeft) == "function" and type(obj.GetRight) == "function"
+  return ObjectMethod(obj, "GetLeft") ~= nil and ObjectMethod(obj, "GetRight") ~= nil
 end
 
 local function SafeGetLeft(obj)
-  if not CanPositionObject(obj) then return nil end
-  local ok, value = pcall(obj.GetLeft, obj)
-  return (ok and type(value) == "number") and value or nil
+  local method = ObjectMethod(obj, "GetLeft")
+  if not method then return nil end
+  local ok, value = pcall(method, obj)
+  return ok and SafeNumber(value, nil) or nil
 end
 
 local function SafeGetRight(obj)
-  if not CanPositionObject(obj) then return nil end
-  local ok, value = pcall(obj.GetRight, obj)
-  return (ok and type(value) == "number") and value or nil
+  local method = ObjectMethod(obj, "GetRight")
+  if not method then return nil end
+  local ok, value = pcall(method, obj)
+  return ok and SafeNumber(value, nil) or nil
 end
 
 local function SafeGetWidthValue(obj)
-  if not obj or type(obj.GetWidth) ~= "function" then return nil end
-  local ok, value = pcall(obj.GetWidth, obj)
-  return (ok and type(value) == "number") and value or nil
+  local method = ObjectMethod(obj, "GetWidth")
+  if not method then return nil end
+  local ok, value = pcall(method, obj)
+  return ok and SafeNumber(value, nil) or nil
 end
 
 -- GetLeft()/GetRight()/GetWidth() are expressed in the *object's own* coordinate
--- space.  The column headers live on the ApplicationViewer while the applicant
--- rows live inside the ScrollBox, so the two sets of numbers are only
--- comparable after they are converted to screen units.  Mixing them was the
--- root cause of the shifted iLvl/Rating values.
+-- space. The column headers live on the ApplicationViewer while the applicant
+-- rows live inside the ScrollBox, so both are normalized to screen units.
 local function SafeGetEffectiveScale(obj)
-  if obj and type(obj.GetEffectiveScale) == "function" then
-    local ok, value = pcall(obj.GetEffectiveScale, obj)
-    if ok and type(value) == "number" and value > 0 then return value end
+  local method = ObjectMethod(obj, "GetEffectiveScale")
+  if method then
+    local ok, value = pcall(method, obj)
+    value = ok and SafeNumber(value, nil) or nil
+    if value and value > 0 then return value end
   end
   return 1
 end
@@ -624,35 +714,38 @@ local function ScreenRight(obj)
 end
 
 local function SafeSetDrawLayer(region, layer, sublevel)
-  if region and type(region.SetDrawLayer) == "function" then
-    pcall(region.SetDrawLayer, region, layer, sublevel or 0)
-  end
+  local method = ObjectMethod(region, "SetDrawLayer")
+  if method then pcall(method, region, layer, sublevel or 0) end
 end
 
 local function SafeShow(region)
-  if region and type(region.Show) == "function" then pcall(region.Show, region) end
+  local method = ObjectMethod(region, "Show")
+  if method then pcall(method, region) end
 end
 
 local function SafeGetObjectType(obj)
-  if obj and type(obj.GetObjectType) == "function" then
-    local ok, kind = pcall(obj.GetObjectType, obj)
-    if ok then return kind end
+  local method = ObjectMethod(obj, "GetObjectType")
+  if method then
+    local ok, kind = pcall(method, obj)
+    if ok then return SafeText(kind) end
   end
   return nil
 end
 
 local function SafeGetName(obj)
-  if obj and type(obj.GetName) == "function" then
-    local ok, name = pcall(obj.GetName, obj)
+  local method = ObjectMethod(obj, "GetName")
+  if method then
+    local ok, name = pcall(method, obj)
     if ok then return SafeText(name) end
   end
   return nil
 end
 
 local function IsRegionShown(obj)
-  if obj and type(obj.IsShown) == "function" then
-    local ok, shown = pcall(obj.IsShown, obj)
-    if ok then return shown and true or false end
+  local method = ObjectMethod(obj, "IsShown")
+  if method then
+    local ok, shown = pcall(method, obj)
+    if ok then return SafeBool(shown) end
   end
   return true
 end
@@ -729,7 +822,7 @@ local function DetectRoleIconsForApplicantRow(frame)
   -- iterating the frame table with pairs() is no longer safe in 12.x because of
   -- private script objects.
   for index = 1, GG_ROLE_ICON_MAX_COUNT do
-    local obj = frame["RoleIcon" .. index]
+    local obj = ObjectField(frame, "RoleIcon" .. index)
     if obj and CanPositionObject(obj) and IsRegionShown(obj) then
       icons[#icons + 1] = obj
     end
@@ -746,7 +839,7 @@ local function DetectRoleIconsForApplicantRow(frame)
     local seen = {}
     local candidates = {}
     for _, item in ipairs(orderedKeys) do
-      local obj = frame[item[1]]
+      local obj = ObjectField(frame, item[1])
       if obj and not seen[obj] and CanPositionObject(obj) and IsRegionShown(obj) and not IsFontString(obj) then
         seen[obj] = true
         candidates[#candidates + 1] = { region = obj, priority = item[2], left = SafeGetLeft(obj) or 0 }
@@ -776,7 +869,7 @@ end
 local function FindFontStringByKeys(frame, keys)
   if not frame then return nil end
   for _, key in ipairs(keys) do
-    local fs = frame[key]
+    local fs = ObjectField(frame, key)
     if IsFontString(fs) then return fs end
   end
   return nil
@@ -810,13 +903,15 @@ local function FindHeaderFontStringByText(parent, texts)
       local text = SafeGetText(obj)
       if text and wanted[text:lower()] then return obj end
     end
-    if type(obj) == "table" and type(obj.GetText) == "function" then
-      local ok, text = pcall(obj.GetText, obj)
+    local getText = ObjectMethod(obj, "GetText")
+    if getText then
+      local ok, text = pcall(getText, obj)
       text = ok and SafeText(text) or nil
       if text and wanted[text:lower()] then return obj end
     end
-    if type(obj) == "table" and type(obj.GetRegions) == "function" then
-      local ok, regions = pcall(function() return { obj:GetRegions() } end)
+    local getRegions = ObjectMethod(obj, "GetRegions")
+    if getRegions then
+      local ok, regions = pcall(function() return { getRegions(obj) } end)
       if ok then
         for _, region in ipairs(regions) do
           local found = checkObject(region)
@@ -828,8 +923,9 @@ local function FindHeaderFontStringByText(parent, texts)
   end
   local found = checkObject(parent)
   if found then return found end
-  if type(parent.GetChildren) == "function" then
-    local ok, children = pcall(function() return { parent:GetChildren() } end)
+  local getChildren = ObjectMethod(parent, "GetChildren")
+  if getChildren then
+    local ok, children = pcall(function() return { getChildren(parent) } end)
     if ok then
       for _, child in ipairs(children) do
         found = checkObject(child)
@@ -842,13 +938,16 @@ end
 
 local function GetHeaderOwner(fs)
   if not fs then return nil end
-  if type(fs.GetObjectType) == "function" then
-    local ok, kind = pcall(fs.GetObjectType, fs)
-    if ok and kind ~= "FontString" then return fs end
+  local getType = ObjectMethod(fs, "GetObjectType")
+  if getType then
+    local ok, kind = pcall(getType, fs)
+    kind = ok and SafeText(kind) or nil
+    if kind and kind ~= "FontString" then return fs end
   end
-  if type(fs.GetParent) == "function" then
-    local ok, parent = pcall(fs.GetParent, fs)
-    if ok then return parent end
+  local getParent = ObjectMethod(fs, "GetParent")
+  if getParent then
+    local ok, parent = pcall(getParent, fs)
+    if ok and addon.Safe.CanAccessObject(parent) then return parent end
   end
   return nil
 end
@@ -864,15 +963,17 @@ local function ClampNumber(value, minValue, maxValue, fallback)
 end
 
 SafeGetHeightValue = function(obj)
-  if not obj or type(obj.GetHeight) ~= "function" then return nil end
-  local ok, value = pcall(obj.GetHeight, obj)
-  return (ok and type(value) == "number") and value or nil
+  local method = ObjectMethod(obj, "GetHeight")
+  if not method then return nil end
+  local ok, value = pcall(method, obj)
+  return ok and SafeNumber(value, nil) or nil
 end
 
 local function SafeGetNumPoints(obj)
-  if not obj or type(obj.GetNumPoints) ~= "function" then return 0 end
-  local ok, value = pcall(obj.GetNumPoints, obj)
-  return (ok and type(value) == "number") and value or 0
+  local method = ObjectMethod(obj, "GetNumPoints")
+  if not method then return 0 end
+  local ok, value = pcall(method, obj)
+  return ok and (SafeNumber(value, 0) or 0) or 0
 end
 
 -- IMPORTANT: only geometry is ever saved/restored here.
@@ -905,9 +1006,10 @@ local function SaveObjectLayout(obj)
     state.width = SafeGetWidthValue(obj)
     state.height = SafeGetHeightValue(obj)
   end
-  if type(obj.GetPoint) == "function" then
+  local getPoint = ObjectMethod(obj, "GetPoint")
+  if getPoint then
     for i = 1, pointCount do
-      local ok, point, relativeTo, relativePoint, xOfs, yOfs = pcall(obj.GetPoint, obj, i)
+      local ok, point, relativeTo, relativePoint, xOfs, yOfs = pcall(getPoint, obj, i)
       if ok and point then
         state.points[#state.points + 1] = { point, relativeTo, relativePoint, xOfs or 0, yOfs or 0 }
       end
@@ -932,7 +1034,7 @@ local function RestoreObjectLayout(obj)
     -- Hand auto-sizing back to the font string.
     SafeSetWidth(obj, 0)
     SafeSetHeight(obj, 0)
-  elseif state.width and state.height and type(obj.SetSize) == "function" then
+  elseif state.width and state.height and ObjectMethod(obj, "SetSize") then
     SafeSetSize(obj, state.width, state.height)
   else
     if state.width then SafeSetWidth(obj, state.width) end
@@ -954,16 +1056,17 @@ end
 -- this column?" on hover.  Motion only: clicks still pass through, matching
 -- Blizzard's own (disabled) column header buttons.
 local function EnableHeaderTooltip(frame)
-  if not frame or frame._ggHeaderTooltipHooked then return end
-  frame._ggHeaderTooltipHooked = true
-  if type(frame.SetMouseClickEnabled) == "function" then pcall(frame.SetMouseClickEnabled, frame, false) end
-  if type(frame.SetMouseMotionEnabled) == "function" then
-    pcall(frame.SetMouseMotionEnabled, frame, true)
-  elseif type(frame.EnableMouse) == "function" then
-    pcall(frame.EnableMouse, frame, true)
-  end
-  if type(frame.HookScript) ~= "function" then return end
-  pcall(frame.HookScript, frame, "OnEnter", function(self)
+  if not frame or not (addon.Safe and addon.Safe.CanAccessObject and addon.Safe.CanAccessObject(frame)) then return end
+  if ObjectField(frame, "_ggHeaderTooltipHooked") == true then return end
+  if not SetObjectField(frame, "_ggHeaderTooltipHooked", true) then return end
+  local click = ObjectMethod(frame, "SetMouseClickEnabled")
+  local motion = ObjectMethod(frame, "SetMouseMotionEnabled")
+  local enable = ObjectMethod(frame, "EnableMouse")
+  if click then pcall(click, frame, false) end
+  if motion then pcall(motion, frame, true) elseif enable then pcall(enable, frame, true) end
+  local hookScript = ObjectMethod(frame, "HookScript")
+  if not hookScript then return end
+  pcall(hookScript, frame, "OnEnter", function(self)
     if not GameTooltip or type(GameTooltip.SetOwner) ~= "function" then return end
     local title = (addon and addon.Tr and addon:Tr("APPLICANT_CONTEXT_COLUMN")) or GG_CONTEXT_HEADER_TEXT
     local body = addon and addon.Tr and addon:Tr("APPLICANT_CONTEXT_COLUMN_TOOLTIP") or nil
@@ -975,7 +1078,7 @@ local function EnableHeaderTooltip(frame)
     end
     GameTooltip:Show()
   end)
-  pcall(frame.HookScript, frame, "OnLeave", function()
+  pcall(hookScript, frame, "OnLeave", function()
     if GameTooltip and type(GameTooltip.Hide) == "function" then pcall(GameTooltip.Hide, GameTooltip) end
   end)
 end
@@ -1001,7 +1104,7 @@ end
 
 local function EnsureApplicantContextHeaderFrame(viewer)
   if not viewer then return nil end
-  local frame = viewer._ggContextHeaderFrame
+  local frame = ObjectField(viewer, "_ggContextHeaderFrame")
   if frame then return frame end
 
   local templates = { "LFGListApplicationViewerColumnHeaderTemplate", "LFGListColumnHeaderButtonTemplate", "LFGListColumnHeaderTemplate", "WhoFrameColumnHeaderTemplate", "ColumnHeaderButtonTemplate", "ColumnHeaderTemplate", "BackdropTemplate" }
@@ -1018,26 +1121,29 @@ local function EnsureApplicantContextHeaderFrame(viewer)
   end
   if not frame then return nil end
 
-  viewer._ggContextHeaderFrame = frame
+  SetObjectField(viewer, "_ggContextHeaderFrame", frame)
   StyleApplicantContextHeaderFrame(frame, templateUsed)
   SafeSetSize(frame, GG_CONTEXT_COLUMN_WIDTH, 20)
   local baseLevel = SafeGetFrameLevel(viewer) or 1
   SafeSetFrameLevel(frame, baseLevel + 8)
 
-  local label = IsFontString(frame.Text) and frame.Text or nil
-  if not label and type(frame.GetFontString) == "function" then
-    local ok, fontString = pcall(frame.GetFontString, frame)
+  local frameText = ObjectField(frame, "Text")
+  local label = IsFontString(frameText) and frameText or nil
+  local getFontString = ObjectMethod(frame, "GetFontString")
+  if not label and getFontString then
+    local ok, fontString = pcall(getFontString, frame)
     if ok and IsFontString(fontString) then label = fontString end
   end
-  if not label and type(frame.CreateFontString) == "function" then
-    local ok, created = pcall(frame.CreateFontString, frame, nil, "OVERLAY", "GameFontNormalSmall")
+  local createFontString = ObjectMethod(frame, "CreateFontString")
+  if not label and createFontString then
+    local ok, created = pcall(createFontString, frame, nil, "OVERLAY", "GameFontNormalSmall")
     if ok then label = created end
   end
   if label then
-    viewer._ggContextHeader = label
-    if type(label.SetJustifyH) == "function" then pcall(label.SetJustifyH, label, "CENTER") end
-    if type(label.SetJustifyV) == "function" then pcall(label.SetJustifyV, label, "MIDDLE") end
-    if type(label.SetTextColor) == "function" then pcall(label.SetTextColor, label, 1.0, 0.82, 0.0) end
+    SetObjectField(viewer, "_ggContextHeader", label)
+    local justifyH = ObjectMethod(label, "SetJustifyH"); if justifyH then pcall(justifyH, label, "CENTER") end
+    local justifyV = ObjectMethod(label, "SetJustifyV"); if justifyV then pcall(justifyV, label, "MIDDLE") end
+    local setColor = ObjectMethod(label, "SetTextColor"); if setColor then pcall(setColor, label, 1.0, 0.82, 0.0) end
     SafeSetDrawLayer(label, "OVERLAY", 7)
     SafeClearAllPoints(label)
     SafeSetPoint(label, "CENTER", frame, "CENTER", 0, 0)
@@ -1379,7 +1485,7 @@ local function PositionFontStringUnderColumn(fs, row, column, padding)
   local ok = true
   ok = SafeSetPoint(fs, "LEFT", row, "LEFT", left + padding, 0) and ok
   ok = SafeSetPoint(fs, "RIGHT", row, "LEFT", right - padding, 0) and ok
-  if type(fs.SetJustifyH) == "function" then pcall(fs.SetJustifyH, fs, "CENTER") end
+  local justifyH = ObjectMethod(fs, "SetJustifyH"); if justifyH then pcall(justifyH, fs, "CENTER") end
   if type(fs.SetWordWrap) == "function" then pcall(fs.SetWordWrap, fs, false) end
   return ok
 end
@@ -1558,15 +1664,16 @@ end
 
 local function EnsureRowContextColumn(frame)
   if not frame or not (addon and addon.db and addon.db.applicant_context_progress) then return nil end
-  local fs = frame._ggContextColumnFS
+  local fs = ObjectField(frame, "_ggContextColumnFS")
   if not IsFontString(fs) then
-    if type(frame.CreateFontString) ~= "function" then return nil end
-    local ok, created = pcall(frame.CreateFontString, frame, nil, "OVERLAY", "GameFontNormalSmall")
+    local createFontString = ObjectMethod(frame, "CreateFontString")
+    if not createFontString then return nil end
+    local ok, created = pcall(createFontString, frame, nil, "OVERLAY", "GameFontNormalSmall")
     if not ok or not created then return nil end
     fs = created
-    frame._ggContextColumnFS = fs
-    if type(fs.SetJustifyH) == "function" then pcall(fs.SetJustifyH, fs, "CENTER") end
-    if type(fs.SetTextColor) == "function" then pcall(fs.SetTextColor, fs, 1.0, 0.82, 0.0) end
+    SetObjectField(frame, "_ggContextColumnFS", fs)
+    local justifyH = ObjectMethod(fs, "SetJustifyH"); if justifyH then pcall(justifyH, fs, "CENTER") end
+    local setColor = ObjectMethod(fs, "SetTextColor"); if setColor then pcall(setColor, fs, 1.0, 0.82, 0.0) end
     SafeSetDrawLayer(fs, "OVERLAY", 6)
   end
 
@@ -1924,7 +2031,7 @@ local function ApplyApplicantContextMetric(frame, applicantID, memberIdx)
   if metric.leaver and (metric.text == "⚠" or metric.text:find("⚠", 1, true)) then
     if type(fs.SetTextColor) == "function" then pcall(fs.SetTextColor, fs, 1.0, 0.36, 0.22) end
   else
-    if type(fs.SetTextColor) == "function" then pcall(fs.SetTextColor, fs, 1.0, 0.82, 0.0) end
+    local setColor = ObjectMethod(fs, "SetTextColor"); if setColor then pcall(setColor, fs, 1.0, 0.82, 0.0) end
   end
   if type(fs.Show) == "function" then pcall(fs.Show, fs) end
   return metric
@@ -1998,12 +2105,12 @@ end
 
 function addon:LFG_RequestApplicantSummaryTooltip(row)
   if not row then return end
-  local appID = SafeNumber(row._ggLastApplicantID, nil) or GetApplicantIDFromRow(row)
+  local appID = SafeNumber(ObjectField(row, "_ggLastApplicantID"), nil) or GetApplicantIDFromRow(row)
   if not appID then return end
-  row._ggTooltipToken = {}
-  local token = row._ggTooltipToken
+  local token = {}
+  if not SetObjectField(row, "_ggTooltipToken", token) then return end
   local function tryAppend()
-    if row._ggTooltipToken == token and TooltipOwnerIs(row) then
+    if ObjectField(row, "_ggTooltipToken") == token and TooltipOwnerIs(row) then
       RenderApplicantSummaryTooltip(addon, row, appID)
     end
   end
@@ -2016,36 +2123,41 @@ function addon:LFG_RequestApplicantSummaryTooltip(row)
 end
 
 local function HookApplicantTooltipFrame(frame)
-  if not frame or not frame.HookScript or frame._ggApplicantTooltipHooked then return end
-  frame._ggApplicantTooltipHooked = true
-  pcall(frame.HookScript, frame, "OnEnter", function(f)
+  if not frame or not (addon.Safe and addon.Safe.CanAccessObject and addon.Safe.CanAccessObject(frame)) then return end
+  if ObjectField(frame, "_ggApplicantTooltipHooked") == true then return end
+  local hookScript = ObjectMethod(frame, "HookScript")
+  if not hookScript or not SetObjectField(frame, "_ggApplicantTooltipHooked", true) then return end
+  pcall(hookScript, frame, "OnEnter", function(f)
     if addon and addon.LFG_RequestApplicantSummaryTooltip then addon:LFG_RequestApplicantSummaryTooltip(f) end
   end)
-  pcall(frame.HookScript, frame, "OnLeave", function(f)
-    if f then f._ggTooltipToken = nil end
-    -- Do not hide or clear GameTooltip here.
+  pcall(hookScript, frame, "OnLeave", function(f)
+    if f then SetObjectField(f, "_ggTooltipToken", nil) end
   end)
 end
 
 local function HookApplicantMemberFrame(frame)
-  if not frame then return end
+  if not frame or not (addon.Safe and addon.Safe.CanAccessObject and addon.Safe.CanAccessObject(frame)) then return end
   CleanupLegacyApplicantDecorations(frame)
   HookApplicantTooltipFrame(frame)
-  if frame._ggApplicantCleanHooked then return end
-  frame._ggApplicantCleanHooked = true
-  if frame.HookScript then
-    pcall(frame.HookScript, frame, "OnHide", CleanupLegacyApplicantDecorations)
-    pcall(frame.HookScript, frame, "OnShow", CleanupLegacyApplicantDecorations)
+  if ObjectField(frame, "_ggApplicantCleanHooked") == true then return end
+  if not SetObjectField(frame, "_ggApplicantCleanHooked", true) then return end
+  local hookScript = ObjectMethod(frame, "HookScript")
+  if hookScript then
+    pcall(hookScript, frame, "OnHide", CleanupLegacyApplicantDecorations)
+    pcall(hookScript, frame, "OnShow", CleanupLegacyApplicantDecorations)
   end
 end
 
 function addon:LFG_ShowApplicantCard(memberFrame, applicantID, memberIdx)
   -- Compatibility entry point: no row replacement.
   if not memberFrame then return end
-  memberFrame._ggLastApplicantID = SafeNumber(applicantID, nil) or memberFrame._ggLastApplicantID or GetApplicantIDFromRow(memberFrame)
-  memberFrame._ggLastMemberIdx = SafeNumber(memberIdx, memberFrame.memberIdx or 1) or 1
+  local appID = SafeNumber(applicantID, nil) or SafeNumber(ObjectField(memberFrame, "_ggLastApplicantID"), nil) or GetApplicantIDFromRow(memberFrame)
+  local stockMemberIdx = SafeNumber(ObjectField(memberFrame, "memberIdx"), 1) or 1
+  local resolvedMemberIdx = SafeNumber(memberIdx, stockMemberIdx) or 1
+  SetObjectField(memberFrame, "_ggLastApplicantID", appID)
+  SetObjectField(memberFrame, "_ggLastMemberIdx", resolvedMemberIdx)
   HookApplicantMemberFrame(memberFrame)
-  ScheduleApplicantContextMetric(memberFrame, memberFrame._ggLastApplicantID, memberFrame._ggLastMemberIdx)
+  ScheduleApplicantContextMetric(memberFrame, appID, resolvedMemberIdx)
 end
 
 function addon:LFG_UpdateApplicantChip(row)
@@ -2171,20 +2283,12 @@ function addon:LFG_InitApplicantEnhancements()
 
   local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
   local sb = viewer and viewer.ScrollBox
-  if sb and not sb._ggApplicantEnhancementHooked then
-    sb._ggApplicantEnhancementHooked = true
+  if sb and addon.SafeObserveScrollBox then
     local function onFramesChanged(frames)
       for _, frame in ipairs(frames or {}) do HookApplicantMemberFrame(frame) end
       schedule()
     end
-    if addon.SafeObserveScrollBox then
-      addon:SafeObserveScrollBox(sb, "applicant_minimal_hooks", onFramesChanged, cleanupThenSchedule)
-    else
-      if sb.HookScript then sb:HookScript("OnMouseWheel", cleanupThenSchedule) end
-      if sb.FullUpdate then GGHook(sb, "FullUpdate", cleanupThenSchedule) end
-      if sb.Update then GGHook(sb, "Update", cleanupThenSchedule) end
-      if sb.Refresh then GGHook(sb, "Refresh", cleanupThenSchedule) end
-    end
+    addon:SafeObserveScrollBox(sb, "applicant_minimal_hooks", onFramesChanged, cleanupThenSchedule)
   end
   -- LFGListApplicationViewer_UpdateApplicants has never existed in Mainline;
   -- UpdateResults is the function that actually repaints the applicant list.

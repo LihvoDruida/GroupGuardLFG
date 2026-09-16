@@ -38,16 +38,15 @@ function addon:SafeGetTime()
 end
 
 function addon:CanAccessValue(value)
-  if value == nil then return false end
   if type(canaccessvalue) == "function" then
     local ok, allowed = pcall(canaccessvalue, value)
-    if not ok or not allowed then return false end
+    if not ok or allowed ~= true then return false end
   end
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, value)
-    if not ok or secret then return false end
+    if not ok or secret == true then return false end
   end
-  return true
+  return value ~= nil
 end
 
 function addon:CallAPI(fn, ...)
@@ -62,8 +61,8 @@ function addon:PlayerCanManageGroup()
   if Safe and Safe.IsGroupLeader then
     if Safe.IsGroupLeader("player") then return true end
 
-    local okRaid, inRaid = pcall(IsInRaid)
-    if okRaid and inRaid then
+    local inRaid = Safe.IsInRaid and Safe.IsInRaid() or false
+    if inRaid then
       if Safe.IsGroupAssistant("player") then return true end
       if Safe.IsRaidOfficer and Safe.IsRaidOfficer("player") then return true end
     end
@@ -82,7 +81,10 @@ end
 function addon:GetGroupMemberCount()
   if not GetNumGroupMembers then return 0 end
   local ok, count = pcall(GetNumGroupMembers)
-  return ok and tonumber(count) or 0
+  if not ok or not self:CanAccessValue(count) then return 0 end
+  if type(count) == "number" then return count end
+  if type(count) == "string" then return tonumber(count) or 0 end
+  return 0
 end
 
 function addon:IsExemptUnit(name, realm, guild_name)
