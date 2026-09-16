@@ -109,6 +109,31 @@ GroupGuard is designed to run beside common LFG addons.
 GroupGuard does not identify a player’s nationality, ethnicity, religion, origin or personal identity. Optional text checks are based only on visible text such as group titles, comments, character names, guild names and user-configured rules. Text and realm hints can be wrong, so rules should be reviewed carefully.
 
 
+
+## Release notes — 4.7.3
+
+- Fixed shared `StaticPopup` button state leaking from the death dialog into **Accept / OK / confirmation** dialogs.
+- Removed method-level `Enable` / `SetEnabled` hooks from Blizzard's shared popup button.
+- `Release Spirit` is now re-checked only while the active popup is exactly `DEATH` and the player is in a raid.
+- DeathGuard restores only button state that it changed itself, leaving Blizzard-owned disabled/timer states alone.
+- Changed the custom raid reminder to English: **“Don't push the horses )))”**.
+- `Recap` and all non-death StaticPopup dialogs remain untouched.
+
+## Release notes — 4.7.2
+
+- Limited the death-dialog guard to **raid groups only** (`IsInRaid()`).
+- In raids, **Release Spirit** stays visible but is disabled and **“Don't push the horses )))”** is shown.
+- In parties, Mythic+, solo/open-world play and other non-raid states, Blizzard's death dialog is left unchanged.
+- The **Recap** button and Blizzard's automatic release behavior remain untouched.
+
+## Release notes — 4.7.1
+
+- Added a death-dialog safety guard that keeps Blizzard's **Release Spirit** button visible but disabled.
+- Kept the stock **Recap** button and the rest of Blizzard's death dialog unchanged.
+- Added the reminder line **“Don't push the horses )))”** above the stock death-dialog buttons.
+- Uses guarded post-hooks instead of replacing `StaticPopupDialogs["DEATH"]`, reducing taint risk on Retail 12.1.
+- Blizzard's own automatic release timeout is not modified.
+
 ## Release notes — 4.7.0
 
 - Added Retail 12.1.5 PTR interface `120105` while keeping 12.1.0 (`120100`) compatibility.

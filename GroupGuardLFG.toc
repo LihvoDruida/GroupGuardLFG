@@ -2,8 +2,8 @@
 ## Title: GroupGuard LFG
 ## Notes: Cleaner LFG tools, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.7.0
-## X-Codename: Midnight 12.1.5 PTR hardening and safe LFG UI
+## Version: 4.7.3
+## X-Codename: Midnight 12.1 isolated raid death-release guard
 ## X-Prev-Codename: Curse of Ula’tek 12.1 compatibility and startup resilience
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO, Blizzard_GroupFinder, Blizzard_LookingForGroupUI
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
@@ -34,6 +34,7 @@ Modules\GroupActions.lua
 Modules\RaidAssist.lua
 Modules\PugDetector.lua
 Modules\RaidManagerButtons.lua
+Modules\DeathGuard.lua
 Modules\EventBus.lua
 
 UI\Settings.lua
