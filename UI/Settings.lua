@@ -31,6 +31,10 @@ local SETTINGS_UK = {
   ["Confirm leaving with a popup"] = "Підтверджувати вихід спливаючим вікном",
   ["The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page."] =
     "У банері можуть з'являтися кнопки як для видалення позначених гравців, так і для виходу з поточної групи/рейду. LFG-заявки обробляє окрема кнопка на сторінці Premade Groups.",
+  ["Raid death safety"] = "Захист від випадкового виходу з тіла",
+  ["Disable Release Spirit in raids for (sec):"] = "Блокувати «Release Spirit» у рейді на (сек):",
+  ["The Release Spirit button stays visible, but GroupGuard temporarily disables it in raids. Default: 15 sec. Set 0 to disable this extra delay; Blizzard's own timer is never shortened."] =
+    "Кнопка «Release Spirit» залишається видимою, але GroupGuard тимчасово робить її неактивною в рейді. За замовчуванням: 15 сек. Вкажи 0, щоб вимкнути цю додаткову затримку; власний таймер Blizzard ніколи не скорочується.",
 
   ["LFG applications"] = "LFG-заявки",
   ["2. LFG applications"] = "2. LFG-заявки",
@@ -704,6 +708,22 @@ function addon:InitSettingsPages()
 
   local generalWarn = AddNote(generalChild, g7,
     "The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page.")
+
+  local deathSafety = AddSection(generalChild, generalWarn, "Raid death safety")
+  local releaseLockRow = AddEdit(
+    generalChild, deathSafety, "Disable Release Spirit in raids for (sec):",
+    function() return addon.db.raid_release_lock_seconds or 15 end,
+    function(txt)
+      local v = tonumber(txt) or 15
+      if v < 0 then v = 0 elseif v > 120 then v = 120 end
+      addon.db.raid_release_lock_seconds = v
+      if addon.DeathGuard and addon.DeathGuard.Refresh then addon.DeathGuard:Refresh() end
+      SyncAll("raid_release_lock_seconds")
+    end,
+    true
+  )
+  AddNote(generalChild, releaseLockRow,
+    "The Release Spirit button stays visible, but GroupGuard temporarily disables it in raids. Default: 15 sec. Set 0 to disable this extra delay; Blizzard's own timer is never shortened.")
 
   --------------------------------------------------
   -- 2. LFG заявки

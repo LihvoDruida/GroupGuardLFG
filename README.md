@@ -110,6 +110,15 @@ GroupGuard does not identify a player’s nationality, ethnicity, religion, orig
 
 
 
+## Release notes — 4.7.4
+
+- **Release Spirit** now stays visible in raids and is disabled only for a configurable safety window instead of being kept disabled indefinitely.
+- Default GroupGuard raid release lock: **15 seconds**.
+- Added **General → Raid death safety → Disable Release Spirit in raids for (sec)**. Range: **0–120 sec**; `0` disables GroupGuard's extra delay.
+- The timer starts when the raid death popup appears and is not restarted by roster/settings refreshes.
+- After the configured delay, GroupGuard restores only button state that it disabled itself. Blizzard-owned release timers are never shortened.
+- The reminder text is shown only while the GroupGuard lock is active.
+
 ## Release notes — 4.7.3
 
 - Fixed shared `StaticPopup` button state leaking from the death dialog into **Accept / OK / confirmation** dialogs.

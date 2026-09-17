@@ -165,6 +165,7 @@ addon.DEFAULTS = {
   raid_assist_manual_names = "",
   raid_assist_notify = true,
   raid_manager_pug_button = true,
+  raid_release_lock_seconds = 15,
 }
 
 addon.L10N = {
@@ -607,6 +608,10 @@ function addon:EnsureDB()
   if self.db.raid_assist_manual_names == nil then self.db.raid_assist_manual_names = "" end
   if self.db.raid_assist_notify == nil then self.db.raid_assist_notify = true end
   if self.db.raid_manager_pug_button == nil then self.db.raid_manager_pug_button = true end
+  if self.db.raid_release_lock_seconds == nil then self.db.raid_release_lock_seconds = 15 end
+  self.db.raid_release_lock_seconds = tonumber(self.db.raid_release_lock_seconds) or 15
+  if self.db.raid_release_lock_seconds < 0 then self.db.raid_release_lock_seconds = 0 end
+  if self.db.raid_release_lock_seconds > 120 then self.db.raid_release_lock_seconds = 120 end
   if self.db.scan_debounce == nil or self.db.scan_debounce < 0.04 then self.db.scan_debounce = 0.05 end
   if self.db.lfg_debounce == nil or self.db.lfg_debounce < 0.06 then self.db.lfg_debounce = 0.08 end
   if self.db.lfg_tooltip_details == nil then self.db.lfg_tooltip_details = true end

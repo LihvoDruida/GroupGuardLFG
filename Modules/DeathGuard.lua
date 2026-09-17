@@ -2,21 +2,27 @@ local addonName, addon = ...
 
 -- Raid-only guard for Blizzard's stock death dialog.
 --
--- The important rule here is isolation: StaticPopup buttons are reused by many
--- Blizzard dialogs (Accept, Ready Check, confirmations, etc.). Never hook or
--- permanently change button Enable/SetEnabled methods. We only disable button1
--- while the currently shown popup is exactly DEATH and the player is in a raid,
--- then restore only state that this module itself changed.
+-- StaticPopup buttons are shared by many Blizzard dialogs. DeathGuard therefore
+-- never replaces the DEATH popup and never hooks Button:Enable/SetEnabled.
+-- It only disables button1 while the active popup is exactly DEATH, the player
+-- is in a raid, and the user-configured lock window is still active.
+--
+-- The Release Spirit button remains visible at all times. When the GroupGuard
+-- lock expires we restore only a disabled state that DeathGuard itself created;
+-- Blizzard-owned timers remain untouched.
 
 local DeathGuard = addon.DeathGuard or {}
 addon.DeathGuard = DeathGuard
 
 DeathGuard.MESSAGE = "Don't push the horses )))"
 DeathGuard.UPDATE_INTERVAL = 0.15
+DeathGuard.DEFAULT_LOCK_SECONDS = 15
+DeathGuard.MAX_LOCK_SECONDS = 120
 
 local popupLabels = setmetatable({}, { __mode = "k" })
 local hookedPopups = setmetatable({}, { __mode = "k" })
 local popupElapsed = setmetatable({}, { __mode = "k" })
+local popupLockElapsed = setmetatable({}, { __mode = "k" })
 local buttonState = setmetatable({}, { __mode = "k" })
 
 local function SafeObjectMethod(object, methodName)
@@ -52,6 +58,16 @@ local function IsEnabled(button)
   return enabled == true
 end
 
+function DeathGuard:GetLockSeconds()
+  if addon and addon.EnsureDB and not addon.db then addon:EnsureDB() end
+  local value = addon and addon.db and addon.db.raid_release_lock_seconds
+  value = tonumber(value)
+  if value == nil then value = self.DEFAULT_LOCK_SECONDS end
+  if value < 0 then value = 0 end
+  if value > self.MAX_LOCK_SECONDS then value = self.MAX_LOCK_SECONDS end
+  return value
+end
+
 function DeathGuard:IsRaidActive()
   if addon.Safe and type(addon.Safe.IsInRaid) == "function" then
     return addon.Safe.IsInRaid() == true
@@ -72,10 +88,9 @@ function DeathGuard:GetReleaseButton(popup)
   return SafeField(popup, "button1")
 end
 
--- Disable only when we can prove the button is currently enabled. This lets us
--- remember that *we* changed the state and safely restore it when the DEATH
--- popup is hidden/reused. If Blizzard already has the button disabled for its
--- own timer, we leave that state owned by Blizzard.
+-- Disable only when the button is currently enabled. If Blizzard already owns
+-- a disabled state (for example its own release timer), DeathGuard does not
+-- claim that state and therefore will not enable it later.
 function DeathGuard:DisableReleaseButton(popup)
   if not self:IsRaidActive() or not self:IsDeathPopup(popup) then return false end
 
@@ -96,9 +111,9 @@ function DeathGuard:DisableReleaseButton(popup)
   return false
 end
 
--- Restore only a state that DeathGuard itself disabled. This is the key that
--- prevents shared StaticPopup button1 from staying disabled when Blizzard
--- reuses the frame for an ACCEPT/OK/confirmation dialog.
+-- Restore only a state that DeathGuard itself disabled. This prevents shared
+-- StaticPopup button1 from leaking a disabled state into Accept/OK dialogs and
+-- avoids shortening a Blizzard-owned release timer.
 function DeathGuard:RestoreReleaseButton(popup)
   local button = self:GetReleaseButton(popup)
   if not button or buttonState[button] ~= true then return false end
@@ -153,11 +168,42 @@ function DeathGuard:HideMessage(popup)
   if hide then pcall(hide, label) end
 end
 
+function DeathGuard:GetElapsed(popup)
+  return popupLockElapsed[popup] or 0
+end
+
+function DeathGuard:IsLockActive(popup)
+  local duration = self:GetLockSeconds()
+  if duration <= 0 then return false end
+  return self:GetElapsed(popup) < duration
+end
+
+function DeathGuard:UpdateLockState(popup)
+  if popup == nil then return false end
+  if not self:IsDeathPopup(popup) or not self:IsRaidActive() then
+    self:CleanupPopup(popup)
+    return false
+  end
+
+  -- A zero-second setting disables only GroupGuard's extra lock. Blizzard's
+  -- own disabled state/timer remains exactly as the game set it.
+  if not self:IsLockActive(popup) then
+    self:RestoreReleaseButton(popup)
+    self:HideMessage(popup)
+    return false
+  end
+
+  self:DisableReleaseButton(popup)
+  self:EnsureMessage(popup)
+  return true
+end
+
 function DeathGuard:CleanupPopup(popup)
   if popup == nil then return end
   self:HideMessage(popup)
   self:RestoreReleaseButton(popup)
   popupElapsed[popup] = nil
+  popupLockElapsed[popup] = nil
 end
 
 function DeathGuard:HookPopup(popup)
@@ -167,34 +213,39 @@ function DeathGuard:HookPopup(popup)
   local hookScript = SafeObjectMethod(popup, "HookScript")
   if not hookScript then return end
 
-  -- StaticPopup frames are reused. OnShow must validate the current `which`
-  -- every time; never assume the frame is still the DEATH popup.
+  -- StaticPopup frames are reused. A fresh DEATH popup starts a fresh lock
+  -- window; other popup types are cleaned immediately.
   pcall(hookScript, popup, "OnShow", function(self)
     popupElapsed[self] = 0
+    popupLockElapsed[self] = 0
     if DeathGuard:IsDeathPopup(self) and DeathGuard:IsRaidActive() then
-      DeathGuard:Apply(self)
+      DeathGuard:UpdateLockState(self)
     else
       DeathGuard:CleanupPopup(self)
     end
   end)
 
-  -- Blizzard can enable Release Spirit when its internal timer expires. Polling
-  -- the active DEATH popup avoids method hooks on the shared button, so Accept
-  -- and every other StaticPopup button remain untouched.
+  -- Blizzard may enable Release Spirit while our configurable lock is still
+  -- active. Polling only the active DEATH popup lets us re-disable it without
+  -- hooks on the shared button. Once the lock expires, we stop touching it.
   pcall(hookScript, popup, "OnUpdate", function(self, elapsed)
     if not DeathGuard:IsDeathPopup(self) or not DeathGuard:IsRaidActive() then
+      DeathGuard:CleanupPopup(self)
       return
     end
 
-    local total = (popupElapsed[self] or 0) + (tonumber(elapsed) or 0)
+    local dt = tonumber(elapsed) or 0
+    if dt < 0 then dt = 0 end
+    popupLockElapsed[self] = (popupLockElapsed[self] or 0) + dt
+
+    local total = (popupElapsed[self] or 0) + dt
     if total < DeathGuard.UPDATE_INTERVAL then
       popupElapsed[self] = total
       return
     end
     popupElapsed[self] = 0
 
-    DeathGuard:DisableReleaseButton(self)
-    DeathGuard:EnsureMessage(self)
+    DeathGuard:UpdateLockState(self)
   end)
 
   pcall(hookScript, popup, "OnHide", function(self)
@@ -217,9 +268,10 @@ function DeathGuard:Apply(popup)
     return false
   end
 
-  local disabled = self:DisableReleaseButton(popup)
-  self:EnsureMessage(popup)
-  return disabled
+  -- Refreshes caused by roster/settings changes must not restart the timer.
+  if popupLockElapsed[popup] == nil then popupLockElapsed[popup] = 0 end
+  if popupElapsed[popup] == nil then popupElapsed[popup] = 0 end
+  return self:UpdateLockState(popup)
 end
 
 function DeathGuard:FindDeathPopup()
@@ -240,8 +292,6 @@ function DeathGuard:CleanupAllPopups()
     if popup then self:CleanupPopup(popup) end
   end
 
-  -- Also clean labels created on mock/dynamically supplied popup objects that
-  -- are not reachable through StaticPopup1..N.
   for popup in pairs(popupLabels) do
     self:CleanupPopup(popup)
   end
@@ -254,8 +304,6 @@ function DeathGuard:Refresh()
     return
   end
 
-  -- If the player leaves the raid or the shared frame changes to another
-  -- dialog, remove only DeathGuard-owned state immediately.
   self:CleanupAllPopups()
 end
 
@@ -273,8 +321,6 @@ if type(StaticPopup_Show) == "function" and type(hooksecurefunc) == "function" t
       DeathGuard:Refresh()
       ScheduleRefresh()
     else
-      -- Shared StaticPopup frames can be recycled immediately after DEATH.
-      -- Cleanup ensures button1 never leaks a disabled state into Accept/OK.
       DeathGuard:CleanupAllPopups()
     end
   end)
