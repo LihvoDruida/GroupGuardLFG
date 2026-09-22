@@ -148,9 +148,8 @@ local function AddRoleCount(roleCounts, role, count)
 end
 
 local function ReadMemberCountsFromAPI(resultID, roleCounts, classCounts)
-  if not (C_LFGList and C_LFGList.GetSearchResultMemberCounts) then return false end
-  local ok, counts = pcall(C_LFGList.GetSearchResultMemberCounts, resultID)
-  if not ok or not CanAccessTable(counts) then return false end
+  local counts = addon and addon.LFG_API_GetSearchResultMemberCounts and addon:LFG_API_GetSearchResultMemberCounts(resultID) or nil
+  if not CanAccessTable(counts) then return false end
 
   local readAny = false
   for _, role in ipairs(ROLE_ORDER) do
@@ -341,15 +340,30 @@ function addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
 end
 
 function addon:LFG_HookEnhancedSearchTooltip()
-  if self._ggEnhancedTooltipHooked then return end
-  if type(hooksecurefunc) ~= "function" then return end
-  if type(LFGListUtil_SetSearchEntryTooltip) ~= "function" then return end
-  self._ggEnhancedTooltipHooked = true
-  GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
-    if addon and addon.LFG_AppendSearchInsightTooltip then
-      addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
-    end
-  end)
+  if type(hooksecurefunc) ~= "function" then return false end
+  local hooked = false
+
+  if not self._ggEnhancedTooltipHookedMainline and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
+    local ok = GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+      if addon and addon.LFG_AppendSearchInsightTooltip then
+        addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
+      end
+    end)
+    if ok then self._ggEnhancedTooltipHookedMainline = true end
+    hooked = ok or hooked
+  end
+
+  if not self._ggEnhancedTooltipHookedForever and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
+    local ok = GGHook("LFGBrowseSearchEntryTooltip_UpdateAndShow", function(tooltip, resultID)
+      if addon and addon.LFG_AppendSearchInsightTooltip then
+        addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
+      end
+    end)
+    if ok then self._ggEnhancedTooltipHookedForever = true end
+    hooked = ok or hooked
+  end
+
+  return hooked
 end
 
 function addon:LFG_SetupTooltipModifierRefresh()
@@ -361,9 +375,12 @@ function addon:LFG_SetupTooltipModifierRefresh()
     local tooltip = addon and addon._lfgCurrentSearchTooltip
     local resultID = addon and addon._lfgCurrentSearchResultID
     if not tooltip or not resultID or not tooltip:IsShown() then return end
-    if type(LFGListUtil_SetSearchEntryTooltip) ~= "function" then return end
     tooltip:ClearLines()
-    pcall(LFGListUtil_SetSearchEntryTooltip, tooltip, resultID)
+    if tooltip == _G.LFGBrowseSearchEntryTooltip and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
+      pcall(LFGBrowseSearchEntryTooltip_UpdateAndShow, tooltip, resultID)
+    elseif type(LFGListUtil_SetSearchEntryTooltip) == "function" then
+      pcall(LFGListUtil_SetSearchEntryTooltip, tooltip, resultID)
+    end
   end)
   self._ggTooltipModifierFrame = frame
 end
@@ -402,7 +419,8 @@ function addon:LFG_InitEnhancements()
   if self.LFG_SetupTooltipModifierRefresh then self:LFG_SetupTooltipModifierRefresh() end
   if self.LFG_SetupApplicantPingMute then self:LFG_SetupApplicantPingMute() end
 
-  local needsRetry = (not self._ggEnhancedTooltipHooked) or (not self._ggApplicantPingHooked)
+  local hasSearchTooltipHook = self._ggEnhancedTooltipHookedMainline or self._ggEnhancedTooltipHookedForever
+  local needsRetry = (not hasSearchTooltipHook) or (not self._ggApplicantPingHooked)
   if needsRetry and C_Timer and C_Timer.After and not self._ggEnhancementRetryScheduled and (self._ggEnhancementRetryCount or 0) < 8 then
     self._ggEnhancementRetryScheduled = true
     self._ggEnhancementRetryCount = (self._ggEnhancementRetryCount or 0) + 1
@@ -416,7 +434,7 @@ function addon:LFG_InitEnhancements()
 end
 
 function addon:LFG_PrintVisibleSearchStats()
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   local frames = EnumerateScrollBoxFrames(sb)
   if not frames then

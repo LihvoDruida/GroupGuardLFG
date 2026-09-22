@@ -124,6 +124,11 @@ addon.DEFAULTS = {
   scan_group_guilds = true,
   sound_presets = { WARN_SOUND },
   lfg_show_button = true,
+  lfg_filters_enabled = true,
+  lfg_filter_panel_open = false,
+  lfg_filter_group_roles = { TANK = false, HEALER = false, DAMAGER = false },
+  lfg_filter_player_roles = { TANK = false, HEALER = false, DAMAGER = false },
+  lfg_filter_player_classes = {},
   lfg_highlight = true,
   lfg_highlight_search_members = true,
   lfg_button_text = "Decline LFG applications (%d)",
@@ -206,6 +211,21 @@ addon.L10N = {
     TOOLTIP_MARKED = "Marked by GroupGuard",
     LFG_DECLINE_BUTTON = "Decline LFG applications",
     LFG_DECLINE_BUTTON_FMT = "Decline LFG applications (%d)",
+    LFG_FILTERS = "Filters",
+    LFG_FILTERS_TITLE = "GroupGuard Filters",
+    LFG_FILTERS_GROUP_TITLE = "Dungeons — group needs",
+    LFG_FILTERS_GROUP_HELP = "Show group listings that still need at least one selected role.",
+    LFG_FILTERS_PLAYER_TITLE = "Players — class & role",
+    LFG_FILTERS_PLAYER_HELP = "Show solo players that match a selected class AND a selected role.",
+    LFG_FILTERS_CLASSES = "Classes",
+    LFG_FILTERS_ROLES = "Roles",
+    LFG_FILTERS_RESET = "Reset",
+    LFG_FILTERS_ACTIVE = "Custom filters active",
+    LFG_FILTERS_INACTIVE = "No custom filters",
+    LFG_FILTERS_UNAVAILABLE = "This filter is not available in this client.",
+    LFG_FILTER_TANK = "Tank",
+    LFG_FILTER_HEALER = "Healer",
+    LFG_FILTER_DAMAGE = "Damage",
     LFG_DECLINED_PRINT = "Declined LFG applications: %d",
     LFG_DECLINE_FAILED_PRINT = "Failed to decline LFG applications: %d",
     KICK_BUTTON = "Remove from group",
@@ -381,6 +401,21 @@ addon.L10N = {
     TOOLTIP_MARKED = "Позначено GroupGuard",
     LFG_DECLINE_BUTTON = "Відхилити LFG-заявки",
     LFG_DECLINE_BUTTON_FMT = "Відхилити LFG-заявки (%d)",
+    LFG_FILTERS = "Фільтри",
+    LFG_FILTERS_TITLE = "Фільтри GroupGuard",
+    LFG_FILTERS_GROUP_TITLE = "Підземелля — потрібні ролі",
+    LFG_FILTERS_GROUP_HELP = "Показувати групи, яким ще потрібна хоча б одна з вибраних ролей.",
+    LFG_FILTERS_PLAYER_TITLE = "Гравці — клас і роль",
+    LFG_FILTERS_PLAYER_HELP = "Показувати одиночних гравців, які одночасно відповідають вибраному класу І ролі.",
+    LFG_FILTERS_CLASSES = "Класи",
+    LFG_FILTERS_ROLES = "Ролі",
+    LFG_FILTERS_RESET = "Скинути",
+    LFG_FILTERS_ACTIVE = "Власні фільтри активні",
+    LFG_FILTERS_INACTIVE = "Власні фільтри не задані",
+    LFG_FILTERS_UNAVAILABLE = "Цей фільтр недоступний у цьому клієнті.",
+    LFG_FILTER_TANK = "Танк",
+    LFG_FILTER_HEALER = "Хілер",
+    LFG_FILTER_DAMAGE = "Боєць",
     LFG_DECLINED_PRINT = "Відхилено LFG-заявки: %d",
     LFG_DECLINE_FAILED_PRINT = "Не вдалося відхилити LFG-заявки: %d",
     KICK_BUTTON = "Прибрати з групи",
@@ -617,6 +652,11 @@ function addon:EnsureDB()
   if self.db.lfg_tooltip_details == nil then self.db.lfg_tooltip_details = true end
   if self.db.lfg_role_fit_hints == nil then self.db.lfg_role_fit_hints = true end
   if self.db.lfg_mute_applicant_ping == nil then self.db.lfg_mute_applicant_ping = true end
+  if self.db.lfg_filters_enabled == nil then self.db.lfg_filters_enabled = true end
+  if self.db.lfg_filter_panel_open == nil then self.db.lfg_filter_panel_open = false end
+  if type(self.db.lfg_filter_group_roles) ~= "table" then self.db.lfg_filter_group_roles = { TANK = false, HEALER = false, DAMAGER = false } end
+  if type(self.db.lfg_filter_player_roles) ~= "table" then self.db.lfg_filter_player_roles = { TANK = false, HEALER = false, DAMAGER = false } end
+  if type(self.db.lfg_filter_player_classes) ~= "table" then self.db.lfg_filter_player_classes = {} end
   if self.db.realm_insights == nil then self.db.realm_insights = true end
   if self.db.realm_badges == nil then self.db.realm_badges = true end
   if self.db.realm_same_locale_only == nil then self.db.realm_same_locale_only = true end

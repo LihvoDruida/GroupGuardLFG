@@ -736,49 +736,56 @@ function addon:InitSettingsPages()
   lfgNote:SetPoint("RIGHT", lfgChild, "RIGHT", -24, 0)
   lfgNote:SetJustifyH("LEFT")
 
-  local secDecline = AddSection(lfgChild, lfgNote, "Application decline")
-  local l1 = AddCheck(lfgChild, secDecline, "Automatically decline marked LFG applications when you have permission", "lfg_auto_decline", function() SyncAll("lfg_auto_decline") end)
-  local l2 = AddCheck(lfgChild, l1, "Notify about auto-declines", "lfg_auto_decline_notify", function() SyncAll("lfg_auto_decline_notify") end)
-  local l3 = AddCheck(lfgChild, l2, "Show the manual “Decline LFG applications” button", "lfg_show_button", function() SyncAll("lfg_show_button") end)
-  local lfgAutoNote = AddNote(lfgChild, l3,
-    "Auto-decline works only for marked applications and only while you can manage the active listing. The manual button remains available for anything that needs review.")
+  local foreverClient = addon.IsForeverClient and addon:IsForeverClient()
+  local lfgSectionAnchor = lfgNote
 
-  local limitRow = AddEdit(
-    lfgChild, lfgAutoNote, "Auto-decline limit per pass:",
-    function() return addon.db.lfg_auto_decline_batch_limit or 5 end,
-    function(txt)
-      local v = tonumber(txt) or 5
-      if v < 1 then v = 1 elseif v > 20 then v = 20 end
-      addon.db.lfg_auto_decline_batch_limit = v
-      SyncAll("lfg_auto_decline_batch_limit")
-    end,
-    true
-  )
+  -- Forever's VanillaStyle browser has no Mainline ApplicationViewer. Keep the
+  -- search features, but do not present controls that cannot have an effect.
+  if not foreverClient then
+    local secDecline = AddSection(lfgChild, lfgNote, "Application decline")
+    local l1 = AddCheck(lfgChild, secDecline, "Automatically decline marked LFG applications when you have permission", "lfg_auto_decline", function() SyncAll("lfg_auto_decline") end)
+    local l2 = AddCheck(lfgChild, l1, "Notify about auto-declines", "lfg_auto_decline_notify", function() SyncAll("lfg_auto_decline_notify") end)
+    local l3 = AddCheck(lfgChild, l2, "Show the manual “Decline LFG applications” button", "lfg_show_button", function() SyncAll("lfg_show_button") end)
+    local lfgAutoNote = AddNote(lfgChild, l3,
+      "Auto-decline works only for marked applications and only while you can manage the active listing. The manual button remains available for anything that needs review.")
 
-  local delayRow = AddEdit(
-    lfgChild, limitRow, "Pause between auto-declines (sec):",
-    function() return addon.db.lfg_auto_decline_delay or 0.12 end,
-    function(txt)
-      local v = tonumber(txt) or 0.12
-      if v < 0.03 then v = 0.03 elseif v > 1.0 then v = 1.0 end
-      addon.db.lfg_auto_decline_delay = v
-      SyncAll("lfg_auto_decline_delay")
-    end,
-    false
-  )
+    local limitRow = AddEdit(
+      lfgChild, lfgAutoNote, "Auto-decline limit per pass:",
+      function() return addon.db.lfg_auto_decline_batch_limit or 5 end,
+      function(txt)
+        local v = tonumber(txt) or 5
+        if v < 1 then v = 1 elseif v > 20 then v = 20 end
+        addon.db.lfg_auto_decline_batch_limit = v
+        SyncAll("lfg_auto_decline_batch_limit")
+      end,
+      true
+    )
 
-  local textRow = AddEdit(
-    lfgChild, delayRow, "Manual LFG button text:",
-    function() return addon.db.lfg_button_text or "Decline LFG applications (%d)" end,
-    function(txt)
-      if txt == "" then txt = "Decline LFG applications (%d)" end
-      addon.db.lfg_button_text = txt
-      SyncAll("lfg_button_text")
-    end,
-    false
-  )
+    local delayRow = AddEdit(
+      lfgChild, limitRow, "Pause between auto-declines (sec):",
+      function() return addon.db.lfg_auto_decline_delay or 0.12 end,
+      function(txt)
+        local v = tonumber(txt) or 0.12
+        if v < 0.03 then v = 0.03 elseif v > 1.0 then v = 1.0 end
+        addon.db.lfg_auto_decline_delay = v
+        SyncAll("lfg_auto_decline_delay")
+      end,
+      false
+    )
 
-  local secHighlight = AddSection(lfgChild, textRow, "LFG highlighting")
+    lfgSectionAnchor = AddEdit(
+      lfgChild, delayRow, "Manual LFG button text:",
+      function() return addon.db.lfg_button_text or "Decline LFG applications (%d)" end,
+      function(txt)
+        if txt == "" then txt = "Decline LFG applications (%d)" end
+        addon.db.lfg_button_text = txt
+        SyncAll("lfg_button_text")
+      end,
+      false
+    )
+  end
+
+  local secHighlight = AddSection(lfgChild, lfgSectionAnchor, "LFG highlighting")
   local l4 = AddCheck(lfgChild, secHighlight, "Highlight marked applications in the list", "lfg_highlight", function() SyncAll("lfg_highlight") end)
   local l5 = AddCheck(lfgChild, l4, "Check LFG members against rules", "lfg_highlight_search_members", function() SyncAll("lfg_members") end)
   local l6 = AddCheck(lfgChild, l5, "Show GroupGuard tooltip in LFG", "lfg_tooltips", function() SyncAll("lfg_tooltips") end)
@@ -788,11 +795,14 @@ function addon:InitSettingsPages()
   local l7realm = AddCheck(lfgChild, l7fit, "Show realm hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
   local l7badge = AddCheck(lfgChild, l7realm, "Show compact realm badges on LFG search rows", "realm_badges", function() SyncAll("realm_badges") end)
   local l7same = AddCheck(lfgChild, l7badge, "Only show realm hints when they are useful", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
-  local l7appt = AddCheck(lfgChild, l7same, "Show GroupGuard warnings in applicant tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
-  local l7context = AddCheck(lfgChild, l7appt, "Show current dungeon key / raid progress in the GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
-  local l7refresh = AddCheck(lfgChild, l7context, "Refresh applicant list after status changes", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
-  local l7c = AddCheck(lfgChild, l7refresh, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
-  local lfgInsightNote = AddNote(lfgChild, l7c,
+  local lfgInsightAnchor = l7same
+  if not foreverClient then
+    local l7appt = AddCheck(lfgChild, lfgInsightAnchor, "Show GroupGuard warnings in applicant tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
+    local l7context = AddCheck(lfgChild, l7appt, "Show current dungeon key / raid progress in the GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
+    local l7refresh = AddCheck(lfgChild, l7context, "Refresh applicant list after status changes", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
+    lfgInsightAnchor = AddCheck(lfgChild, l7refresh, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
+  end
+  local lfgInsightNote = AddNote(lfgChild, lfgInsightAnchor,
     "These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged.")
 
   local secSocial = AddSection(lfgChild, lfgInsightNote, "Friends / guild in LFG")
@@ -1072,8 +1082,9 @@ SLASH_GROUPGUARDLFG5 = "/guardlfg"
 
 local function PrintDebugInfo(mode)
   mode = tostring(mode or ""):lower()
-  local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local viewer = addon.GetLFGApplicantViewer and addon:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
+  local sp = addon.GetLFGSearchFrame and addon:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
+  local root = addon.GetLFGRootFrame and addon:GetLFGRootFrame() or LFGListFrame
 
   print(addon:Tr("CMD_DEBUG_TITLE"))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "debug", tostring(addon.debug == true)))
@@ -1096,8 +1107,10 @@ local function PrintDebugInfo(mode)
     end
   end
 
-  print(addon:Tr("CMD_LFG_FRAME_STATE", "LFGListFrame", LFGListFrame and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
-  print(addon:Tr("CMD_LFG_FRAME_STATE", "SearchPanel", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  local clientName = addon.IsForeverClient and addon:IsForeverClient() and "WoW Forever" or (addon.IsRetail12Client and addon:IsRetail12Client() and "Retail 12.x" or "Unknown")
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "Client", clientName))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "LFG root", root and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
+  print(addon:Tr("CMD_LFG_FRAME_STATE", "Search/Browse", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "ApplicationViewer", viewer and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "Premade Groups Filter", addon.IsPremadeGroupsFilterLoaded and addon:IsPremadeGroupsFilterLoaded() and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "RaiderIO", _G.RaiderIO and addon:Tr("CMD_LOADED") or addon:Tr("CMD_NOT_LOADED")))
@@ -1143,6 +1156,10 @@ local function PrintDebugInfo(mode)
   if addon.LFG_API_DebugDump then
     local dump = addon:LFG_API_DebugDump()
     print(addon:Tr("CMD_LFG_FRAME_STATE", "LFG API cache", tostring(dump.buckets) .. " / " .. tostring(dump.entries)))
+  end
+
+  if mode == "lfg" and addon.LFGFilters_DebugDump then
+    addon:LFGFilters_DebugDump(8)
   end
 end
 

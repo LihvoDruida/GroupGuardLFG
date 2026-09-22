@@ -17,6 +17,8 @@ GroupGuard LFG helps you keep LFG applications, party members and raid members e
 - Adds a small **PUG List** button to the default raid manager panel for quick access.
 - Can grant raid assistant to selected ranks, officers or named players.
 - Supports English and Ukrainian UI text.
+- Supports both modern **WoW 12.x** LFG and **WoW Forever 1.60.x** (`_Camelot.toc`).
+- Adds a stock-style search filter panel: dungeon groups can be filtered by roles they still need; solo player listings can be filtered by class and role.
 
 ## Design rules
 
@@ -108,6 +110,30 @@ GroupGuard is designed to run beside common LFG addons.
 
 GroupGuard does not identify a player’s nationality, ethnicity, religion, origin or personal identity. Optional text checks are based only on visible text such as group titles, comments, character names, guild names and user-configured rules. Text and realm hints can be wrong, so rules should be reviewed carefully.
 
+
+## Release notes — 4.8.1
+
+- Fixed WoW Forever filters not applying when `LFGBrowseFrame` had already copied `LFGBrowseMixin` methods before GroupGuard installed its hook.
+- Added a concrete `LFGBrowseFrame:UpdateResultList()` post-hook instead of relying only on the shared mixin table.
+- Filter changes on Forever now re-read the same `C_LFGList.GetFilteredSearchResults()` set Blizzard uses, apply GroupGuard's local class/role rules, and rebuild only `UpdateResults()`; no new server search is issued.
+- Moved the side filter panel under `UIParent` while keeping it anchored to the LFG window so mouse-wheel input over the panel no longer bubbles into the Forever browse `ScrollBox`.
+- The filter panel now explicitly consumes mouse-wheel input and disables mouse click/motion propagation where the client exposes those APIs.
+- `/gg debug lfg` now prints the active Forever hook state plus a small sample of result IDs, member counts, class/role data, remaining dungeon roles and each result's filter verdict.
+- Added regression coverage for direct Forever result refresh/filtering without a working mixin hook.
+
+
+
+## Release notes — 4.8.0
+
+- Added first-class **WoW Forever 1.60.x** support through `GroupGuardLFG_Camelot.toc` (`Interface 16001`).
+- Added runtime client/capability detection so Mainline and Forever use the correct Blizzard LFG frames and only available API paths.
+- Added a Blizzard-style filter button next to Forever's refresh button and a standard-asset settings panel anchored to the right of the LFG window.
+- Added separate filter blocks for **Dungeon groups — roles still needed** and **Players — class + role**. Multiple choices are OR within a block; class and role are AND for solo-player listings.
+- Filters operate on Blizzard's already-received search results and do not issue protected searches or replace Blizzard sorting/UI.
+- Updated search highlighting, GroupGuard tooltips, realm hints and search insight hooks for Forever's `Blizzard_GroupFinder_VanillaStyle` frames.
+- Added safe snapshots for current `C_LFGList.GetSearchResultMemberCounts`, `GetSearchResultPlayerInfo`, `GetSearchResultInfo`, and modern activity fields such as `maxNumPlayers` / `useDungeonRoleExpectations`.
+- Forever settings hide Mainline ApplicationViewer-only controls that have no usable UI there.
+- Added regression tests for role-needs filtering, solo class+role matching and fail-open behavior when LFG data is temporarily unavailable.
 
 
 ## Release notes — 4.7.4

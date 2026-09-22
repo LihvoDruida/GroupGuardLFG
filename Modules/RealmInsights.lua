@@ -358,7 +358,7 @@ end
 
 local function RefreshRealmBadges()
   if not (addon and addon.db and addon.db.realm_insights) then return end
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = addon and addon.GetLFGSearchFrame and addon:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   local frames = EnumerateScrollBoxFrames(sb)
   if not frames then return end
@@ -377,15 +377,6 @@ function addon:LFG_HideRealmDecorations()
 end
 
 function addon:LFG_InitRealmInsights()
-  if self._ggRealmInsightsHooked then return end
-  self._ggRealmInsightsHooked = true
-
-  if type(hooksecurefunc) == "function" and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
-    GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
-      if addon and addon.LFG_AppendRealmInsightTooltip then addon:LFG_AppendRealmInsightTooltip(tooltip, resultID) end
-    end)
-  end
-
   local function schedule()
     if addon and addon.LFG_HideRealmDecorations then addon:LFG_HideRealmDecorations() end
     if addon and addon.RunDebounced then
@@ -397,12 +388,37 @@ function addon:LFG_InitRealmInsights()
     end
   end
 
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  if type(hooksecurefunc) == "function" then
+    if not self._ggRealmTooltipHookedMainline and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
+      local ok = GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+        if addon and addon.LFG_AppendRealmInsightTooltip then addon:LFG_AppendRealmInsightTooltip(tooltip, resultID) end
+      end)
+      if ok then self._ggRealmTooltipHookedMainline = true end
+    end
+    if not self._ggRealmTooltipHookedForever and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
+      local ok = GGHook("LFGBrowseSearchEntryTooltip_UpdateAndShow", function(tooltip, resultID)
+        if addon and addon.LFG_AppendRealmInsightTooltip then addon:LFG_AppendRealmInsightTooltip(tooltip, resultID) end
+      end)
+      if ok then self._ggRealmTooltipHookedForever = true end
+    end
+  end
+
+  local sp = addon and addon.GetLFGSearchFrame and addon:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   if sb and self.SafeObserveScrollBox then
     self:SafeObserveScrollBox(sb, "realm-insights-search", function() schedule() end, schedule)
   end
-  if type(LFGListSearchPanel_UpdateResults) == "function" then GGHook("LFGListSearchPanel_UpdateResults", schedule) end
-  if type(LFGListSearchPanel_UpdateResultList) == "function" then GGHook("LFGListSearchPanel_UpdateResultList", schedule) end
+
+  if not self._ggRealmResultsHookedMainline then
+    local hooked = false
+    if type(LFGListSearchPanel_UpdateResults) == "function" then hooked = GGHook("LFGListSearchPanel_UpdateResults", schedule) or hooked end
+    if type(LFGListSearchPanel_UpdateResultList) == "function" then hooked = GGHook("LFGListSearchPanel_UpdateResultList", schedule) or hooked end
+    if hooked then self._ggRealmResultsHookedMainline = true end
+  end
+  if not self._ggRealmResultsHookedForever and type(LFGBrowseMixin) == "table" and type(LFGBrowseMixin.UpdateResults) == "function" then
+    local ok = GGHook(LFGBrowseMixin, "UpdateResults", schedule)
+    if ok then self._ggRealmResultsHookedForever = true end
+  end
+
   schedule()
 end

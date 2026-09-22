@@ -171,19 +171,24 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
       return
     end
 
-    if addon.LFG_CreateButton then addon:LFG_CreateButton() end
-    if addon.LFG_HookViewer then addon:LFG_HookViewer() end
+    local applicantUI = not addon.SupportsLFGApplicantUI or addon:SupportsLFGApplicantUI()
+    if applicantUI and addon.LFG_CreateButton then addon:LFG_CreateButton() end
+    if applicantUI and addon.LFG_HookViewer then addon:LFG_HookViewer() end
     if addon.LFG_HookSearchPanel then addon:LFG_HookSearchPanel() end
+    if addon.LFGFilters_HookFrames then addon:LFGFilters_HookFrames() end
     if addon.InitPGFIntegration then addon:InitPGFIntegration() end
     if addon.LFG_InitEnhancements then addon:LFG_InitEnhancements() end
     if addon.LFG_InitRealmInsights then addon:LFG_InitRealmInsights() end
-    if addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
+    if applicantUI and addon.LFG_InitApplicantEnhancements then addon:LFG_InitApplicantEnhancements() end
 
-    if addon._lfgRefreshApplicants and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
-    if addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
-    if addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(nil) end
+    if applicantUI and addon._lfgRefreshApplicants and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
+    if applicantUI and addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
+    if applicantUI and addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(nil) end
+    if addon._lfgRefreshResults and addon.LFGFilters_HasActiveFilters and addon:LFGFilters_HasActiveFilters() and addon.LFGFilters_RefreshCurrentResults then
+      addon:LFGFilters_RefreshCurrentResults()
+    end
     if addon._lfgRefreshResults and addon.LFG_DebouncedHighlightResults then addon:LFG_DebouncedHighlightResults(nil) end
-    if addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end
+    if applicantUI and addon.LFG_RefreshApplicantChips then addon:LFG_RefreshApplicantChips() end
 
     addon._lfgRefreshApplicants = false
     addon._lfgRefreshResults = false
@@ -248,6 +253,8 @@ local function OnEvent(self, event, arg1, ...)
   if event == "ADDON_LOADED" then
     if arg1 == addonName then
       addon:EnsureDB()
+      SafeInit("client_capabilities", "RefreshClientCapabilities")
+      SafeInit("lfg_filters", "LFGFilters_Init")
       if addon.EnterStartupQuiet then addon:EnterStartupQuiet(addon.db and addon.db.startup_silent_seconds or 3.0, "addon_loaded") end
       if not addon.configFrame then SafeInit("settings", "InitSettingsPages") end
       if Settings and addon.settingsRoot then addon.settingsCategory = addon.settingsRoot end
@@ -260,9 +267,11 @@ local function OnEvent(self, event, arg1, ...)
       SafeInit("realm_insights", "LFG_InitRealmInsights")
       SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
       SafeInit("raid_assist", "ScheduleRaidAssist", 0.05, "addon_loaded")
-    elseif arg1 == "Blizzard_GroupFinder" or arg1 == "Blizzard_LookingForGroupUI" then
-      -- 12.x renamed the Blizzard group finder addon; keep the old name for
-      -- older clients so the LFG hooks still initialise there.
+    elseif arg1 == "Blizzard_GroupFinder" or arg1 == "Blizzard_LookingForGroupUI" or arg1 == "Blizzard_GroupFinder_VanillaStyle" then
+      -- Mainline and Forever group finders are load-on-demand and use different
+      -- frame implementations. Re-probe capabilities after Blizzard creates them.
+      SafeInit("client_capabilities", "RefreshClientCapabilities")
+      SafeInit("lfg_filters", "LFGFilters_Init")
       SafeInit("lfg_enhancements", "LFG_InitEnhancements")
       SafeInit("realm_insights", "LFG_InitRealmInsights")
       SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")

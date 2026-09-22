@@ -595,7 +595,8 @@ function addon:LFG_API_GetActivityInfoTable(activityID)
         itemLevel = FirstSafeTableNumber(self, info, { "itemLevel" }, nil),
         filters = FirstSafeTableNumber(self, info, { "filters" }, nil),
         minLevel = FirstSafeTableNumber(self, info, { "minLevel" }, nil),
-        maxPlayers = FirstSafeTableNumber(self, info, { "maxPlayers" }, nil),
+        maxNumPlayers = FirstSafeTableNumber(self, info, { "maxNumPlayers", "maxPlayers" }, nil),
+        maxPlayers = FirstSafeTableNumber(self, info, { "maxNumPlayers", "maxPlayers" }, nil),
         displayType = FirstSafeTableNumber(self, info, { "displayType" }, nil),
         orderIndex = FirstSafeTableNumber(self, info, { "orderIndex" }, nil),
         useHonorLevel = self:SafeBool(SafeTableValue(self, info, "useHonorLevel")),
@@ -603,6 +604,7 @@ function addon:LFG_API_GetActivityInfoTable(activityID)
         isMythicPlusActivity = self:SafeBool(SafeTableValue(self, info, "isMythicPlusActivity")),
         isRatedPvpActivity = self:SafeBool(SafeTableValue(self, info, "isRatedPvpActivity")),
         isCurrentRaidActivity = self:SafeBool(SafeTableValue(self, info, "isCurrentRaidActivity")),
+        useDungeonRoleExpectations = self:SafeBool(SafeTableValue(self, info, "useDungeonRoleExpectations")),
       }
     end
   end
@@ -673,6 +675,15 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
   local ok, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
   if not ok or not self:SafeCanAccessTable(info) then return nil, ok == true end
 
+  local activityIDs = {}
+  local rawActivityIDs = SafeTableValue(self, info, "activityIDs")
+  if self:SafeCanAccessTable(rawActivityIDs) then
+    for i = 1, #rawActivityIDs do
+      local activityID = self:SafeNumber(SafeTableValue(self, rawActivityIDs, i), nil)
+      if activityID then activityIDs[#activityIDs + 1] = activityID end
+    end
+  end
+
   -- Return an addon-owned table containing only values that were proven
   -- readable. Modules may safely compare/concatenate these fields.
   return {
@@ -687,6 +698,10 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
     numCharFriends = FirstSafeTableNumber(self, info, { "numCharFriends" }, 0) or 0,
     numGuildMates = FirstSafeTableNumber(self, info, { "numGuildMates" }, 0) or 0,
     censored = self:SafeBool(SafeTableValue(self, info, "censored")),
+    hasSelf = self:SafeBool(SafeTableValue(self, info, "hasSelf")),
+    isDelisted = self:SafeBool(SafeTableValue(self, info, "isDelisted")),
+    newPlayerFriendly = self:SafeBool(SafeTableValue(self, info, "newPlayerFriendly")),
+    activityIDs = activityIDs,
   }, true
 end
 
@@ -699,14 +714,47 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
 
   local role = FirstSafeTableText(self, info, { "assignedRole", "role", "lfgRole" })
   local classFile = FirstSafeTableText(self, info, { "classFilename", "classFileName", "classFile", "class" })
+  local lfgRoles = nil
+  local rawRoles = SafeTableValue(self, info, "lfgRoles")
+  if self:SafeCanAccessTable(rawRoles) then
+    lfgRoles = {
+      tank = self:SafeBool(SafeTableValue(self, rawRoles, "tank")),
+      healer = self:SafeBool(SafeTableValue(self, rawRoles, "healer")),
+      dps = self:SafeBool(SafeTableValue(self, rawRoles, "dps")),
+    }
+  end
   return {
     name = FirstSafeTableText(self, info, { "name", "memberName", "playerName", "fullName" }),
     assignedRole = role, role = role, lfgRole = role,
     classFilename = classFile, classFileName = classFile, classFile = classFile,
     className = FirstSafeTableText(self, info, { "className", "localizedClass" }),
     specName = FirstSafeTableText(self, info, { "specName", "specializationName" }),
+    lfgRoles = lfgRoles,
     isLeader = self:SafeBool(SafeTableValue(self, info, "isLeader")),
   }
+end
+
+function addon:LFG_API_GetSearchResultMemberCounts(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not (C_LFGList and type(C_LFGList.GetSearchResultMemberCounts) == "function" and resultID) then return nil end
+  local ok, counts = pcall(C_LFGList.GetSearchResultMemberCounts, resultID)
+  if not ok or not self:SafeCanAccessTable(counts) then return nil end
+
+  local out = {}
+  local numberKeys = {
+    "TANK", "HEALER", "DAMAGER",
+    "TANK_REMAINING", "HEALER_REMAINING", "DAMAGER_REMAINING",
+  }
+  for _, key in ipairs(numberKeys) do
+    local value = self:SafeNumber(SafeTableValue(self, counts, key), nil)
+    if value ~= nil then out[key] = value end
+  end
+  local boolKeys = { "LEADER_ROLE_TANK", "LEADER_ROLE_HEALER", "LEADER_ROLE_DAMAGER" }
+  for _, key in ipairs(boolKeys) do
+    local raw = SafeTableValue(self, counts, key)
+    if self:SafeCanRead(raw) then out[key] = raw == true end
+  end
+  return out
 end
 
 
@@ -769,6 +817,7 @@ function addon:LFG_API_ClearCaches(scope)
   elseif scope == "search" then
     self._lfgAPICache.searchInfo = nil
     self._lfgAPICache.searchPlayer = nil
+    self._lfgAPICache.searchCounts = nil
   elseif scope == "activity" then
     self._lfgAPICache.activeEntry = nil
     self._lfgAPICache.activityInfo = nil
@@ -867,6 +916,16 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   return CacheSet(self, "searchPlayer", key, _rawGetSearchResultPlayerInfo(self, resultID, memberIndex), 0.65)
 end
 
+local _rawGetSearchResultMemberCounts = addon.LFG_API_GetSearchResultMemberCounts
+function addon:LFG_API_GetSearchResultMemberCounts(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not resultID then return nil end
+  local key = resultID
+  local hit, value = CacheGet(self, "searchCounts", key)
+  if hit then return value end
+  return CacheSet(self, "searchCounts", key, _rawGetSearchResultMemberCounts(self, resultID), 0.65)
+end
+
 
 -- Explicit raw/cached LFG namespaces. Legacy addon:LFG_API_* methods remain
 -- available, but diagnostics and future modules can choose the intended layer.
@@ -880,6 +939,7 @@ addon.LFGRaw.GetApplicantDungeonScoreForListing = function(applicantID, memberIn
 addon.LFGRaw.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return _rawGetBestScore(addon, applicantID, memberIndex) end
 addon.LFGRaw.GetSearchResultInfo = function(resultID) return _rawGetSearchResultInfo(addon, resultID) end
 addon.LFGRaw.GetSearchResultPlayerInfo = function(resultID, memberIndex) return _rawGetSearchResultPlayerInfo(addon, resultID, memberIndex) end
+addon.LFGRaw.GetSearchResultMemberCounts = function(resultID) return _rawGetSearchResultMemberCounts(addon, resultID) end
 
 addon.LFG = addon.LFG or {}
 addon.LFG.GetApplicants = function() return addon:LFG_API_GetApplicants() end
@@ -891,6 +951,7 @@ addon.LFG.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex
 addon.LFG.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex) end
 addon.LFG.GetSearchResultInfo = function(resultID) return addon:LFG_API_GetSearchResultInfo(resultID) end
 addon.LFG.GetSearchResultPlayerInfo = function(resultID, memberIndex) return addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) end
+addon.LFG.GetSearchResultMemberCounts = function(resultID) return addon:LFG_API_GetSearchResultMemberCounts(resultID) end
 
 -- 12.1 (Curse of Ula'tek): censored listings
 --------------------------------------------------

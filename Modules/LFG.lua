@@ -479,10 +479,10 @@ function addon:LFG_ClearSearchCaches()
 end
 
 function addon:LFG_ClearVisibleHighlights()
-  local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
+  local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   local vSB = viewer and viewer.ScrollBox
   if vSB then ClearGGHighlightsInScrollBox(vSB) end
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sSB = sp and sp.ScrollBox
   if sSB then ClearGGHighlightsInScrollBox(sSB) end
 end
@@ -509,7 +509,7 @@ function addon:LFG_DebouncedHighlight(delay)
 end
 
 function addon:LFG_HighlightRows()
-  local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
+  local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   local sb = viewer and viewer.ScrollBox
   if not sb then return end
 
@@ -941,7 +941,7 @@ function addon:InitPGFIntegration()
 end
 
 function addon:LFG_RetryHighlightSearchResults(force)
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   if not (sp and sp.IsVisible and sp:IsVisible()) then return end
   if self._lfgResultRetryScheduled and not force then return end
   if force then self._lfgResultRetryScheduled = false end
@@ -967,7 +967,7 @@ function addon:LFG_RetryHighlightSearchResults(force)
 end
 
 function addon:LFG_HighlightSearchResults()
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   if not sb then return end
   if sp.IsVisible and not sp:IsVisible() then return end
@@ -997,7 +997,8 @@ function addon:LFG_HighlightSearchResults()
 end
 
 function addon:LFG_HookViewer()
-  local viewer = LFGListFrame and LFGListFrame.ApplicationViewer
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then return end
+  local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   if not viewer then return end
 
   local sb = viewer.ScrollBox
@@ -1027,7 +1028,7 @@ function addon:LFG_HookViewer()
 end
 
 function addon:LFG_HookSearchPanel()
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   if sb and self.SafeObserveScrollBox then
     self:SafeObserveScrollBox(sb, "lfg:search-panel", function()
@@ -1037,40 +1038,66 @@ function addon:LFG_HookSearchPanel()
     end)
   end
 
-
-  if not addon._ggTooltipHooked and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
-    addon._ggTooltipHooked = true
-    GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+  -- Mainline 12.x search tooltip.
+  if not addon._ggTooltipHookedMainline and type(LFGListUtil_SetSearchEntryTooltip) == "function" then
+    local ok = GGHook("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
       if addon and addon.LFG_AddSearchTooltip then addon:LFG_AddSearchTooltip(tooltip, resultID) end
     end)
+    if ok then addon._ggTooltipHookedMainline = true end
   end
+
+  -- Forever uses Blizzard_GroupFinder_VanillaStyle and a different tooltip
+  -- renderer, but still exposes the modern C_LFGList search result APIs.
+  if not addon._ggTooltipHookedForever and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
+    local ok = GGHook("LFGBrowseSearchEntryTooltip_UpdateAndShow", function(tooltip, resultID)
+      if addon and addon.LFG_AddSearchTooltip then addon:LFG_AddSearchTooltip(tooltip, resultID) end
+    end)
+    if ok then addon._ggTooltipHookedForever = true end
+  end
+
   if addon.InitPGFIntegration then addon:InitPGFIntegration() end
-  -- 12.1: keep our verdict in sync with Blizzard's reveal-on-click.
+  -- Mainline 12.1 reveal/censor hooks are capability guarded internally.
   if addon.LFG_InstallCensorHooks then addon:LFG_InstallCensorHooks() end
 
-  if addon._ggHookedSearchPanel then return end
-  addon._ggHookedSearchPanel = true
+  if not addon._ggHookedSearchPanelMainline then
+    local hooked = false
+    if type(LFGListSearchPanel_UpdateResults) == "function" then
+      hooked = GGHook("LFGListSearchPanel_UpdateResults", function()
+        addon:LFG_RetryHighlightSearchResults()
+      end) or hooked
+    end
+    if type(LFGListSearchPanel_UpdateResultList) == "function" then
+      hooked = GGHook("LFGListSearchPanel_UpdateResultList", function()
+        addon:LFG_RetryHighlightSearchResults()
+      end) or hooked
+    end
+    if type(LFGListSearchEntry_Update) == "function" then
+      hooked = GGHook("LFGListSearchEntry_Update", function()
+        addon:LFG_DebouncedHighlightResults(0.08)
+      end) or hooked
+    end
+    if hooked then addon._ggHookedSearchPanelMainline = true end
+  end
 
-  if type(LFGListSearchPanel_UpdateResults) == "function" then
-    GGHook("LFGListSearchPanel_UpdateResults", function()
-      addon:LFG_RetryHighlightSearchResults()
-    end)
-  end
-  if type(LFGListSearchPanel_UpdateResultList) == "function" then
-    GGHook("LFGListSearchPanel_UpdateResultList", function()
-      addon:LFG_RetryHighlightSearchResults()
-    end)
-  end
-  if type(LFGListSearchEntry_Update) == "function" then
-    GGHook("LFGListSearchEntry_Update", function()
-      addon:LFG_DebouncedHighlightResults(0.08)
-    end)
+  if not addon._ggHookedSearchPanelForever then
+    local hooked = false
+    if type(LFGBrowseMixin) == "table" and type(LFGBrowseMixin.UpdateResults) == "function" then
+      hooked = GGHook(LFGBrowseMixin, "UpdateResults", function()
+        addon:LFG_RetryHighlightSearchResults()
+      end) or hooked
+    end
+    if type(LFGBrowseSearchEntry_Update) == "function" then
+      hooked = GGHook("LFGBrowseSearchEntry_Update", function()
+        addon:LFG_DebouncedHighlightResults(0.08)
+      end) or hooked
+    end
+    if hooked then addon._ggHookedSearchPanelForever = true end
   end
 end
 
 function addon:LFG_LayoutButton()
   local btn = self.lfgButton
-  local parent = LFGListFrame and LFGListFrame.ApplicationViewer
+  local parent = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   if not btn or not parent then return end
   if self.Safe and self.Safe.CanAccessObject and not self.Safe.CanAccessObject(parent) then return end
 
@@ -1079,13 +1106,17 @@ function addon:LFG_LayoutButton()
 end
 
 function addon:LFG_CreateButton()
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then
+    if self.lfgButton then self.lfgButton:Hide() end
+    return
+  end
   if self.lfgButton then
     self:LFG_HookViewer()
     self:LFG_LayoutButton()
     return
   end
 
-  local parent = LFGListFrame and LFGListFrame.ApplicationViewer
+  local parent = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   if not parent then return end
   local Safe = self.Safe
   if Safe and Safe.CanAccessObject and not Safe.CanAccessObject(parent) then return end
@@ -1311,6 +1342,10 @@ function addon:LFG_AutoDeclineFlagged(flagged)
 end
 
 function addon:LFG_UpdateButton()
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then
+    if self.lfgButton then self.lfgButton:Hide() end
+    return
+  end
   -- Do not hide the manual button just because auto-decline is enabled.
   -- Auto-decline can be blocked by Blizzard protected UI rules or by changing LFG rights;
   -- the button is the safe fallback for any marked applicants that remain.
@@ -1349,6 +1384,15 @@ function addon:LFG_UpdateButton()
 end
 
 function addon:LFG_ScanApplicants()
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then
+    self._lfgFlagged = {}
+    self._lfgFlagCache = {}
+    self._lfgFlagReasons = {}
+    self._lfgSocialCache = {}
+    self._lfgSocialReasons = {}
+    if self.lfgButton then self.lfgButton:Hide() end
+    return
+  end
   if not self.LFG_API_GetApplicants then
     self._lfgFlagged = {}
     self._lfgFlagCache = {}

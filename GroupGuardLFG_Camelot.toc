@@ -1,4 +1,5 @@
-## Interface: 120105, 120100, 120007
+## Interface: 16001
+## X-Client: WoW Forever / Camelot
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida

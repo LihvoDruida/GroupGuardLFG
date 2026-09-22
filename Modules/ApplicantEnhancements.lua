@@ -2179,6 +2179,7 @@ function addon:LFG_UpdateApplicantChip(row)
 end
 
 function addon:LFG_RefreshApplicantChips()
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then return end
   local rows = EnumerateApplicantRows()
   if not rows then return end
   self._ggApplicantRows = self._ggApplicantRows or {}
@@ -2268,6 +2269,10 @@ function addon:LFG_DumpApplicants()
 end
 
 function addon:LFG_InitApplicantEnhancements()
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then
+    if self.LFG_HideApplicantDecorations then self:LFG_HideApplicantDecorations() end
+    return
+  end
   local function schedule()
     EnsureApplicantContextHeader()
     if addon and addon.RunDebounced then

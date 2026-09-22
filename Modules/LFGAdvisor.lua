@@ -79,12 +79,12 @@ end
 
 function addon:LFG_GetSearchResultRoleFit(resultID, info)
   if not (self.db and self.db.lfg_role_fit_hints) then return nil end
-  if not (C_LFGList and C_LFGList.GetSearchResultMemberCounts and resultID) then return nil end
+  if not resultID then return nil end
   local playerRole = GetPlayerRole()
   if not playerRole or not ROLE_REMAINING_KEY[playerRole] then return nil end
 
-  local ok, counts = pcall(C_LFGList.GetSearchResultMemberCounts, resultID)
-  if not ok or not CanAccessTable(counts) then return nil end
+  local counts = self.LFG_API_GetSearchResultMemberCounts and self:LFG_API_GetSearchResultMemberCounts(resultID) or nil
+  if not CanAccessTable(counts) then return nil end
   local remainingKey = ROLE_REMAINING_KEY[playerRole]
   local remaining = SafeNumber(TableField(counts, remainingKey), nil)
     or SafeNumber(TableField(counts, remainingKey:lower()), nil)
@@ -123,7 +123,7 @@ function addon:LFG_AppendAdvisorTooltipLines(tooltip, resultID, insight, ensureH
 end
 
 function addon:LFG_PrintAdvisorStats()
-  local sp = LFGListFrame and LFGListFrame.SearchPanel
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   local frames = nil
   if sb and addon and addon.SafeEnumerateScrollBoxFrames then
