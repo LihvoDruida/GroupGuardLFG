@@ -351,9 +351,17 @@ local function OnEvent(self, event, arg1, ...)
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {}; addon._lfgFlagReasons = {} end
     addon:RequestLFGRefresh(nil, true, true)
 
-  elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED"
-      or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
+  elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
+    -- Blizzard_GroupFinder_VanillaStyle handles this event itself and calls
+    -- UpdateResultList(). Our secure hook filters that pass. Scheduling another
+    -- UpdateResults immediately afterward caused a visible jump to the top.
+    addon:RequestLFGRefresh(nil, false, false)
+
+  elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
+    if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
+    -- Forever does not rebuild the whole browse list for every per-result update,
+    -- so re-evaluate local class/role filters here. Scroll position is preserved.
     addon:RequestLFGRefresh(nil, false, true)
 
   -- 12.1: the player's own listing was censored, or they just revealed it.

@@ -1,5 +1,13 @@
 # GroupGuard LFG
 
+## 4.8.2
+
+- Forever: stop forcing `Blizzard_GroupFinder_VanillaStyle` to load as an optional dependency.
+- Forever: avoid triggering Blizzard's `LFGWhoListFrame` load-order edge case by no longer force-loading the secure VanillaStyle group finder from `OptionalDeps`.
+- Forever: preserve ScrollBox position while custom class/role filters rebuild results.
+- Avoid a redundant post-search result rebuild that could snap the browse list to the top.
+
+
 GroupGuard LFG helps you keep LFG applications, party members and raid members easier to review. It highlights matches from your own rules, adds a small GG column to applicant lists, and gives raid leaders quick tools for cleanup and raid-assist management.
 
 ## What it does

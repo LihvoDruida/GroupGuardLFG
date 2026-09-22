@@ -53,6 +53,62 @@ local function CopyArray(source)
   return out
 end
 
+-- Blizzard's Forever browser rebuilds a TreeDataProvider in UpdateResults().
+-- The function calls RemoveDataProvider() before SetDataProvider(...,
+-- RetainScrollPosition), so a second rebuild from an addon can still snap the
+-- list to the top. Preserve scroll state explicitly: exact derived offset first,
+-- percentage as a fallback. This follows the modern ScrollBox API instead of
+-- manipulating scrollbar textures or legacy FauxScrollFrame state.
+local function CaptureScrollState(scrollBox)
+  if not scrollBox then return nil end
+  local state = {}
+
+  if type(scrollBox.GetDerivedScrollOffset) == "function" then
+    local ok, value = pcall(scrollBox.GetDerivedScrollOffset, scrollBox)
+    value = ok and tonumber(value) or nil
+    if value then state.offset = math.max(0, value) end
+  end
+
+  if type(scrollBox.GetScrollPercentage) == "function" then
+    local ok, value = pcall(scrollBox.GetScrollPercentage, scrollBox)
+    value = ok and tonumber(value) or nil
+    if value then
+      if value < 0 then value = 0 elseif value > 1 then value = 1 end
+      state.percentage = value
+    end
+  end
+
+  if state.offset == nil and state.percentage == nil then return nil end
+  return state
+end
+
+local function RestoreScrollState(scrollBox, state)
+  if not scrollBox or type(state) ~= "table" then return end
+  local noInterpolation = ScrollBoxConstants and ScrollBoxConstants.NoScrollInterpolation or nil
+
+  -- Prefer the exact pixel offset. It is more stable than percentage when the
+  -- number of LFG rows changes during a refresh.
+  if state.offset ~= nil and type(scrollBox.ScrollToOffset) == "function" then
+    local ok = pcall(scrollBox.ScrollToOffset, scrollBox, state.offset, noInterpolation)
+    if ok then return end
+  end
+
+  if state.percentage ~= nil and type(scrollBox.SetScrollPercentage) == "function" then
+    local ok = pcall(scrollBox.SetScrollPercentage, scrollBox, state.percentage, noInterpolation)
+    if ok then return end
+    pcall(scrollBox.SetScrollPercentage, scrollBox, state.percentage)
+  end
+end
+
+local function UpdateResultsPreservingScroll(searchFrame)
+  if not searchFrame or type(searchFrame.UpdateResults) ~= "function" then return false end
+  local scrollBox = searchFrame.ScrollBox
+  local scrollState = CaptureScrollState(scrollBox)
+  local ok = pcall(searchFrame.UpdateResults, searchFrame)
+  if ok then RestoreScrollState(scrollBox, scrollState) end
+  return ok
+end
+
 function addon:LFGFilters_HasActiveFilters()
   if not self.db or self.db.lfg_filters_enabled == false then return false end
   return HasAnySelected(self.db.lfg_filter_group_roles)
@@ -236,8 +292,10 @@ function addon:LFGFilters_FilterFrameResults(searchFrame)
   searchFrame.totalResults = #filtered
 
   -- Rebuild only the visual data provider; never trigger a protected Search().
+  -- Forever needs explicit scroll restoration because its UpdateResults() first
+  -- removes the old TreeDataProvider.
   if searchFrame == _G.LFGBrowseFrame and type(searchFrame.UpdateResults) == "function" then
-    pcall(searchFrame.UpdateResults, searchFrame)
+    UpdateResultsPreservingScroll(searchFrame)
   elseif _G.LFGListFrame and searchFrame == _G.LFGListFrame.SearchPanel and type(_G.LFGListSearchPanel_UpdateResults) == "function" then
     pcall(_G.LFGListSearchPanel_UpdateResults, searchFrame)
   end
@@ -282,7 +340,7 @@ function addon:LFGFilters_RefreshForeverResults(searchFrame)
   if self:LFGFilters_HasActiveFilters() then
     self:LFGFilters_FilterFrameResults(searchFrame)
   elseif type(searchFrame.UpdateResults) == "function" then
-    pcall(searchFrame.UpdateResults, searchFrame)
+    UpdateResultsPreservingScroll(searchFrame)
   end
   return true
 end
@@ -686,7 +744,9 @@ function addon:LFGFilters_HookFrames()
   -- WoW Forever 1.60.x path. Blizzard_GroupFinder_VanillaStyle uses a
   -- ScrollBox tree and LFGBrowseMixin:UpdateResultList(). Hook the mixin after
   -- Blizzard fetches/sorts results, then rebuild only its data provider.
-  if not self._ggForeverFilterHooked and type(_G.LFGBrowseMixin) == "table" and type(_G.LFGBrowseMixin.UpdateResultList) == "function" and type(hooksecurefunc) == "function" then
+  if not self._ggForeverFrameFilterHooked and not self._ggForeverFilterHooked
+      and type(_G.LFGBrowseMixin) == "table" and type(_G.LFGBrowseMixin.UpdateResultList) == "function"
+      and type(hooksecurefunc) == "function" then
     local ok = pcall(hooksecurefunc, _G.LFGBrowseMixin, "UpdateResultList", function(frame)
       if addon then addon:LFGFilters_FilterFrameResults(frame) end
     end)
