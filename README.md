@@ -1,5 +1,13 @@
 # GroupGuard LFG
 
+## 4.8.5
+
+- Forever: add an early Camelot-only load guard for Blizzard's `LFGWhoListFrame` initialization race.
+- Prevent `LFGBrowseMixin:OnLoad()` from crashing when an active listing exists during `/reload` before Blizzard has loaded `WhoList.xml`.
+- Rebind the temporary compatibility object to Blizzard's real `LFGWhoListFrame` as soon as `Blizzard_GroupFinder_VanillaStyle` finishes loading.
+- Do not replace Blizzard secure frames or Group Finder functions; the guard exists only during the TOC load gap.
+- Add a recovery path for partially loaded Forever Group Finder sessions.
+
 ## 4.8.4
 
 - Forever: move the GroupGuard filter control out of the refresh row and into Blizzard's native LFG header utility rail directly below `LFGBrowseFrame.OptionsButton`.
@@ -19,7 +27,7 @@
 ## 4.8.2
 
 - Forever: stop forcing `Blizzard_GroupFinder_VanillaStyle` to load as an optional dependency.
-- Forever: avoid triggering Blizzard's `LFGWhoListFrame` load-order edge case by no longer force-loading the secure VanillaStyle group finder from `OptionalDeps`.
+- Forever: stop adding an extra forced-load path for Blizzard's VanillaStyle group finder; the native client can still hit its own `LFGWhoListFrame` TOC-order race when reloading with an active listing (fixed defensively in 4.8.5).
 - Forever: preserve ScrollBox position while custom class/role filters rebuild results.
 - Avoid a redundant post-search result rebuild that could snap the browse list to the top.
 
