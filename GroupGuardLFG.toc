@@ -2,9 +2,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.8.2
-## X-Codename: Forever LFG load-order and scroll stability
-## X-Prev-Codename: Midnight 12.1 configurable raid death-release lock
+## Version: 4.8.4
+## X-Codename: Native Forever filter utility rail
+## X-Prev-Codename: Native gear filter button
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only

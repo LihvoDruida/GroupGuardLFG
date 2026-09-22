@@ -1,5 +1,21 @@
 # GroupGuard LFG
 
+## 4.8.4
+
+- Forever: move the GroupGuard filter control out of the refresh row and into Blizzard's native LFG header utility rail directly below `LFGBrowseFrame.OptionsButton`.
+- Replace the temporary gear artwork with a dedicated funnel/filter icon while matching Blizzard's 16x16 options-button hover, press, and alpha behavior.
+- Remove square `UIPanelButtonTemplate` chrome from the Forever filter control so it visually matches the native options gear instead of the refresh button.
+- Move the filter panel past the native right-side Listing / Browse / Who tab rail so the GroupGuard window no longer covers Blizzard navigation tabs.
+- Remove obsolete bundled gear textures.
+
+## 4.8.3
+
+- Replace the temporary Forever filter placeholder with a dedicated GroupGuard gear icon.
+- Add normal, hover, pressed, and disabled gear artwork bundled with the addon.
+- Match the filter button size and vertical alignment to Blizzard's native refresh button.
+- Keep the 4 px gap between the native refresh control and GroupGuard filters.
+- Preserve Blizzard button chrome, tooltip behavior, and the active-filter indicator.
+
 ## 4.8.2
 
 - Forever: stop forcing `Blizzard_GroupFinder_VanillaStyle` to load as an optional dependency.

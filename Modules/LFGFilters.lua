@@ -20,6 +20,12 @@ local ROLE_TEXT_KEY = {
   DAMAGER = "LFG_FILTER_DAMAGE",
 }
 
+local FILTER_BUTTON_SIZE = 16
+local FILTER_BUTTON_ICON_SIZE = 16
+local FILTER_BUTTON_VERTICAL_GAP = 5
+local FILTER_PANEL_SIDE_GAP = 8
+local FILTER_TEXTURE = "Interface\\AddOns\\GroupGuardLFG\\Media\\Icons\\Filter.tga"
+
 local function SafeShown(frame)
   if not frame or type(frame.IsShown) ~= "function" then return false end
   local ok, shown = pcall(frame.IsShown, frame)
@@ -433,12 +439,81 @@ local function CreateStandardPanel(root)
   return panel
 end
 
+local function UpdateFilterButtonIconState(button)
+  if not button or not button.Icon then return end
+
+  local enabled = true
+  if type(button.IsEnabled) == "function" then
+    local ok, value = pcall(button.IsEnabled, button)
+    if ok then enabled = value == true end
+  end
+
+  local active = addon and addon.LFGFilters_HasActiveFilters and addon:LFGFilters_HasActiveFilters() or false
+  button.Icon:SetTexture(FILTER_TEXTURE)
+  button.Icon:ClearAllPoints()
+  if button.ggPressed and enabled then
+    button.Icon:SetPoint("CENTER", button, "CENTER", 1, -1)
+  else
+    button.Icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+  end
+
+  -- Match Blizzard's LFGOptionsButton behavior: muted at rest, fully opaque
+  -- while hovered. Active filters get a small warm emphasis without adding
+  -- square button chrome or a badge that clashes with the native header.
+  if not enabled then
+    button.Icon:SetAlpha(0.35)
+    button.Icon:SetDesaturated(true)
+    button.Icon:SetVertexColor(0.70, 0.70, 0.70)
+  else
+    button.Icon:SetDesaturated(false)
+    button.Icon:SetAlpha((button.ggHover or active) and 1.0 or 0.8)
+    if active then
+      button.Icon:SetVertexColor(1.0, 0.93, 0.72)
+    else
+      button.Icon:SetVertexColor(1.0, 1.0, 1.0)
+    end
+  end
+end
+
+local function GetForeverSideTabWidth(root)
+  if not root then return 0 end
+  local width = 0
+  for _, key in ipairs({ "ListingTab", "BrowsingTab", "WhoListingTab" }) do
+    local tab = root[key]
+    if tab and type(tab.GetWidth) == "function" then
+      local ok, value = pcall(tab.GetWidth, tab)
+      value = ok and tonumber(value) or nil
+      if value and value > width then width = value end
+    end
+  end
+  return width
+end
+
+local function PositionForeverFilterButton(button, searchFrame)
+  if not button or not searchFrame then return false end
+  local optionsButton = searchFrame.OptionsButton
+  if optionsButton then
+    button:SetSize(FILTER_BUTTON_SIZE, FILTER_BUTTON_SIZE)
+    if button.Icon then button.Icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE) end
+    button:ClearAllPoints()
+    -- Blizzard's native options gear is LFGBrowseFrame.OptionsButton. Keep the
+    -- custom filter control in the same header utility rail, directly below it.
+    button:SetPoint("TOPRIGHT", optionsButton, "BOTTOMRIGHT", 0, -FILTER_BUTTON_VERTICAL_GAP)
+    if type(optionsButton.GetFrameLevel) == "function" and type(button.SetFrameLevel) == "function" then
+      local ok, level = pcall(optionsButton.GetFrameLevel, optionsButton)
+      if ok and tonumber(level) then button:SetFrameLevel(tonumber(level)) end
+    end
+    return true
+  end
+  return false
+end
+
 function addon:LFGFilters_UpdateButtonState()
   local button = self.lfgFilterButton
   if not button then return end
   local active = self:LFGFilters_HasActiveFilters()
   if button.ggActive then button.ggActive:SetShown(active) end
-  if button.Icon and type(button.Icon.SetDesaturated) == "function" then button.Icon:SetDesaturated(not active) end
+  UpdateFilterButtonIconState(button)
 end
 
 function addon:LFGFilters_UpdateStatusText()
@@ -629,8 +704,19 @@ function addon:LFGFilters_LayoutPanel()
   local panel = self.lfgFilterPanel
   local root = self.GetLFGRootFrame and self:GetLFGRootFrame() or nil
   if not panel or not root then return end
+
   panel:ClearAllPoints()
-  panel:SetPoint("TOPLEFT", root, "TOPRIGHT", 12, -8)
+
+  -- Forever's modern VanillaStyle frame owns a vertical stack of 43px side
+  -- tabs (Listing / Browse / Who) just outside LFGParentFrame's right edge.
+  -- Anchor after that rail instead of directly on TOPRIGHT so the GroupGuard
+  -- panel never covers Blizzard's navigation tabs.
+  local sideTabWidth = GetForeverSideTabWidth(root)
+  if sideTabWidth > 0 then
+    panel:SetPoint("TOPLEFT", root, "TOPRIGHT", sideTabWidth + FILTER_PANEL_SIDE_GAP, -8)
+  else
+    panel:SetPoint("TOPLEFT", root, "TOPRIGHT", 12, -8)
+  end
 end
 
 function addon:LFGFilters_CreateButton(searchFrame)
@@ -643,27 +729,24 @@ function addon:LFGFilters_CreateButton(searchFrame)
 
   local button = self.lfgFilterButton
   if not button then
-    button = CreateFrame("Button", "GroupGuardLFGFilterButton", searchFrame, "UIPanelButtonTemplate")
-    button:SetSize(27, 23)
-    button:SetText("")
-    button:SetFrameStrata("DIALOG")
+    -- Intentionally no UIPanelButtonTemplate here. Forever's native options
+    -- control is a bare 16x16 utility icon (LFGOptionsButton), not a square
+    -- panel button. Our filter button mirrors that visual language.
+    button = CreateFrame("Button", "GroupGuardLFGFilterButton", searchFrame)
+    button:SetSize(FILTER_BUTTON_SIZE, FILTER_BUTTON_SIZE)
+    if type(button.SetHitRectInsets) == "function" then button:SetHitRectInsets(-2, -2, -2, -2) end
+    if type(button.RegisterForClicks) == "function" then button:RegisterForClicks("LeftButtonUp") end
 
     local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(15, 15)
-    icon:SetPoint("CENTER", 0, 0)
-    local atlasOK = false
-    if type(icon.SetAtlas) == "function" then atlasOK = pcall(icon.SetAtlas, icon, "common-icon-filter", false) end
-    if not atlasOK then icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon") end
+    icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE)
+    icon:SetPoint("CENTER")
+    icon:SetTexture(FILTER_TEXTURE)
+    icon:SetAlpha(0.8)
     button.Icon = icon
 
-    local active = button:CreateTexture(nil, "OVERLAY")
-    active:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    active:SetSize(12, 12)
-    active:SetPoint("TOPRIGHT", button, "TOPRIGHT", 4, 4)
-    active:Hide()
-    button.ggActive = active
-
     button:SetScript("OnEnter", function(self)
+      self.ggHover = true
+      UpdateFilterButtonIconState(self)
       if GameTooltip then
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(addon:Tr("LFG_FILTERS"))
@@ -671,8 +754,25 @@ function addon:LFGFilters_CreateButton(searchFrame)
         GameTooltip:Show()
       end
     end)
-    button:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    button:SetScript("OnLeave", function(self)
+      self.ggHover = false
+      self.ggPressed = false
+      UpdateFilterButtonIconState(self)
+      if GameTooltip then GameTooltip:Hide() end
+    end)
+    button:SetScript("OnMouseDown", function(self)
+      self.ggPressed = true
+      UpdateFilterButtonIconState(self)
+    end)
+    button:SetScript("OnMouseUp", function(self)
+      self.ggPressed = false
+      UpdateFilterButtonIconState(self)
+    end)
+    button:HookScript("OnEnable", function(self) UpdateFilterButtonIconState(self) end)
+    button:HookScript("OnDisable", function(self) UpdateFilterButtonIconState(self) end)
+
     button:SetScript("OnClick", function()
+      PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or 856)
       local root = addon.GetLFGRootFrame and addon:GetLFGRootFrame() or nil
       local panel = addon:LFGFilters_CreatePanel(root)
       if not panel then return end
@@ -689,16 +789,20 @@ function addon:LFGFilters_CreateButton(searchFrame)
   end
 
   button:ClearAllPoints()
-  if searchFrame == _G.LFGBrowseFrame and searchFrame.RefreshButton then
-    -- Forever: this is the free slot immediately to the right of Blizzard's
-    -- refresh button (the location marked in the supplied screenshot).
-    button:SetPoint("LEFT", searchFrame.RefreshButton, "RIGHT", 4, 0)
+  if searchFrame == _G.LFGBrowseFrame and PositionForeverFilterButton(button, searchFrame) then
+    -- Positioned in the native header utility rail below OptionsButton.
   elseif searchFrame.FilterButton then
-    -- Retail already has Blizzard's native advanced-filter menu. Keep our
-    -- class/role filter adjacent without replacing or tainting it.
+    button:SetSize(FILTER_BUTTON_SIZE, FILTER_BUTTON_SIZE)
+    if button.Icon then button.Icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE) end
     button:SetPoint("TOPRIGHT", searchFrame.FilterButton, "BOTTOMRIGHT", 0, -4)
+  elseif searchFrame.OptionsButton then
+    button:SetSize(FILTER_BUTTON_SIZE, FILTER_BUTTON_SIZE)
+    if button.Icon then button.Icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE) end
+    button:SetPoint("TOPRIGHT", searchFrame.OptionsButton, "BOTTOMRIGHT", 0, -FILTER_BUTTON_VERTICAL_GAP)
   else
-    button:SetPoint("TOPRIGHT", searchFrame, "TOPRIGHT", -12, -9)
+    button:SetSize(FILTER_BUTTON_SIZE, FILTER_BUTTON_SIZE)
+    if button.Icon then button.Icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE) end
+    button:SetPoint("TOPRIGHT", searchFrame, "TOPRIGHT", -12, -53)
   end
 
   local canGroup = self.HasClientCapability and self:HasClientCapability("lfgSearchMemberCounts")
