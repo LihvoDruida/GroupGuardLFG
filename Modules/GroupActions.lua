@@ -169,17 +169,30 @@ local function PlayerCanManageGroup()
   return false
 end
 
+local function PartyInfoCall(methodName, legacyFn, name, exactNameMatch)
+  local api = type(C_PartyInfo) == "table" and C_PartyInfo[methodName] or nil
+  if type(api) == "function" then
+    return pcall(api, name, exactNameMatch)
+  end
+  if type(legacyFn) == "function" then
+    return pcall(legacyFn, name, exactNameMatch)
+  end
+  return false, "missing_" .. tostring(methodName)
+end
+
 local function TryDemoteIfNeeded(target)
   if not (target and target.unit) then return end
   local Safe = addon and addon.Safe
   if not (Safe and Safe.IsGroupLeader and Safe.IsGroupLeader("player")) then return end
-  if DemoteAssistant and Safe.IsGroupAssistant(target.unit) then
-    pcall(DemoteAssistant, target.unit)
+  if Safe.IsGroupAssistant(target.unit) then
+    -- PartyInfo APIs use player names, not unit tokens.
+    PartyInfoCall("DemoteAssistant", DemoteAssistant, target.fullName or target.name, true)
   end
 end
 
 local function TryUninviteTarget(target)
-  if not UninviteUnit then return false, "missing_uninvite_api", nil end
+  local modernUninvite = type(C_PartyInfo) == "table" and type(C_PartyInfo.UninviteUnit) == "function"
+  if not modernUninvite and type(UninviteUnit) ~= "function" then return false, "missing_uninvite_api", nil end
   local resolved = FindGroupMemberTarget(target)
   if not resolved then return false, "not_found", nil end
 
@@ -191,7 +204,8 @@ local function TryUninviteTarget(target)
   TryDemoteIfNeeded(resolved)
 
   local identifiers = {}
-  if resolved.unit then identifiers[#identifiers + 1] = resolved.unit end
+  -- Since 3.0.8 uninvite takes a player name. Prefer full realm-qualified name
+  -- for cross-realm groups and keep short name only as a compatibility fallback.
   if resolved.fullName then identifiers[#identifiers + 1] = resolved.fullName end
   if resolved.name and resolved.name ~= resolved.fullName then identifiers[#identifiers + 1] = resolved.name end
 
@@ -204,7 +218,12 @@ local function TryUninviteTarget(target)
     if id and not used[id] then
       used[id] = true
       attempted = true
-      local ok, err = pcall(UninviteUnit, id)
+      local ok, err
+      if modernUninvite then
+        ok, err = pcall(C_PartyInfo.UninviteUnit, id, nil, true)
+      else
+        ok, err = pcall(UninviteUnit, id)
+      end
       if ok then
         anyOk = true
       else
@@ -243,7 +262,7 @@ function addon:KickNamesSequential(targets, delayStep)
     return
   end
 
-  -- Important: UninviteUnit is sensitive to protected execution.
+  -- Important: C_PartyInfo.UninviteUnit / legacy UninviteUnit are sensitive to protected execution.
   -- Run all remove attempts synchronously from the user's button click.
   self:BeginActionSequence("group_remove", 1.4)
 

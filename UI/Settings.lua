@@ -11,6 +11,8 @@ local SETTINGS_UK = {
 
   ["Settings are grouped by how the addon works:\n• General — where the addon works and what to do on a match.\n• LFG applications — application actions, highlights and the GG column.\n• Raid Assist — automatic raid assistant assignment.\n• Rules — keywords, guild names and optional text checks.\n• Notifications — banner, sound, flash and frame markers.\n• Compatibility — other LFG addons and manual refresh."] =
     "Налаштування згруповані за логікою роботи аддона:\n• Основне — де працює аддон і що робити при збігу.\n• LFG-заявки — дії із заявками, підсвітка та GG-колонка.\n• Raid Assist — автоматична видача помічника рейду.\n• Правила — ключові слова, гільдії та додаткові текстові перевірки.\n• Сповіщення — банер, звук, спалах і мітки на фреймах.\n• Сумісність — інші LFG-аддони та ручне оновлення.",
+  ["Settings are grouped by how the addon works:\n• General — where the addon works and what to do on a match.\n• LFG search — search highlights, filters, tooltips and social hints.\n• Raid Assist — automatic raid assistant assignment when supported.\n• Rules — keywords, guild names and optional text checks.\n• Notifications — banner, sound, flash and frame markers.\n• Compatibility — refresh and performance controls."] =
+    "Налаштування згруповані за логікою роботи аддона:\n• Основне — де працює аддон і що робити при збігу.\n• LFG-пошук — підсвітка, фільтри, tooltip та соціальні підказки.\n• Raid Assist — автоматична видача помічника рейду, якщо підтримується.\n• Правила — ключові слова, гільдії та додаткові текстові перевірки.\n• Сповіщення — банер, звук, спалах і мітки на фреймах.\n• Сумісність — керування оновленням і продуктивністю.",
 
   ["Interface language:"] = "Мова інтерфейсу:",
   ["Default is Game client language. Change takes effect immediately for addon messages; reopen settings to refresh all labels."] =
@@ -31,6 +33,8 @@ local SETTINGS_UK = {
   ["Confirm leaving with a popup"] = "Підтверджувати вихід спливаючим вікном",
   ["The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page."] =
     "У банері можуть з'являтися кнопки як для видалення позначених гравців, так і для виходу з поточної групи/рейду. LFG-заявки обробляє окрема кнопка на сторінці Premade Groups.",
+  ["The banner can show actions for removing flagged players and leaving the current party/raid. Applicant-only actions are hidden on clients without the Retail applicant interface."] =
+    "У банері можуть бути дії для видалення позначених гравців і виходу з поточної групи/рейду. Дії лише для заявок приховані на клієнтах без Retail-інтерфейсу заявок.",
   ["Raid death safety"] = "Захист від випадкового виходу з тіла",
   ["Disable Release Spirit in raids for (sec):"] = "Блокувати «Release Spirit» у рейді на (сек):",
   ["The Release Spirit button stays visible, but GroupGuard temporarily disables it in raids. Default: 15 sec. Set 0 to disable this extra delay; Blizzard's own timer is never shortened."] =
@@ -38,6 +42,10 @@ local SETTINGS_UK = {
 
   ["LFG applications"] = "LFG-заявки",
   ["2. LFG applications"] = "2. LFG-заявки",
+  ["LFG search"] = "LFG-пошук",
+  ["2. LFG search"] = "2. LFG-пошук",
+  ["This client exposes LFG search tools but not the Retail applicant-management interface. Unsupported applicant settings are hidden automatically."] =
+    "Цей клієнт надає LFG-пошук, але не Retail-інтерфейс керування заявками. Непідтримувані налаштування заявок автоматично приховані.",
   ["This page only controls LFG applications and LFG search. It does not remove players from party/raid."] =
     "Ця сторінка керує тільки LFG-заявками та LFG-пошуком. Вона не видаляє людей із party/raid.",
   ["Application decline"] = "Відхилення заявок",
@@ -54,6 +62,7 @@ local SETTINGS_UK = {
   ["Decline LFG applications (%d)"] = "Відхилити LFG-заявки (%d)",
   ["LFG highlighting"] = "Підсвітка LFG",
   ["Highlight marked applications in the list"] = "Підсвічувати позначені заявки у списку",
+  ["Highlight marked LFG results"] = "Підсвічувати позначені результати LFG",
   ["Check LFG members against rules"] = "Перевіряти учасників LFG за правилами",
   ["Show GroupGuard tooltip in LFG"] = "Показувати GroupGuard tooltip у LFG",
   ["Show reason in tooltip"] = "Показувати причину в tooltip",
@@ -77,6 +86,8 @@ local SETTINGS_UK = {
   ["Show current dungeon key / raid progress in the GG column"] = "Показувати поточний ключ / прогрес рейду в GG-колонці",
   ["These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged."] =
     "Ці опції додають невеликі підказки у вікно LFG. GG-колонка показує поточний ключ або прогрес рейду, якщо ці дані доступні. GroupGuard не змінює стандартні колонки iLvl і Rating.",
+  ["These options add hints directly to Forever LFG search results and tooltips. Applicant-only GG column controls are hidden because Forever has no Retail ApplicationViewer."] =
+    "Ці опції додають підказки безпосередньо до результатів пошуку та tooltip у Forever LFG. Налаштування GG-колонки заявок приховані, бо у Forever немає Retail ApplicationViewer.",
 
   ["Friends / guild in LFG"] = "Друзі / гільдія у LFG",
   ["Ignore friends even if they match filters"] = "Не реагувати на друзів, навіть якщо вони підпадають під фільтр",
@@ -163,6 +174,7 @@ local SETTINGS_UK = {
   ["Compatibility with other LFG addons and manual refresh tools."] =
     "Сумісність з іншими LFG-аддонами та ручне оновлення.",
   ["Improve Premade Groups Filter compatibility"] = "Покращити сумісність з Premade Groups Filter",
+  ["Client-safe refresh and performance controls. Unsupported addon integrations are hidden automatically."] = "Безпечні для клієнта налаштування оновлення та продуктивності. Непідтримувані інтеграції з іншими аддонами автоматично приховані.",
   ["Group refresh delay (sec):"] = "Затримка оновлення групи (сек):",
   ["LFG refresh delay (sec):"] = "Затримка оновлення LFG (сек):",
   ["Quiet startup after /reload (sec):"] = "Тихий запуск після /reload (сек):",
@@ -555,14 +567,26 @@ function addon:InitSettingsPages()
     LSF("Version: %s — %s", addon.version or "4.0.0", addon.codename or "Clean UI"))
   subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 
-  local overview = FS(rootPanel, "GameFontHighlight",
-    "Settings are grouped by how the addon works:\n" ..
-    "• General — where the addon works and what to do on a match.\n" ..
-    "• LFG applications — application actions, highlights and the GG column.\n" ..
-    "• Raid Assist — automatic raid assistant assignment.\n" ..
-    "• Rules — keywords, guild names and optional text checks.\n" ..
-    "• Notifications — banner, sound, flash and frame markers.\n" ..
-    "• Compatibility — other LFG addons and manual refresh.")
+  local rootForever = addon.IsForeverClient and addon:IsForeverClient()
+  local overviewText
+  if rootForever then
+    overviewText = "Settings are grouped by how the addon works:\n" ..
+      "• General — where the addon works and what to do on a match.\n" ..
+      "• LFG search — search highlights, filters, tooltips and social hints.\n" ..
+      "• Raid Assist — automatic raid assistant assignment when supported.\n" ..
+      "• Rules — keywords, guild names and optional text checks.\n" ..
+      "• Notifications — banner, sound, flash and frame markers.\n" ..
+      "• Compatibility — refresh and performance controls."
+  else
+    overviewText = "Settings are grouped by how the addon works:\n" ..
+      "• General — where the addon works and what to do on a match.\n" ..
+      "• LFG applications — application actions, highlights and the GG column.\n" ..
+      "• Raid Assist — automatic raid assistant assignment.\n" ..
+      "• Rules — keywords, guild names and optional text checks.\n" ..
+      "• Notifications — banner, sound, flash and frame markers.\n" ..
+      "• Compatibility — other LFG addons and manual refresh."
+  end
+  local overview = FS(rootPanel, "GameFontHighlight", overviewText)
   overview:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -18)
   overview:SetPoint("RIGHT", rootPanel, "RIGHT", -24, 0)
   overview:SetJustifyH("LEFT")
@@ -682,6 +706,21 @@ function addon:InitSettingsPages()
     return infoText
   end
 
+  -- Resolve feature support once while constructing pages. These capabilities
+  -- are API-based so load-on-demand Blizzard frames do not make valid settings disappear.
+  local foreverClient = addon.IsForeverClient and addon:IsForeverClient()
+  local supportsApplicants = addon.SupportsLFGApplicantSettings and addon:SupportsLFGApplicantSettings() or false
+  if not addon.SupportsLFGApplicantSettings then supportsApplicants = not foreverClient end
+  local supportsSearchMembers = addon.HasClientCapability and addon:HasClientCapability("lfgSearchMemberRules")
+  local supportsRoleNeeds = addon.HasClientCapability and addon:HasClientCapability("lfgSearchRoleNeeds")
+  local supportsSearchTooltips = addon.HasClientCapability and addon:HasClientCapability("lfgSearchTooltips")
+  local supportsRealmInsights = addon.HasClientCapability and addon:HasClientCapability("lfgRealmInsights")
+  local supportsPGF = addon.SupportsPGFIntegration and addon:SupportsPGFIntegration() or false
+  if not addon.SupportsPGFIntegration then supportsPGF = not foreverClient end
+  local supportsPartyUninvite = not addon.SupportsPartyUninvite or addon:SupportsPartyUninvite()
+  local supportsRaidAssist = not addon.SupportsRaidAssistActions or addon:SupportsRaidAssistActions()
+  local supportsFrameMarkers = not addon.HasClientCapability or addon:HasClientCapability("frameMarkers")
+
   --------------------------------------------------
   -- 1. General
   --------------------------------------------------
@@ -702,12 +741,17 @@ function addon:InitSettingsPages()
   local g4 = AddCheck(generalChild, g3, "Disable in Arenas", "disable_in_arena", function() SyncAll("disable_in_arena") end)
 
   local secActions = AddSection(generalChild, g4, "Actions on match")
-  local g5 = AddCheck(generalChild, secActions, "Show “Remove from group” button in the banner", "kick_button_enabled", function() SyncAll("kick_button_enabled") end)
-  local g6 = AddCheck(generalChild, g5, "Automatically leave the group after detection", "auto_leave", function() SyncAll("auto_leave") end)
+  local actionAnchor = secActions
+  if supportsPartyUninvite then
+    actionAnchor = AddCheck(generalChild, actionAnchor, "Show “Remove from group” button in the banner", "kick_button_enabled", function() SyncAll("kick_button_enabled") end)
+  end
+  local g6 = AddCheck(generalChild, actionAnchor, "Automatically leave the group after detection", "auto_leave", function() SyncAll("auto_leave") end)
   local g7 = AddCheck(generalChild, g6, "Confirm leaving with a popup", "confirm_leave", function() SyncAll("confirm_leave") end)
 
-  local generalWarn = AddNote(generalChild, g7,
-    "The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page.")
+  local generalWarnText = supportsApplicants
+    and "The banner can show action buttons both for removing flagged players and for leaving the current party/raid. LFG applications are handled by the separate button on the Premade Groups page."
+    or "The banner can show actions for removing flagged players and leaving the current party/raid. Applicant-only actions are hidden on clients without the Retail applicant interface."
+  local generalWarn = AddNote(generalChild, g7, generalWarnText)
 
   local deathSafety = AddSection(generalChild, generalWarn, "Raid death safety")
   local releaseLockRow = AddEdit(
@@ -728,20 +772,23 @@ function addon:InitSettingsPages()
   --------------------------------------------------
   -- 2. LFG заявки
   --------------------------------------------------
-  local lfgPage, lfgChild, lfgTitle = RegisterPage("GroupGuardLFGConfigLFG", "LFG applications", "2. LFG applications")
+  local lfgPageName = foreverClient and "LFG search" or "LFG applications"
+  local lfgPageTitle = foreverClient and "2. LFG search" or "2. LFG applications"
+  local lfgPage, lfgChild, lfgTitle = RegisterPage("GroupGuardLFGConfigLFG", lfgPageName, lfgPageTitle)
 
-  local lfgNote = FS(lfgChild, "GameFontHighlightSmall",
-    "This page only controls LFG applications and LFG search. It does not remove players from party/raid.")
+  local lfgNoteText = foreverClient
+    and "This client exposes LFG search tools but not the Retail applicant-management interface. Unsupported applicant settings are hidden automatically."
+    or "This page only controls LFG applications and LFG search. It does not remove players from party/raid."
+  local lfgNote = FS(lfgChild, "GameFontHighlightSmall", lfgNoteText)
   lfgNote:SetPoint("TOPLEFT", lfgTitle, "BOTTOMLEFT", 0, -10)
   lfgNote:SetPoint("RIGHT", lfgChild, "RIGHT", -24, 0)
   lfgNote:SetJustifyH("LEFT")
 
-  local foreverClient = addon.IsForeverClient and addon:IsForeverClient()
   local lfgSectionAnchor = lfgNote
 
   -- Forever's VanillaStyle browser has no Mainline ApplicationViewer. Keep the
   -- search features, but do not present controls that cannot have an effect.
-  if not foreverClient then
+  if supportsApplicants then
     local secDecline = AddSection(lfgChild, lfgNote, "Application decline")
     local l1 = AddCheck(lfgChild, secDecline, "Automatically decline marked LFG applications when you have permission", "lfg_auto_decline", function() SyncAll("lfg_auto_decline") end)
     local l2 = AddCheck(lfgChild, l1, "Notify about auto-declines", "lfg_auto_decline_notify", function() SyncAll("lfg_auto_decline_notify") end)
@@ -786,24 +833,35 @@ function addon:InitSettingsPages()
   end
 
   local secHighlight = AddSection(lfgChild, lfgSectionAnchor, "LFG highlighting")
-  local l4 = AddCheck(lfgChild, secHighlight, "Highlight marked applications in the list", "lfg_highlight", function() SyncAll("lfg_highlight") end)
-  local l5 = AddCheck(lfgChild, l4, "Check LFG members against rules", "lfg_highlight_search_members", function() SyncAll("lfg_members") end)
-  local l6 = AddCheck(lfgChild, l5, "Show GroupGuard tooltip in LFG", "lfg_tooltips", function() SyncAll("lfg_tooltips") end)
-  local l7 = AddCheck(lfgChild, l6, "Show reason in tooltip", "lfg_tooltip_reasons", function() SyncAll("lfg_tooltip_reasons") end)
-  local l7b = AddCheck(lfgChild, l7, "Show extra group details in tooltip", "lfg_tooltip_details", function() SyncAll("lfg_tooltip_details") end)
-  local l7fit = AddCheck(lfgChild, l7b, "Show whether your current role fits the searched group", "lfg_role_fit_hints", function() SyncAll("lfg_role_fit_hints") end)
-  local l7realm = AddCheck(lfgChild, l7fit, "Show realm hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
-  local l7badge = AddCheck(lfgChild, l7realm, "Show compact realm badges on LFG search rows", "realm_badges", function() SyncAll("realm_badges") end)
-  local l7same = AddCheck(lfgChild, l7badge, "Only show realm hints when they are useful", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
-  local lfgInsightAnchor = l7same
-  if not foreverClient then
-    local l7appt = AddCheck(lfgChild, lfgInsightAnchor, "Show GroupGuard warnings in applicant tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
-    local l7context = AddCheck(lfgChild, l7appt, "Show current dungeon key / raid progress in the GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
-    local l7refresh = AddCheck(lfgChild, l7context, "Refresh applicant list after status changes", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
-    lfgInsightAnchor = AddCheck(lfgChild, l7refresh, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
+  local highlightLabel = foreverClient and "Highlight marked LFG results" or "Highlight marked applications in the list"
+  local lfgInsightAnchor = AddCheck(lfgChild, secHighlight, highlightLabel, "lfg_highlight", function() SyncAll("lfg_highlight") end)
+
+  if supportsSearchMembers then
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Check LFG members against rules", "lfg_highlight_search_members", function() SyncAll("lfg_members") end)
   end
-  local lfgInsightNote = AddNote(lfgChild, lfgInsightAnchor,
-    "These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged.")
+  if supportsSearchTooltips then
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show GroupGuard tooltip in LFG", "lfg_tooltips", function() SyncAll("lfg_tooltips") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show reason in tooltip", "lfg_tooltip_reasons", function() SyncAll("lfg_tooltip_reasons") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show extra group details in tooltip", "lfg_tooltip_details", function() SyncAll("lfg_tooltip_details") end)
+  end
+  if supportsRoleNeeds then
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show whether your current role fits the searched group", "lfg_role_fit_hints", function() SyncAll("lfg_role_fit_hints") end)
+  end
+  if supportsRealmInsights then
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show realm hints in search tooltips", "realm_insights", function() SyncAll("realm_insights") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show compact realm badges on LFG search rows", "realm_badges", function() SyncAll("realm_badges") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Only show realm hints when they are useful", "realm_same_locale_only", function() SyncAll("realm_same_locale_only") end)
+  end
+  if supportsApplicants then
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show GroupGuard warnings in applicant tooltips", "applicant_summary_tooltips", function() SyncAll("applicant_summary_tooltips") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Show current dungeon key / raid progress in the GG column", "applicant_context_progress", function() SyncAll("applicant_context_progress") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Refresh applicant list after status changes", "applicant_auto_refresh_done", function() SyncAll("applicant_auto_refresh_done") end)
+    lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
+  end
+  local lfgInsightNoteText = foreverClient
+    and "These options add hints directly to Forever LFG search results and tooltips. Applicant-only GG column controls are hidden because Forever has no Retail ApplicationViewer."
+    or "These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged."
+  local lfgInsightNote = AddNote(lfgChild, lfgInsightAnchor, lfgInsightNoteText)
 
   local secSocial = AddSection(lfgChild, lfgInsightNote, "Friends / guild in LFG")
   local l8 = AddCheck(lfgChild, secSocial, "Ignore friends even if they match filters", "social_ignore_friends", function() SyncAll("social_ignore_friends") end)
@@ -818,41 +876,44 @@ function addon:InitSettingsPages()
   --------------------------------------------------
   -- 3. Raid Assist
   --------------------------------------------------
-  local raidPage, raidChild, raidTitle = RegisterPage("GroupGuardLFGConfigRaidAssist", "Raid Assist", "3. Raid Assist")
+  if supportsRaidAssist then
+    local raidPage, raidChild, raidTitle = RegisterPage("GroupGuardLFGConfigRaidAssist", "Raid Assist", "3. Raid Assist")
 
-  local raidNote = FS(raidChild, "GameFontHighlightSmall",
-    "Automatically grants raid assistant only when you are the raid leader. Works only in raid, not party.")
-  raidNote:SetPoint("TOPLEFT", raidTitle, "BOTTOMLEFT", 0, -10)
-  raidNote:SetPoint("RIGHT", raidChild, "RIGHT", -24, 0)
-  raidNote:SetJustifyH("LEFT")
+    local raidNote = FS(raidChild, "GameFontHighlightSmall",
+      "Automatically grants raid assistant only when you are the raid leader. Works only in raid, not party.")
+    raidNote:SetPoint("TOPLEFT", raidTitle, "BOTTOMLEFT", 0, -10)
+    raidNote:SetPoint("RIGHT", raidChild, "RIGHT", -24, 0)
+    raidNote:SetJustifyH("LEFT")
 
-  local r1 = AddCheck(raidChild, raidNote, "Enable automatic raid assistant assignment", "raid_assist_enabled", function() SyncAll("raid_assist_enabled") end)
-  local r2 = AddCheck(raidChild, r1, "Automatically grant assistant to selected ranks / officers", "raid_assist_guild_officers", function() SyncAll("raid_assist_guild_officers") end)
-  local r3 = AddCheck(raidChild, r2, "Print who received assistant in chat", "raid_assist_notify", function() SyncAll("raid_assist_notify") end)
+    local r1 = AddCheck(raidChild, raidNote, "Enable automatic raid assistant assignment", "raid_assist_enabled", function() SyncAll("raid_assist_enabled") end)
+    local r2 = AddCheck(raidChild, r1, "Automatically grant assistant to selected ranks / officers", "raid_assist_guild_officers", function() SyncAll("raid_assist_guild_officers") end)
+    local r3 = AddCheck(raidChild, r2, "Print who received assistant in chat", "raid_assist_notify", function() SyncAll("raid_assist_notify") end)
 
-  local rankDropdown = CreateMultiRankDropdown(
-    raidChild, r3, "Guild ranks that should automatically receive assistant:"
-  )
+    local rankDropdown = CreateMultiRankDropdown(
+      raidChild, r3, "Guild ranks that should automatically receive assistant:"
+    )
 
-  local manualNamesRow = AddEdit(
-    raidChild, rankDropdown, "Additional assistant names, comma-separated:",
-    function() return addon.db.raid_assist_manual_names or "" end,
-    function(txt)
-      addon.db.raid_assist_manual_names = txt or ""
-      addon._raidAssistManualSet = nil
-      addon._raidAssistManualSetText = nil
-      SyncAll("raid_assist_manual_names")
-    end,
-    false
-  )
+    local manualNamesRow = AddEdit(
+      raidChild, rankDropdown, "Additional assistant names, comma-separated:",
+      function() return addon.db.raid_assist_manual_names or "" end,
+      function(txt)
+        addon.db.raid_assist_manual_names = txt or ""
+        addon._raidAssistManualSet = nil
+        addon._raidAssistManualSetText = nil
+        SyncAll("raid_assist_manual_names")
+      end,
+      false
+    )
 
-  local raidHint = AddNote(raidChild, manualNamesRow,
-    "Ranks are loaded from the guild roster. You can select multiple ranks. Names can be written without realm: Khayen, Forchun.")
+    local raidHint = AddNote(raidChild, manualNamesRow,
+      "Ranks are loaded from the guild roster. You can select multiple ranks. Names can be written without realm: Khayen, Forchun.")
 
-  AddActionButton(raidChild, raidHint, "Refresh assistants now", 200, function()
-    if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0, "settings_button") end
-    SyncAll("raid_assist_button")
-  end)
+    AddActionButton(raidChild, raidHint, "Refresh assistants now", 200, function()
+      if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0, "settings_button") end
+      SyncAll("raid_assist_button")
+    end)
+
+  end
 
   --------------------------------------------------
   -- 4. Filter rules
@@ -924,13 +985,16 @@ function addon:InitSettingsPages()
   local v1 = AddCheck(visualChild, vSec, "Show compact notification", "show_banner", function() SyncAll("show_banner") end)
   local v2 = AddCheck(visualChild, v1, "Screen flash", "screen_flash", function() SyncAll("screen_flash") end)
   local v3 = AddCheck(visualChild, v2, "Play sound", "play_sound", function() SyncAll("play_sound") end)
-  local v4 = AddCheck(visualChild, v3, "Show compact corner marker on party/raid frames", "frame_markers_enabled", function()
-    if addon.UpdateFrameMarkers then addon:UpdateFrameMarkers() end
-    SyncAll("frame_markers_enabled")
-  end)
+  local markerAnchor = v3
+  if supportsFrameMarkers then
+    markerAnchor = AddCheck(visualChild, markerAnchor, "Show compact corner marker on party/raid frames", "frame_markers_enabled", function()
+      if addon.UpdateFrameMarkers then addon:UpdateFrameMarkers() end
+      SyncAll("frame_markers_enabled")
+    end)
+  end
 
-  local markerNote = AddNote(visualChild, v4,
-    "Marker is shown in the frame corner, hidden during combat, and appears only for real filter matches. Friends/guild are not highlighted on party/raid frames.")
+  local markerNote = supportsFrameMarkers and AddNote(visualChild, markerAnchor,
+    "Marker is shown in the frame corner, hidden during combat, and appears only for real filter matches. Friends/guild are not highlighted on party/raid frames.") or markerAnchor
 
   local durRow = AddEdit(
     visualChild, markerNote, "Banner duration (sec):",
@@ -973,29 +1037,36 @@ function addon:InitSettingsPages()
   local testBtn = AddActionButton(visualChild, soundInfo, "Detection test", 160, function()
     if addon.TestAlert then addon:TestAlert() end
   end)
-  local testAutoBtn = CreateFrame("Button", nil, visualChild, "UIPanelButtonTemplate")
-  testAutoBtn:SetSize(180, 26)
-  testAutoBtn:SetPoint("LEFT", testBtn, "RIGHT", 10, 0)
-  testAutoBtn:SetText(LS("Auto-decline test"))
-  testAutoBtn:SetScript("OnClick", function()
-    if addon.ShowBanner then addon:ShowBanner(LS("Auto-declined: 2"), LS("Comment — test"), false, "AUTO_DECLINE", LS("Test banner.")) end
-  end)
+  if supportsApplicants then
+    local testAutoBtn = CreateFrame("Button", nil, visualChild, "UIPanelButtonTemplate")
+    testAutoBtn:SetSize(180, 26)
+    testAutoBtn:SetPoint("LEFT", testBtn, "RIGHT", 10, 0)
+    testAutoBtn:SetText(LS("Auto-decline test"))
+    testAutoBtn:SetScript("OnClick", function()
+      if addon.ShowBanner then addon:ShowBanner(LS("Auto-declined: 2"), LS("Comment — test"), false, "AUTO_DECLINE", LS("Test banner.")) end
+    end)
+  end
 
   --------------------------------------------------
   -- 6. Compatibility
   --------------------------------------------------
   local compatPage, compatChild, compatTitle = RegisterPage("GroupGuardLFGConfigCompat", "Compatibility", "6. Compatibility")
 
-  local compatNote = FS(compatChild, "GameFontHighlightSmall",
-    "Compatibility with other LFG addons and manual refresh tools.")
+  local compatNoteText = supportsPGF
+    and "Compatibility with other LFG addons and manual refresh tools."
+    or "Client-safe refresh and performance controls. Unsupported addon integrations are hidden automatically."
+  local compatNote = FS(compatChild, "GameFontHighlightSmall", compatNoteText)
   compatNote:SetPoint("TOPLEFT", compatTitle, "BOTTOMLEFT", 0, -10)
   compatNote:SetPoint("RIGHT", compatChild, "RIGHT", -24, 0)
   compatNote:SetJustifyH("LEFT")
 
-  local c1 = AddCheck(compatChild, compatNote, "Improve Premade Groups Filter compatibility", "pgf_integration", function() SyncAll("pgf_integration") end)
+  local compatAnchor = compatNote
+  if supportsPGF then
+    compatAnchor = AddCheck(compatChild, compatAnchor, "Improve Premade Groups Filter compatibility", "pgf_integration", function() SyncAll("pgf_integration") end)
+  end
 
   local scanRow = AddEdit(
-    compatChild, c1, "Group refresh delay (sec):",
+    compatChild, compatAnchor, "Group refresh delay (sec):",
     function() return addon.db.scan_debounce or 0.05 end,
     function(txt)
       local v = tonumber(txt) or 0.05

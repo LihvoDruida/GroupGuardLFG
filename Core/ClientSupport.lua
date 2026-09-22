@@ -42,7 +42,8 @@ function addon:RefreshClientCapabilities()
   caps.lfgSearchPlayerInfo = caps.lfg and HasFunction(C_LFGList, "GetSearchResultPlayerInfo")
   caps.lfgSearchMemberCounts = caps.lfg and HasFunction(C_LFGList, "GetSearchResultMemberCounts")
   caps.lfgLeaderInfo = caps.lfg and HasFunction(C_LFGList, "GetSearchResultLeaderInfo")
-  caps.lfgApplicants = caps.lfg and HasFunction(C_LFGList, "GetApplicants") and HasFunction(C_LFGList, "GetApplicantMemberInfo")
+  caps.lfgApplicants = caps.lfg and HasFunction(C_LFGList, "GetApplicants") and HasFunction(C_LFGList, "GetApplicantInfo") and HasFunction(C_LFGList, "GetApplicantMemberInfo")
+  caps.lfgDeclineApplicant = caps.lfg and HasFunction(C_LFGList, "DeclineApplicant")
   caps.lfgAdvancedFilter = caps.lfg and HasFunction(C_LFGList, "GetAdvancedFilter") and HasFunction(C_LFGList, "SaveAdvancedFilter")
   caps.lfgCensor = caps.lfg and HasFunction(C_LFGList, "RevealCensoredSearchResult")
   caps.lfgRoles = type(C_LFGListRoles) == "table" and HasFunction(C_LFGListRoles, "GetRoles")
@@ -53,6 +54,20 @@ function addon:RefreshClientCapabilities()
   -- expose overlapping C_LFGList functions without exposing that UI, so API
   -- presence alone is not enough to enable applicant-only features.
   caps.lfgApplicantUI = not isForever and _G.LFGListFrame ~= nil and _G.LFGListFrame.ApplicationViewer ~= nil
+
+  -- Feature-level capabilities used by settings and modules. Keep these based on
+  -- API contracts rather than frame presence because Blizzard LFG UI is LoD.
+  caps.lfgSearchUI = caps.lfgSearchResults and caps.lfgSearchInfo and (isRetail12 or isForever or caps.modernLFGFrame or caps.foreverLFGFrame)
+  caps.lfgSearchMemberRules = caps.lfgSearchUI and caps.lfgSearchPlayerInfo
+  caps.lfgSearchRoleNeeds = caps.lfgSearchUI and caps.lfgSearchMemberCounts
+  caps.lfgSearchTooltips = caps.lfgSearchUI and caps.lfgSearchInfo
+  caps.lfgRealmInsights = caps.lfgSearchUI and caps.lfgLeaderInfo
+  caps.lfgApplicantActions = (not isForever) and caps.lfgApplicants and caps.lfgDeclineApplicant
+  caps.pgfIntegration = not isForever
+  caps.partyUninvite = (type(C_PartyInfo) == "table" and HasFunction(C_PartyInfo, "UninviteUnit")) or type(UninviteUnit) == "function"
+  caps.raidPromoteAssistant = (type(C_PartyInfo) == "table" and HasFunction(C_PartyInfo, "PromoteToAssistant")) or type(PromoteToAssistant) == "function"
+  caps.raidDemoteAssistant = (type(C_PartyInfo) == "table" and HasFunction(C_PartyInfo, "DemoteAssistant")) or type(DemoteAssistant) == "function"
+  caps.frameMarkers = isRetail12 or isForever or _G.CompactRaidFrameContainer ~= nil or _G.CompactPartyFrame ~= nil
 
   return self.Client
 end
@@ -101,6 +116,25 @@ function addon:SupportsLFGApplicantUI()
   -- expose APIs that have no matching ApplicationViewer surface.
   if self:IsForeverClient() then return false end
   return self:GetLFGApplicantViewer() ~= nil
+end
+
+function addon:SupportsLFGApplicantSettings()
+  -- Settings are created before the Mainline ApplicationViewer may exist, so
+  -- use the API contract here and keep Forever explicitly excluded.
+  if self:IsForeverClient() then return false end
+  return self:HasClientCapability("lfgApplicantActions")
+end
+
+function addon:SupportsPGFIntegration()
+  return self:HasClientCapability("pgfIntegration")
+end
+
+function addon:SupportsPartyUninvite()
+  return self:HasClientCapability("partyUninvite")
+end
+
+function addon:SupportsRaidAssistActions()
+  return self:HasClientCapability("raidPromoteAssistant")
 end
 
 addon:RefreshClientCapabilities()

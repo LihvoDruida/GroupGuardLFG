@@ -371,8 +371,10 @@ local function CreateRow(parent, index)
 
     if addon.KickNamesSequential then
       addon:KickNamesSequential({ { unit = data.unit, name = data.name, fullName = data.fullName } }, 0.15)
-    elseif UninviteUnit then
-      pcall(UninviteUnit, data.unit or data.fullName or data.name)
+    elseif type(C_PartyInfo) == "table" and type(C_PartyInfo.UninviteUnit) == "function" then
+      pcall(C_PartyInfo.UninviteUnit, data.fullName or data.name, nil, true)
+    elseif type(UninviteUnit) == "function" then
+      pcall(UninviteUnit, data.fullName or data.name)
     end
 
     btn:Disable()

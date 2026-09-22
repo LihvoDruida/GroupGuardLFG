@@ -6,6 +6,31 @@ local C_Timer = C_Timer
 -- Raid assistant auto-assign
 --------------------------------------------------
 
+local function PromoteAssistantCompat(fullName, shortName)
+  local name = fullName or shortName
+  if type(name) ~= "string" or name == "" then return false end
+
+  if type(C_PartyInfo) == "table" and type(C_PartyInfo.PromoteToAssistant) == "function" then
+    local ok = pcall(C_PartyInfo.PromoteToAssistant, name, true)
+    if ok then return true end
+    if shortName and shortName ~= name then
+      ok = pcall(C_PartyInfo.PromoteToAssistant, shortName)
+      if ok then return true end
+    end
+  end
+
+  if type(PromoteToAssistant) == "function" then
+    local ok = pcall(PromoteToAssistant, name)
+    if ok then return true end
+    if shortName and shortName ~= name then
+      ok = pcall(PromoteToAssistant, shortName)
+      if ok then return true end
+    end
+  end
+
+  return false
+end
+
 local function RaidAssistNameKey(name)
   if addon and addon.NormalizeNameKey then return addon:NormalizeNameKey(name) end
   if type(name) ~= "string" or name == "" then return nil end
@@ -29,6 +54,7 @@ local function SafeIsInRaid()
 end
 
 function addon:CanAutoRaidAssist()
+  if self.SupportsRaidAssistActions and not self:SupportsRaidAssistActions() then return false end
   if not (self.db and self.db.raid_assist_enabled) then return false end
   if not SafeIsInRaid() then return false end
   local Safe = addon.Safe
@@ -56,22 +82,14 @@ function addon:ApplyRaidAssistNow(reason)
 
   for i = 1, num do
     local unit = "raid" .. i
-    local name
-    if Safe and Safe.UnitFullName then _, name = Safe.UnitFullName(unit) end
+    local fullName, name
+    if Safe and Safe.UnitFullName then fullName, name = Safe.UnitFullName(unit) end
     if name then
       local isPlayer = Safe and Safe.UnitIsUnit and Safe.UnitIsUnit(unit, "player") or false
       if not isPlayer and not UnitIsAssistantOrLeader(unit) then
         local okGive, give, why = pcall(function() return self:ShouldGiveRaidAssist(name) end)
         if okGive and give then
-          local okPromote = false
-          if PromoteToAssistant then
-            local okUnit = pcall(PromoteToAssistant, unit)
-            okPromote = okUnit and true or false
-            if not okPromote then
-              local okName = pcall(PromoteToAssistant, name)
-              okPromote = okName and true or false
-            end
-          end
+          local okPromote = PromoteAssistantCompat(fullName, name)
           if okPromote then
             promoted = promoted + 1
             promotedNames[#promotedNames + 1] = name

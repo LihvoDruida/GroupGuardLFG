@@ -265,8 +265,12 @@ local function OnEvent(self, event, arg1, ...)
       SafeInit("lfg_refresh", "RequestLFGRefresh", nil, true, true)
       SafeInit("lfg_enhancements", "LFG_InitEnhancements")
       SafeInit("realm_insights", "LFG_InitRealmInsights")
-      SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
-      SafeInit("raid_assist", "ScheduleRaidAssist", 0.05, "addon_loaded")
+      if not addon.SupportsLFGApplicantSettings or addon:SupportsLFGApplicantSettings() then
+        SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
+      end
+      if not addon.SupportsRaidAssistActions or addon:SupportsRaidAssistActions() then
+        SafeInit("raid_assist", "ScheduleRaidAssist", 0.05, "addon_loaded")
+      end
     elseif arg1 == "Blizzard_GroupFinder" or arg1 == "Blizzard_LookingForGroupUI" or arg1 == "Blizzard_GroupFinder_VanillaStyle" then
       if arg1 == "Blizzard_GroupFinder_VanillaStyle" and addon.ForeverLoadGuard_RebindWhoListFrame then
         pcall(addon.ForeverLoadGuard_RebindWhoListFrame, addon)
@@ -277,11 +281,15 @@ local function OnEvent(self, event, arg1, ...)
       SafeInit("lfg_filters", "LFGFilters_Init")
       SafeInit("lfg_enhancements", "LFG_InitEnhancements")
       SafeInit("realm_insights", "LFG_InitRealmInsights")
-      SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
+      if not addon.SupportsLFGApplicantSettings or addon:SupportsLFGApplicantSettings() then
+        SafeInit("applicant_enhancements", "LFG_InitApplicantEnhancements")
+      end
       SafeInit("lfg_refresh", "RequestLFGRefresh", nil, true, true)
     elseif arg1 == "PremadeGroupsFilter" then
-      SafeInit("pgf", "InitPGFIntegration")
-      SafeInit("lfg_refresh", "RequestLFGRefresh", nil, false, true)
+      if not addon.SupportsPGFIntegration or addon:SupportsPGFIntegration() then
+        SafeInit("pgf", "InitPGFIntegration")
+        SafeInit("lfg_refresh", "RequestLFGRefresh", nil, false, true)
+      end
     end
     return
   end
@@ -297,7 +305,9 @@ local function OnEvent(self, event, arg1, ...)
     addon:RequestGroupRefresh(0)
     if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
     addon:RequestLFGRefresh(nil, true, true)
-    if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.05, event) end
+    if addon.ScheduleRaidAssist and (not addon.SupportsRaidAssistActions or addon:SupportsRaidAssistActions()) then
+      addon:ScheduleRaidAssist(0.05, event)
+    end
     local function delayedWorldRefresh()
       addon:RequestGroupRefresh(0)
       if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end

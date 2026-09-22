@@ -897,6 +897,7 @@ end
 
 function addon:InitPGFIntegration()
   if self._pgfIntegrated then return end
+  if self.SupportsPGFIntegration and not self:SupportsPGFIntegration() then return end
   if self.db and self.db.pgf_integration == false then return end
   if not self:IsPremadeGroupsFilterLoaded() then return end
 

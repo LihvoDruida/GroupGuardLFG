@@ -3,11 +3,10 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.8.6
-## X-Codename: Forever native filter glyph
-## X-Prev-Codename: Native Forever filter utility rail
-## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO
-## X-Compat-PremadeGroupsFilter: safe-hook-only
+## Version: 4.8.7
+## X-Codename: Capability-aware settings and PartyInfo APIs
+## X-Prev-Codename: Forever native filter glyph
+## OptionalDeps: Plumber, RaiderIO
 ## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg
 ## X-Curse-Project-ID: 1573624

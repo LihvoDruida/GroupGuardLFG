@@ -1,5 +1,15 @@
 # GroupGuard LFG
 
+## 4.8.7
+
+- Hide Retail-only applicant-management and Premade Groups Filter integration settings on WoW Forever.
+- Build the LFG settings page from client capabilities so unsupported controls are not shown.
+- Keep Forever search highlighting, member checks, tooltips, role-fit hints, realm hints and social highlighting when their APIs are available.
+- Hide the auto-decline test and applicant-only GG-column controls on Forever.
+- Use modern `C_PartyInfo.UninviteUnit`, `C_PartyInfo.PromoteToAssistant` and `C_PartyInfo.DemoteAssistant` when available, with legacy fallbacks.
+- Stop applicant-only hook retries on clients without the Retail ApplicationViewer.
+- Do not load or initialize Premade Groups Filter integration from the Camelot TOC.
+
 ## 4.8.6
 
 - Forever: replace the external filter TGA with a texture-free native funnel glyph to prevent the solid-green icon failure.

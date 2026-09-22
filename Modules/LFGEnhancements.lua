@@ -394,6 +394,10 @@ end
 
 function addon:LFG_SetupApplicantPingMute()
   if self._ggApplicantPingHooked then return end
+  if self.SupportsLFGApplicantSettings and not self:SupportsLFGApplicantSettings() then
+    self._ggApplicantPingHooked = true -- not applicable on this client
+    return
+  end
   local anim = QueueStatusButton and QueueStatusButton.EyeHighlightAnim
   if not anim or not anim.GetScript or not anim.SetScript then return end
 
@@ -420,7 +424,8 @@ function addon:LFG_InitEnhancements()
   if self.LFG_SetupApplicantPingMute then self:LFG_SetupApplicantPingMute() end
 
   local hasSearchTooltipHook = self._ggEnhancedTooltipHookedMainline or self._ggEnhancedTooltipHookedForever
-  local needsRetry = (not hasSearchTooltipHook) or (not self._ggApplicantPingHooked)
+  local needsApplicantPing = not self.SupportsLFGApplicantSettings or self:SupportsLFGApplicantSettings()
+  local needsRetry = (not hasSearchTooltipHook) or (needsApplicantPing and not self._ggApplicantPingHooked)
   if needsRetry and C_Timer and C_Timer.After and not self._ggEnhancementRetryScheduled and (self._ggEnhancementRetryCount or 0) < 8 then
     self._ggEnhancementRetryScheduled = true
     self._ggEnhancementRetryCount = (self._ggEnhancementRetryCount or 0) + 1
