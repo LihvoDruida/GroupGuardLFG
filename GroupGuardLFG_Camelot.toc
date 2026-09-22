@@ -3,8 +3,8 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.8.5
-## X-Codename: Forever WhoList load-order guard
+## Version: 4.8.6
+## X-Codename: Forever native filter glyph
 ## X-Prev-Codename: Native Forever filter utility rail
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO
 ## X-Compat-PremadeGroupsFilter: safe-hook-only

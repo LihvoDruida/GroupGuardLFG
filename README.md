@@ -1,5 +1,13 @@
 # GroupGuard LFG
 
+## 4.8.6
+
+- Forever: replace the external filter TGA with a texture-free native funnel glyph to prevent the solid-green icon failure.
+- Keep the GroupGuard filter control directly below `LFGBrowseFrame.OptionsButton` in the same 16x16 utility rail.
+- Match the native options gear behavior: muted idle state, gold hover/active state, 1 px pressed offset, and no square button chrome.
+- Reduce the vertical gap below the gear to 4 px for tighter alignment.
+- Preserve the 4.8.5 Camelot WhoList load-order guard and all existing filter behavior.
+
 ## 4.8.5
 
 - Forever: add an early Camelot-only load guard for Blizzard's `LFGWhoListFrame` initialization race.

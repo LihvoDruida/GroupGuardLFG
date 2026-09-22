@@ -22,9 +22,17 @@ local ROLE_TEXT_KEY = {
 
 local FILTER_BUTTON_SIZE = 16
 local FILTER_BUTTON_ICON_SIZE = 16
-local FILTER_BUTTON_VERTICAL_GAP = 5
+local FILTER_BUTTON_VERTICAL_GAP = 4
 local FILTER_PANEL_SIDE_GAP = 8
-local FILTER_TEXTURE = "Interface\\AddOns\\GroupGuardLFG\\Media\\Icons\\Filter.tga"
+
+-- The Forever client showed the bundled TGA as a solid green block on some
+-- builds. Keep this control texture-free: the filter glyph is assembled from
+-- tiny native color textures, so it is stable across Retail 12.x and Camelot
+-- and still matches the bare Blizzard options-button visual language.
+local FILTER_GLYPH_NORMAL = { 0.78, 0.66, 0.34 }
+local FILTER_GLYPH_HOVER = { 1.00, 0.82, 0.00 }
+local FILTER_GLYPH_ACTIVE = { 1.00, 0.82, 0.00 }
+local FILTER_GLYPH_DISABLED = { 0.45, 0.45, 0.45 }
 
 local function SafeShown(frame)
   if not frame or type(frame.IsShown) ~= "function" then return false end
@@ -439,6 +447,45 @@ local function CreateStandardPanel(root)
   return panel
 end
 
+local function SetFilterGlyphColor(glyph, color)
+  if not glyph or type(glyph.ggParts) ~= "table" then return end
+  for _, part in ipairs(glyph.ggParts) do
+    if part and type(part.SetColorTexture) == "function" then
+      part:SetColorTexture(color[1], color[2], color[3], 1)
+    end
+  end
+end
+
+local function CreateFilterGlyph(button)
+  local glyph = CreateFrame("Frame", nil, button)
+  glyph:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE)
+  glyph:SetPoint("CENTER")
+  glyph.ggParts = {}
+
+  local function AddPart(width, height, x, y)
+    local shadow = glyph:CreateTexture(nil, "BACKGROUND")
+    shadow:SetSize(width, height)
+    shadow:SetPoint("CENTER", glyph, "CENTER", x + 1, y - 1)
+    shadow:SetColorTexture(0, 0, 0, 0.75)
+
+    local part = glyph:CreateTexture(nil, "ARTWORK")
+    part:SetSize(width, height)
+    part:SetPoint("CENTER", glyph, "CENTER", x, y)
+    part:SetColorTexture(FILTER_GLYPH_NORMAL[1], FILTER_GLYPH_NORMAL[2], FILTER_GLYPH_NORMAL[3], 1)
+    glyph.ggParts[#glyph.ggParts + 1] = part
+  end
+
+  -- Compact funnel/filter mark. It deliberately uses only WoW-created
+  -- textures rather than an external image, avoiding the solid-green texture
+  -- failure seen on some Forever/Camelot builds.
+  AddPart(12, 2, 0, 4)
+  AddPart(8, 2, 0, 1)
+  AddPart(5, 2, 0, -2)
+  AddPart(2, 5, 0, -5)
+
+  return glyph
+end
+
 local function UpdateFilterButtonIconState(button)
   if not button or not button.Icon then return end
 
@@ -449,7 +496,6 @@ local function UpdateFilterButtonIconState(button)
   end
 
   local active = addon and addon.LFGFilters_HasActiveFilters and addon:LFGFilters_HasActiveFilters() or false
-  button.Icon:SetTexture(FILTER_TEXTURE)
   button.Icon:ClearAllPoints()
   if button.ggPressed and enabled then
     button.Icon:SetPoint("CENTER", button, "CENTER", 1, -1)
@@ -457,21 +503,20 @@ local function UpdateFilterButtonIconState(button)
     button.Icon:SetPoint("CENTER", button, "CENTER", 0, 0)
   end
 
-  -- Match Blizzard's LFGOptionsButton behavior: muted at rest, fully opaque
-  -- while hovered. Active filters get a small warm emphasis without adding
-  -- square button chrome or a badge that clashes with the native header.
+  -- Mirror Blizzard's small options gear: subdued at rest, fully visible on
+  -- hover/press. Active filters remain gold instead of using a colored square.
   if not enabled then
     button.Icon:SetAlpha(0.35)
-    button.Icon:SetDesaturated(true)
-    button.Icon:SetVertexColor(0.70, 0.70, 0.70)
+    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_DISABLED)
+  elseif button.ggHover or button.ggPressed then
+    button.Icon:SetAlpha(1.0)
+    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_HOVER)
+  elseif active then
+    button.Icon:SetAlpha(1.0)
+    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_ACTIVE)
   else
-    button.Icon:SetDesaturated(false)
-    button.Icon:SetAlpha((button.ggHover or active) and 1.0 or 0.8)
-    if active then
-      button.Icon:SetVertexColor(1.0, 0.93, 0.72)
-    else
-      button.Icon:SetVertexColor(1.0, 1.0, 1.0)
-    end
+    button.Icon:SetAlpha(0.80)
+    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_NORMAL)
   end
 end
 
@@ -737,10 +782,7 @@ function addon:LFGFilters_CreateButton(searchFrame)
     if type(button.SetHitRectInsets) == "function" then button:SetHitRectInsets(-2, -2, -2, -2) end
     if type(button.RegisterForClicks) == "function" then button:RegisterForClicks("LeftButtonUp") end
 
-    local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE)
-    icon:SetPoint("CENTER")
-    icon:SetTexture(FILTER_TEXTURE)
+    local icon = CreateFilterGlyph(button)
     icon:SetAlpha(0.8)
     button.Icon = icon
 
