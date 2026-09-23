@@ -1,6 +1,6 @@
 -- GroupGuard LFG — search filters for Retail 12.x and WoW Forever
 -- Two independent filter blocks:
---   1) dungeon groups: group still needs one of the selected roles
+--   1) dungeon groups: group still needs every selected role (AND)
 --   2) solo players: selected class AND selected role (OR inside each set)
 local addonName, addon = ...
 
@@ -211,18 +211,23 @@ function addon:LFGFilters_MatchesGroupBlock(resultID, info)
   local selected = self.db and self.db.lfg_filter_group_roles
   if not HasAnySelected(selected) then return true end
 
-  local hadReadableRole = false
+  -- Dungeon role selections are a combination, not alternatives.
+  -- Example: Tank + Healer means the listing must still need BOTH roles.
+  -- A single readable selected role that is already filled is enough to reject
+  -- the listing. Unknown role data stays fail-open so transient LFG streaming
+  -- does not make valid rows disappear while Blizzard is populating counts.
   for _, role in ipairs(ROLE_ORDER) do
     if selected[role] == true then
       local needs = self:LFGFilters_GroupNeedsRole(resultID, role, info)
       if needs ~= nil then
-        hadReadableRole = true
-        if needs then return true end
+        if not needs then return false end
       end
     end
   end
-  -- Fail open if the client temporarily withholds role data.
-  return not hadReadableRole
+
+  -- All readable selected roles are still needed. If the client temporarily
+  -- withholds every selected role, keep the row visible rather than guessing.
+  return true
 end
 
 function addon:LFGFilters_PlayerHasRole(playerInfo, selectedRoles)

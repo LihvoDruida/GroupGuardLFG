@@ -1,5 +1,13 @@
 # GroupGuard LFG
 
+## 4.8.9
+
+- Change **Dungeons — group needs** role selection from OR to AND matching.
+- Selecting Tank + Healer now shows only dungeon listings that still need both Tank and Healer; listings needing only one of them are excluded.
+- Selecting all three roles requires all three roles to still be needed.
+- Keep fail-open behavior only for temporarily unavailable Blizzard role-count data.
+- Update English and Ukrainian filter help text to describe the combination logic correctly.
+
 ## 4.8.8
 
 - Forever: use nickname-only player identity across LFG, social caches, group scans and raid/group tools; do not append or depend on realm names.
@@ -190,7 +198,7 @@ GroupGuard does not identify a player’s nationality, ethnicity, religion, orig
 - Added first-class **WoW Forever 1.60.x** support through `GroupGuardLFG_Camelot.toc` (`Interface 16001`).
 - Added runtime client/capability detection so Mainline and Forever use the correct Blizzard LFG frames and only available API paths.
 - Added a Blizzard-style filter button next to Forever's refresh button and a standard-asset settings panel anchored to the right of the LFG window.
-- Added separate filter blocks for **Dungeon groups — roles still needed** and **Players — class + role**. Multiple choices are OR within a block; class and role are AND for solo-player listings.
+- Added separate filter blocks for **Dungeon groups — roles still needed** and **Players — class + role**. Dungeon role choices are AND (all selected roles must still be needed); player classes/roles remain OR within each set, with class AND role between the two player sets.
 - Filters operate on Blizzard's already-received search results and do not issue protected searches or replace Blizzard sorting/UI.
 - Updated search highlighting, GroupGuard tooltips, realm hints and search insight hooks for Forever's `Blizzard_GroupFinder_VanillaStyle` frames.
 - Added safe snapshots for current `C_LFGList.GetSearchResultMemberCounts`, `GetSearchResultPlayerInfo`, `GetSearchResultInfo`, and modern activity fields such as `maxNumPlayers` / `useDungeonRoleExpectations`.
