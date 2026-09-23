@@ -265,8 +265,41 @@ local function EnsureGGHighlight(host)
   return SafeField(host, "_ggHL"), SafeField(host, "_ggHLTop"), SafeField(host, "_ggHLBottom")
 end
 
+local function PaintForeverNativeHighlight(rowFrame, mode)
+  if not (addon and addon.IsForeverClient and addon:IsForeverClient()) then return false end
+  if not CanAccessObject(rowFrame) then return false end
+  local bg = SafeField(rowFrame, "ResultBG")
+  if not bg or not CanAccessObject(bg) then return false end
+  local setColor = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(bg, "SetColorTexture")
+  if not setColor then return false end
+
+  if not mode or mode == false then
+    pcall(setColor, bg, 1, 1, 1, 0.04)
+    return true
+  end
+
+  local c = LFG_HIGHLIGHT_COLORS[mode] or LFG_HIGHLIGHT_COLORS.FLAG
+  -- Forever rows already own ResultBG. Tint that native layer instead of adding
+  -- a BACKGROUND texture behind it; the latter can be hidden by Blizzard's row.
+  pcall(setColor, bg, c[1], c[2], c[3], math.max(c[4] or 0.20, 0.16))
+  return true
+end
+
 local function PaintGGHighlight(rowFrame, mode)
   if not rowFrame then return end
+  if PaintForeverNativeHighlight(rowFrame, mode) then
+    -- Hide an overlay left by an older build if the row was recycled.
+    local oldHost = GetGGHighlightHost(rowFrame)
+    if oldHost then
+      local oldFill = SafeField(oldHost, "_ggHL")
+      local oldTop = SafeField(oldHost, "_ggHLTop")
+      local oldBottom = SafeField(oldHost, "_ggHLBottom")
+      if oldFill then oldFill:Hide() end
+      if oldTop then oldTop:Hide() end
+      if oldBottom then oldBottom:Hide() end
+    end
+    return
+  end
   local host = GetGGHighlightHost(rowFrame)
   local fill, top, bottom = EnsureGGHighlight(host)
   if not fill then return end
@@ -576,36 +609,64 @@ function addon:EvaluateSearchResultFlag(resultID)
   local info = addon.LFG_API_GetSearchResultInfo and addon:LFG_API_GetSearchResultInfo(resultID) or nil
   if not info then return false, true end
 
+  local leaderInfo = addon.LFG_API_GetSearchResultLeaderInfo and addon:LFG_API_GetSearchResultLeaderInfo(resultID) or nil
+  local leaderName = (type(leaderInfo) == "table" and leaderInfo.name) or info.leaderName
+  if self.NormalizePlayerNameForClient then leaderName = self:NormalizePlayerNameForClient(leaderName) end
+
+  local function normalizeName(name)
+    if self.NormalizePlayerNameForClient then return self:NormalizePlayerNameForClient(name) end
+    return name
+  end
+
   local function isIgnoredSocialName(name)
+    name = normalizeName(name)
     if type(name) ~= "string" or name == "" or not self.ShouldIgnoreFilteredName then return false end
     local okIgnore, isIgnored = pcall(function() return self:ShouldIgnoreFilteredName(name) end)
     return okIgnore and isIgnored and true or false
   end
 
-  if isIgnoredSocialName(info.leaderName) then
-    self._lfgResultFlagCache[resultID] = false
-    self._lfgResultFlagReasons[resultID] = {}
-    return false, false
-  end
+  -- Retail historically treats a listing containing an ignored friend/guild member
+  -- as safe as a whole. Keep that behavior unchanged there. Forever exposes a
+  -- real per-member roster, so ignoring one social member must not suppress rule
+  -- checks for the leader and the rest of the composition.
+  local foreverClient = self.IsForeverClient and self:IsForeverClient() or false
+  if not foreverClient then
+    if isIgnoredSocialName(leaderName) then
+      self._lfgResultFlagCache[resultID] = false
+      self._lfgResultFlagReasons[resultID] = {}
+      return false, false
+    end
 
-  local preNumMembers = info.numMembers
-  local preNumKnown = CanReadValue(preNumMembers)
-  local preNum = preNumKnown and SafeNumber(preNumMembers, 0) or 0
-  if C_LFGList.GetSearchResultPlayerInfo then
-    for memberIndex = 1, preNum do
-      local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
-      if type(playerInfo) == "table" and isIgnoredSocialName(playerInfo.name) then
-        self._lfgResultFlagCache[resultID] = false
-        self._lfgResultFlagReasons[resultID] = {}
-        return false, false
+    local preNumMembers = info.numMembers
+    local preNumKnown = CanReadValue(preNumMembers)
+    local preNum = preNumKnown and SafeNumber(preNumMembers, 0) or 0
+    if preNum < 1 and leaderName then preNum = 1 end
+    if C_LFGList.GetSearchResultPlayerInfo then
+      for memberIndex = 1, preNum do
+        local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
+        if type(playerInfo) == "table" and isIgnoredSocialName(playerInfo.name) then
+          self._lfgResultFlagCache[resultID] = false
+          self._lfgResultFlagReasons[resultID] = {}
+          return false, false
+        end
       end
     end
   end
 
   local flagged = false
   local reasons = {}
-  local function testField(label, value)
+  local seen = {}
+  local function testField(label, value, isPlayerName)
+    if isPlayerName then value = normalizeName(value) end
     if not CanReadValue(value) or type(value) ~= "string" or value == "" then return false end
+    -- On Forever social-ignore applies to that player only; it must not hide
+    -- Cyrillic/rule matches belonging to other members of the same listing.
+    if isPlayerName and foreverClient and isIgnoredSocialName(value) then return false end
+    if isPlayerName then
+      local key = string.lower(value)
+      if seen[key] then return false end
+      seen[key] = true
+    end
     local ok, reason = self:GetFlagReason(value)
     if ok then
       flagged = true
@@ -618,17 +679,26 @@ function addon:EvaluateSearchResultFlag(resultID)
   -- 12.1: while a listing is censored the client withholds name/comment/voiceChat,
   -- so testing them would produce a false "clean" verdict. The row is recorded as
   -- censored instead, and only the fields that stay readable are checked.
-  -- The verdict is dropped again as soon as the player reveals the listing.
   self._lfgResultCensored = self._lfgResultCensored or {}
   local censored = self:LFG_IsSearchResultCensored(resultID, info)
   self._lfgResultCensored[resultID] = censored or nil
 
   if not censored then
-    testField(addon:Tr("LABEL_TITLE"), info.name)
-    testField(addon:Tr("LABEL_COMMENT"), info.comment)
-    testField(addon:Tr("LABEL_VOICE"), info.voiceChat)
+    testField(addon:Tr("LABEL_TITLE"), info.name, false)
+    testField(addon:Tr("LABEL_COMMENT"), info.comment, false)
+    testField(addon:Tr("LABEL_VOICE"), info.voiceChat, false)
   end
-  testField(addon:Tr("LABEL_LEADER"), info.leaderName)
+
+  -- Forever renders searchResultInfo.leaderName as the visible row title and
+  -- GetSearchResultLeaderInfo().name in the tooltip. Prefer the dedicated leader
+  -- API when available, then fall back to searchResultInfo.leaderName.
+  testField(addon:Tr("LABEL_LEADER"), leaderName, true)
+  if self.db and self.db.scan_group_guilds then
+    local leaderGuild = (type(leaderInfo) == "table" and leaderInfo.guildName) or info.leaderGuildName
+    if not (foreverClient and isIgnoredSocialName(leaderName)) then
+      testField(addon:Tr("LABEL_GUILD"), leaderGuild, false)
+    end
+  end
 
   if flagged then
     self._lfgResultFlagCache[resultID] = true
@@ -650,17 +720,23 @@ function addon:EvaluateSearchResultFlag(resultID)
   local numMembers = info.numMembers
   local numKnown = CanReadValue(numMembers)
   local num = numKnown and SafeNumber(numMembers, 0) or 0
+  if num < 1 and leaderName then num = 1 end
   local loaded = 0
   for memberIndex = 1, num do
     local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
     if type(playerInfo) == "table" then
-      local name = playerInfo.name
+      local name = normalizeName(playerInfo.name)
       local ignored = false
       if type(name) == "string" and self.ShouldIgnoreFilteredName then
         local okIgnore, isIgnored = pcall(function() return self:ShouldIgnoreFilteredName(name) end)
         ignored = okIgnore and isIgnored and true or false
       end
-      if not ignored and testField(addon:Tr("LABEL_MEMBER"), name) then
+      if not ignored and testField(addon:Tr("LABEL_MEMBER"), name, true) then
+        self._lfgResultFlagCache[resultID] = true
+        self._lfgResultFlagReasons[resultID] = reasons
+        return true, false
+      end
+      if not ignored and self.db and self.db.scan_group_guilds and testField(addon:Tr("LABEL_GUILD"), playerInfo.guildName, false) then
         self._lfgResultFlagCache[resultID] = true
         self._lfgResultFlagReasons[resultID] = reasons
         return true, false
@@ -711,7 +787,10 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
     return nil
   end
 
-  testName(addon:Tr("LABEL_LEADER"), info.leaderName)
+  local leaderInfo = addon.LFG_API_GetSearchResultLeaderInfo and addon:LFG_API_GetSearchResultLeaderInfo(resultID) or nil
+  local leaderName = (type(leaderInfo) == "table" and leaderInfo.name) or info.leaderName
+  if self.NormalizePlayerNameForClient then leaderName = self:NormalizePlayerNameForClient(leaderName) end
+  testName(addon:Tr("LABEL_LEADER"), leaderName)
 
   local numMembers = info.numMembers
   local numKnown = CanReadValue(numMembers)
@@ -722,6 +801,7 @@ function addon:LFG_EvaluateSearchResultSocial(resultID)
       local playerInfo = addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) or nil
       if type(playerInfo) == "table" then
         local name = playerInfo.name
+        if self.NormalizePlayerNameForClient then name = self:NormalizePlayerNameForClient(name) end
         testName(addon:Tr("LABEL_MEMBER"), name)
         if CanReadValue(name) and type(name) == "string" and name ~= "" then
           loaded = loaded + 1

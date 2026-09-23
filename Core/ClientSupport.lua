@@ -9,6 +9,33 @@ local function HasFunction(tbl, key)
   return type(tbl) == "table" and type(tbl[key]) == "function"
 end
 
+
+local function TrimText(value)
+  if type(value) ~= "string" then return nil end
+  value = value:gsub("^%s+", ""):gsub("%s+$", "")
+  return value ~= "" and value or nil
+end
+
+-- Forever's Group Finder identifies players by character nickname only.  It does
+-- not expose a reliable realm identity for search results, and forcing Retail's
+-- Name-Realm model onto those strings breaks social/rule matching.  Keep the
+-- client-specific identity policy in one place so every module sees the same
+-- player name while Retail remains realm-aware.
+function addon:NormalizePlayerNameForClient(name)
+  name = TrimText(name)
+  if not name then return nil end
+  if self:IsForeverClient() then
+    local nickname = name:match("^([^-]+)%-.+$")
+    nickname = TrimText(nickname)
+    if nickname then return nickname end
+  end
+  return name
+end
+
+function addon:UsesRealmQualifiedPlayerNames()
+  return not self:IsForeverClient()
+end
+
 function addon:RefreshClientCapabilities()
   local version, build, buildDate, interfaceVersion = nil, nil, nil, nil
   if type(GetBuildInfo) == "function" then
@@ -61,7 +88,7 @@ function addon:RefreshClientCapabilities()
   caps.lfgSearchMemberRules = caps.lfgSearchUI and caps.lfgSearchPlayerInfo
   caps.lfgSearchRoleNeeds = caps.lfgSearchUI and caps.lfgSearchMemberCounts
   caps.lfgSearchTooltips = caps.lfgSearchUI and caps.lfgSearchInfo
-  caps.lfgRealmInsights = caps.lfgSearchUI and caps.lfgLeaderInfo
+  caps.lfgRealmInsights = (not isForever) and caps.lfgSearchUI and caps.lfgLeaderInfo
   caps.lfgApplicantActions = (not isForever) and caps.lfgApplicants and caps.lfgDeclineApplicant
   caps.pgfIntegration = not isForever
   caps.partyUninvite = (type(C_PartyInfo) == "table" and HasFunction(C_PartyInfo, "UninviteUnit")) or type(UninviteUnit) == "function"

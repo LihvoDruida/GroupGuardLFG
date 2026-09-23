@@ -302,6 +302,7 @@ local function HookRealmRow(row)
 end
 
 function addon:LFG_PaintRealmBadge(row, resultID)
+  if self.HasClientCapability and not self:HasClientCapability("lfgRealmInsights") then return end
   local Safe = self.Safe
   if not (Safe and Safe.CanAccessObject and Safe.CanAccessObject(row)) then return end
   HideRealmBadge(row)
@@ -335,6 +336,7 @@ function addon:LFG_PaintRealmBadge(row, resultID)
 end
 
 function addon:LFG_AppendRealmInsightTooltip(tooltip, resultID)
+  if self.HasClientCapability and not self:HasClientCapability("lfgRealmInsights") then return end
   if not (self.db and self.db.lfg_tooltips and self.db.realm_insights) then return end
   if not tooltip or not resultID then return end
   local now = GetTime and GetTime() or 0
@@ -377,6 +379,10 @@ function addon:LFG_HideRealmDecorations()
 end
 
 function addon:LFG_InitRealmInsights()
+  if self.HasClientCapability and not self:HasClientCapability("lfgRealmInsights") then
+    if self.LFG_HideRealmDecorations then self:LFG_HideRealmDecorations() end
+    return
+  end
   local function schedule()
     if addon and addon.LFG_HideRealmDecorations then addon:LFG_HideRealmDecorations() end
     if addon and addon.RunDebounced then

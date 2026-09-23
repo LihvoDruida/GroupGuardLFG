@@ -85,7 +85,10 @@ function addon:CheckGroup()
       if self.Safe and self.Safe.GuildName then
         guild_name = self.Safe.GuildName(unit)
       end
-      local realmForExempt = server or (self.SafeText and self:SafeText(self.realm_name) or self.realm_name)
+      local realmForExempt
+      if not (self.IsForeverClient and self:IsForeverClient()) then
+        realmForExempt = server or (self.SafeText and self:SafeText(self.realm_name) or self.realm_name)
+      end
       local ignoreSocial = self:ShouldIgnoreFilteredUnit(unit, name, guild_name)
       if not ignoreSocial and not self:IsExemptUnit(name, realmForExempt, guild_name) then
         if self.db.scan_group_names and self:IsFlaggedText(name) then

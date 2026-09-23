@@ -859,7 +859,7 @@ function addon:InitSettingsPages()
     lfgInsightAnchor = AddCheck(lfgChild, lfgInsightAnchor, "Mute duplicate applicant ping while auto-decline is running", "lfg_mute_applicant_ping", function() SyncAll("lfg_mute_applicant_ping") end)
   end
   local lfgInsightNoteText = foreverClient
-    and "These options add hints directly to Forever LFG search results and tooltips. Applicant-only GG column controls are hidden because Forever has no Retail ApplicationViewer."
+    and "Forever uses nickname-only LFG identity. GroupGuard checks the visible leader and, when enabled, every available group member against the same rules and script detection. Realm controls are hidden because Forever does not expose reliable realm identity for these results."
     or "These options add small hints to the LFG window. The GG column shows the current dungeon key or raid progress when available. GroupGuard keeps the normal iLvl and Rating columns unchanged."
   local lfgInsightNote = AddNote(lfgChild, lfgInsightAnchor, lfgInsightNoteText)
 

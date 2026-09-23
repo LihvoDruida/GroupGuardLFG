@@ -141,6 +141,13 @@ function SafeNS.UnitFullName(unit)
     end
   end
   if not name or name == "" then return nil, nil, nil end
+  if addon.NormalizePlayerNameForClient then
+    name = addon:NormalizePlayerNameForClient(name) or name
+  end
+  -- Forever has no useful realm-qualified identity in its LFG workflow.  Keep
+  -- unit identity nickname-only there as well so group scans, raid tools and
+  -- social caches use exactly the same key as the Forever browser.
+  if addon.IsForeverClient and addon:IsForeverClient() then realm = nil end
   if realm and realm ~= "" then return name .. "-" .. realm, name, realm end
   return name, name, realm
 end
@@ -691,7 +698,14 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
     name = FirstSafeTableText(self, info, { "name" }),
     comment = FirstSafeTableText(self, info, { "comment" }),
     voiceChat = FirstSafeTableText(self, info, { "voiceChat" }),
-    leaderName = FirstSafeTableText(self, info, { "leaderName" }),
+    leaderName = (function()
+      local value = FirstSafeTableText(self, info, { "leaderName" })
+      return self.NormalizePlayerNameForClient and self:NormalizePlayerNameForClient(value) or value
+    end)(),
+    -- Not part of the documented Forever result contract today, but keep a
+    -- guarded capability probe so a client build that exposes it can feed the
+    -- same guild-name rules without a separate code path.
+    leaderGuildName = FirstSafeTableText(self, info, { "leaderGuildName", "guildName", "guild" }),
     numMembers = FirstSafeTableNumber(self, info, { "numMembers" }, nil),
     age = FirstSafeTableNumber(self, info, { "age" }, nil),
     numBNetFriends = FirstSafeTableNumber(self, info, { "numBNetFriends" }, 0) or 0,
@@ -724,11 +738,49 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
     }
   end
   return {
-    name = FirstSafeTableText(self, info, { "name", "memberName", "playerName", "fullName" }),
+    name = (function()
+      local value = FirstSafeTableText(self, info, { "name", "memberName", "playerName", "fullName" })
+      return self.NormalizePlayerNameForClient and self:NormalizePlayerNameForClient(value) or value
+    end)(),
     assignedRole = role, role = role, lfgRole = role,
     classFilename = classFile, classFileName = classFile, classFile = classFile,
     className = FirstSafeTableText(self, info, { "className", "localizedClass" }),
     specName = FirstSafeTableText(self, info, { "specName", "specializationName" }),
+    guildName = FirstSafeTableText(self, info, { "guildName", "guild" }),
+    lfgRoles = lfgRoles,
+    isLeader = self:SafeBool(SafeTableValue(self, info, "isLeader")),
+  }
+end
+
+function addon:LFG_API_GetSearchResultLeaderInfo(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not (C_LFGList and type(C_LFGList.GetSearchResultLeaderInfo) == "function" and resultID) then return nil end
+  local ok, info = pcall(C_LFGList.GetSearchResultLeaderInfo, resultID)
+  if not ok or not self:SafeCanAccessTable(info) then return nil end
+
+  local role = FirstSafeTableText(self, info, { "assignedRole", "role", "lfgRole" })
+  local classFile = FirstSafeTableText(self, info, { "classFilename", "classFileName", "classFile", "class" })
+  local name = FirstSafeTableText(self, info, { "name", "memberName", "playerName", "fullName" })
+  if self.NormalizePlayerNameForClient then name = self:NormalizePlayerNameForClient(name) end
+  local lfgRoles = nil
+  local rawRoles = SafeTableValue(self, info, "lfgRoles")
+  if self:SafeCanAccessTable(rawRoles) then
+    lfgRoles = {
+      tank = self:SafeBool(SafeTableValue(self, rawRoles, "tank")),
+      healer = self:SafeBool(SafeTableValue(self, rawRoles, "healer")),
+      dps = self:SafeBool(SafeTableValue(self, rawRoles, "dps")),
+    }
+  end
+
+  return {
+    name = name,
+    level = FirstSafeTableNumber(self, info, { "level" }, nil),
+    areaName = FirstSafeTableText(self, info, { "areaName" }),
+    assignedRole = role, role = role, lfgRole = role,
+    classFilename = classFile, classFileName = classFile, classFile = classFile,
+    className = FirstSafeTableText(self, info, { "className", "localizedClass" }),
+    specName = FirstSafeTableText(self, info, { "specName", "specializationName" }),
+    guildName = FirstSafeTableText(self, info, { "guildName", "guild" }),
     lfgRoles = lfgRoles,
     isLeader = self:SafeBool(SafeTableValue(self, info, "isLeader")),
   }
@@ -817,6 +869,7 @@ function addon:LFG_API_ClearCaches(scope)
   elseif scope == "search" then
     self._lfgAPICache.searchInfo = nil
     self._lfgAPICache.searchPlayer = nil
+    self._lfgAPICache.searchLeader = nil
     self._lfgAPICache.searchCounts = nil
   elseif scope == "activity" then
     self._lfgAPICache.activeEntry = nil
@@ -916,6 +969,16 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   return CacheSet(self, "searchPlayer", key, _rawGetSearchResultPlayerInfo(self, resultID, memberIndex), 0.65)
 end
 
+local _rawGetSearchResultLeaderInfo = addon.LFG_API_GetSearchResultLeaderInfo
+function addon:LFG_API_GetSearchResultLeaderInfo(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not resultID then return nil end
+  local key = resultID
+  local hit, value = CacheGet(self, "searchLeader", key)
+  if hit then return value end
+  return CacheSet(self, "searchLeader", key, _rawGetSearchResultLeaderInfo(self, resultID), 0.65)
+end
+
 local _rawGetSearchResultMemberCounts = addon.LFG_API_GetSearchResultMemberCounts
 function addon:LFG_API_GetSearchResultMemberCounts(resultID)
   resultID = self:SafeNumber(resultID, nil)
@@ -939,6 +1002,7 @@ addon.LFGRaw.GetApplicantDungeonScoreForListing = function(applicantID, memberIn
 addon.LFGRaw.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return _rawGetBestScore(addon, applicantID, memberIndex) end
 addon.LFGRaw.GetSearchResultInfo = function(resultID) return _rawGetSearchResultInfo(addon, resultID) end
 addon.LFGRaw.GetSearchResultPlayerInfo = function(resultID, memberIndex) return _rawGetSearchResultPlayerInfo(addon, resultID, memberIndex) end
+addon.LFGRaw.GetSearchResultLeaderInfo = function(resultID) return _rawGetSearchResultLeaderInfo(addon, resultID) end
 addon.LFGRaw.GetSearchResultMemberCounts = function(resultID) return _rawGetSearchResultMemberCounts(addon, resultID) end
 
 addon.LFG = addon.LFG or {}
@@ -951,6 +1015,7 @@ addon.LFG.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex
 addon.LFG.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex) end
 addon.LFG.GetSearchResultInfo = function(resultID) return addon:LFG_API_GetSearchResultInfo(resultID) end
 addon.LFG.GetSearchResultPlayerInfo = function(resultID, memberIndex) return addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) end
+addon.LFG.GetSearchResultLeaderInfo = function(resultID) return addon:LFG_API_GetSearchResultLeaderInfo(resultID) end
 addon.LFG.GetSearchResultMemberCounts = function(resultID) return addon:LFG_API_GetSearchResultMemberCounts(resultID) end
 
 -- 12.1 (Curse of Ula'tek): censored listings
@@ -1008,10 +1073,10 @@ function addon:LFG_ForgetSearchResult(resultID)
 
   local cache = self._lfgAPICache
   if cache then
-    for _, name in ipairs({ "searchInfo", "searchPlayer" }) do
+    for _, name in ipairs({ "searchInfo", "searchPlayer", "searchLeader" }) do
       local bucket = cache[name]
       if bucket then
-        if name == "searchInfo" then
+        if name == "searchInfo" or name == "searchLeader" then
           bucket.values[resultID] = nil
           bucket.expires[resultID] = nil
         else

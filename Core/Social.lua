@@ -22,6 +22,12 @@ end
 
 local function SplitNameRealm(name)
   if type(name) ~= "string" or name == "" then return nil, nil end
+  if addon and addon.IsForeverClient and addon:IsForeverClient() then
+    local player = addon.NormalizePlayerNameForClient and addon:NormalizePlayerNameForClient(name) or (name:match("^([^-]+)%-(.+)$") or name)
+    player = player and player:gsub("^%s+", ""):gsub("%s+$", "") or nil
+    if not player or player == "" then return nil, nil end
+    return player, nil
+  end
   local player, realm = name:match("^([^-]+)%-(.+)$")
   if not player then player = name end
   player = player and player:gsub("^%s+", ""):gsub("%s+$", "") or nil

@@ -127,12 +127,12 @@ local CYRILLIC_LOWER_MAP = {
 -- allocations) on every name, comment and member the LFG panels scanned.
 -- One table-driven gsub does the same work in a single pass, and pure-ASCII
 -- text skips it entirely.
-local CYRILLIC_BYTES = "[\208-\210][\128-\191]"
+local CYRILLIC_BYTES = "[\208-\212][\128-\191]"
 
 local function LowerLite(text)
   if type(text) ~= "string" or text == "" then return "" end
   text = string.lower(text)
-  if not string.find(text, "[\208-\210]") then return text end
+  if not string.find(text, "[\208-\212]") then return text end
   return (string.gsub(text, CYRILLIC_BYTES, CYRILLIC_LOWER_MAP))
 end
 
@@ -157,7 +157,7 @@ local function SplitRules(text)
 end
 
 local LANGUAGE_SCRIPT_DETECTORS = {
-  { key = "language_script_cyrillic", label = "Cyrillic", pattern = "[\208\209][\128-\191]" },
+  { key = "language_script_cyrillic", label = "Cyrillic", pattern = "[\208-\212][\128-\191]" },
   { key = "language_script_greek",    label = "Greek",    pattern = "[\206\207][\128-\191]" },
   { key = "language_script_arabic",   label = "Arabic",   pattern = "[\216\217][\128-\191]" },
   { key = "language_script_hebrew",   label = "Hebrew",   pattern = "\215[\144-\191]" },

@@ -75,7 +75,16 @@ local function FullNameFromUnit(unit, fallbackName, fallbackRealm)
   fallbackName = addon and addon.SafeText and addon:SafeText(fallbackName) or (type(fallbackName) == "string" and fallbackName or nil)
   fallbackRealm = addon and addon.SafeText and addon:SafeText(fallbackRealm) or (type(fallbackRealm) == "string" and fallbackRealm or nil)
   name = name or fallbackName
-  realm = realm or fallbackRealm
+  if addon and addon.NormalizePlayerNameForClient then
+    name = addon:NormalizePlayerNameForClient(name) or name
+  end
+
+  local foreverClient = addon and addon.IsForeverClient and addon:IsForeverClient() or false
+  if not foreverClient then
+    realm = realm or fallbackRealm
+  else
+    realm = nil
+  end
 
   if type(name) ~= "string" or name == "" then return nil end
   if type(realm) == "string" and realm ~= "" then
@@ -531,7 +540,10 @@ function addon:ScanGroupOffenders()
         socialKeys[key] = socialStatus
       end
 
-      local realm = server or (self.SafeText and self:SafeText(self.realm_name) or self.realm_name)
+      local realm = nil
+      if not (self.IsForeverClient and self:IsForeverClient()) then
+        realm = server or (self.SafeText and self:SafeText(self.realm_name) or self.realm_name)
+      end
       local exempt = self:IsExemptUnit(name, realm, guildName)
       local nameFlag = self.db.scan_group_names and self:IsFlaggedText(name)
       local guildFlag = self.db.scan_group_guilds and guildName and self:IsFlaggedText(guildName)

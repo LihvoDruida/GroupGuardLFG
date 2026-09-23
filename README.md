@@ -1,5 +1,17 @@
 # GroupGuard LFG
 
+## 4.8.8
+
+- Forever: use nickname-only player identity across LFG, social caches, group scans and raid/group tools; do not append or depend on realm names.
+- Forever: read the leader through `C_LFGList.GetSearchResultLeaderInfo()` when available and fall back to `GetSearchResultInfo().leaderName`.
+- Apply GroupGuard rules and Cyrillic/script detection to the visible Forever leader name and every available LFG member name.
+- Forever: social-ignore applies per player instead of exempting the entire listing, so a friend/guild member cannot hide a rule match on another roster member.
+- Use Blizzard Forever's native `ResultBG` row texture for rule/social highlighting so marked Cyrillic names are visibly highlighted instead of being hidden behind the row background.
+- Expand Cyrillic UTF-8 detection to the broader Cyrillic byte range used by modern character names.
+- Keep guild-name rule checks for party/raid members through `GetGuildInfo(unit)` and consume an LFG guild-name field only if a client build actually exposes one; arbitrary guild names are never guessed because the documented Forever search-result API does not provide them.
+- Hide/disable realm insight controls on Forever while preserving full realm-aware behavior on Retail.
+- Add a safe cached wrapper for `C_LFGList.GetSearchResultLeaderInfo()`.
+
 ## 4.8.7
 
 - Hide Retail-only applicant-management and Premade Groups Filter integration settings on WoW Forever.
