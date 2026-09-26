@@ -1,5 +1,5 @@
 local pass, fail = 0, 0
-local HARNESS_REVISION = "4.8.22"
+local HARNESS_REVISION = "4.8.23"
 print("[GroupGuardLFG] Forever filter regression harness " .. HARNESS_REVISION)
 
 local function check(name, ok, detail)
@@ -66,6 +66,20 @@ check("Player filter does not remove Groups category", addon:LFGFilters_ResultMa
 players[2] = nil
 check("Unavailable streamed player data fails open", addon:LFGFilters_ResultMatches(2, {}) == true)
 
+-- Multiple selections inside the Players block are alternatives within their
+-- own set, while class + role remain an AND between the two sets.
+infos[5] = { numMembers=1, activityIDs={101} }
+infos[6] = { numMembers=1, activityIDs={101} }
+infos[7] = { numMembers=1, activityIDs={101} }
+players[5] = { [1] = { classFilename="DRUID", assignedRole="DAMAGER", lfgRoles={healer=false,dps=true} } }
+players[6] = { [1] = { classFilename="MAGE", assignedRole="HEALER", lfgRoles={healer=true,dps=false} } }
+players[7] = { [1] = { classFilename="ROGUE", assignedRole="DAMAGER", lfgRoles={healer=false,dps=true} } }
+addon.db.lfg_filter_player_classes = { DRUID=true, MAGE=true }
+addon.db.lfg_filter_player_roles = { HEALER=true, DAMAGER=true }
+check("Players two classes use OR inside class selection", addon:LFGFilters_ResultMatches(5, {}) == true and addon:LFGFilters_ResultMatches(6, {}) == true)
+check("Players two roles use OR inside role selection", addon:LFGFilters_ResultMatches(5, {}) == true and addon:LFGFilters_ResultMatches(6, {}) == true)
+check("Players class set still rejects an unselected class", addon:LFGFilters_ResultMatches(7, {}) == false)
+
 
 print("\n--- Forever protected-state isolation ---")
 local protectedFrame = { results={11,12,13}, totalResults=3 }
@@ -117,6 +131,22 @@ end
 local joined=table.concat(flat, ",")
 check("nonmatching result is absent from visual tree", joined == "1,2,4", joined)
 check("self listing remains visible", joined:find("4",1,true) ~= nil)
+
+-- Interleaved Blizzard results must still produce exactly one native Groups
+-- block and one Players block. The previous transition-based builder created
+-- duplicate headers (Groups/Players/Groups/Players) after restrictive filters.
+local dividerCounts = { [1]=0, [2]=0 }
+for _, top in ipairs(provider.children) do
+  local divider = top.data and top.data.dividerType
+  if dividerCounts[divider] ~= nil then dividerCounts[divider] = dividerCounts[divider] + 1 end
+end
+check("visual tree contains one Groups divider", dividerCounts[2] == 1, dividerCounts[2])
+check("visual tree contains one Players divider", dividerCounts[1] == 1, dividerCounts[1])
+check("native category order remains Groups then Players",
+  provider.children[1] and provider.children[1].data and provider.children[1].data.dividerType == 2
+  and provider.children[2] and provider.children[2].data and provider.children[2].data.dividerType == 1)
+check("self listing is classified inside Players instead of becoming a stray top-level row",
+  provider.children[2] and #provider.children[2].children == 2)
 
 print("\n--- Filter launcher visibility regression ---")
 local function frame(parent)

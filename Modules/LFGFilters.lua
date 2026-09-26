@@ -358,40 +358,71 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   local soloDivider, groupDivider = GetForeverDividerTypes()
   local useDividers = _G.LFGVANILLA_SETTING_BROWSE_SHOW_COLLAPSIBLE_CATEGORIES ~= false
   local dataProvider = CreateTreeDataProvider()
-  local currentSubtree, currentCategory = nil, nil
   local visibleCount = 0
   local active = self:LFGFilters_HasActiveFilters()
 
+  -- Forever search results are not guaranteed to arrive grouped by result type.
+  -- Building a new divider whenever the category changes creates repeated
+  -- Groups / Players blocks for an interleaved sequence such as G,P,G,P. Keep
+  -- one bucket per native category and emit each divider at most once.
+  local flatElements = {}
+  local groupElements = {}
+  local soloElements = {}
+  local uncategorizedElements = {}
+  local seenResultIDs = {}
+
   for index = 1, #results do
     local resultID = self:SafeNumber(results[index], nil)
-    if resultID then
+    if resultID and not seenResultIDs[resultID] then
+      seenResultIDs[resultID] = true
       local info = self.LFG_API_GetSearchResultInfo and self:LFG_API_GetSearchResultInfo(resultID) or nil
       if type(info) == "table" then
         local show = (not active) or self:LFGFilters_ResultMatches(resultID, searchFrame)
         if info.hasSelf == true then show = true end
 
         if show then
-          visibleCount = visibleCount + 1
           local numMembers = tonumber(info.numMembers)
-          local dividerCategory = nil
-          if info.hasSelf ~= true and numMembers then
-            dividerCategory = numMembers <= 1 and soloDivider or groupDivider
-          end
-
-          if useDividers and dividerCategory and dividerCategory ~= currentCategory then
-            currentCategory = dividerCategory
-            currentSubtree = dataProvider:Insert({ index = nil, dividerType = dividerCategory })
-          end
-
+          local dividerCategory = numMembers and (numMembers <= 1 and soloDivider or groupDivider) or nil
           local element = { index = index, resultID = resultID, category = dividerCategory }
-          if currentSubtree then
-            currentSubtree:Insert(element)
+
+          visibleCount = visibleCount + 1
+          flatElements[#flatElements + 1] = element
+
+          if dividerCategory == groupDivider then
+            groupElements[#groupElements + 1] = element
+          elseif dividerCategory == soloDivider then
+            soloElements[#soloElements + 1] = element
           else
-            dataProvider:Insert(element)
+            -- Incomplete streamed metadata should not manufacture extra native
+            -- section headers. Keep the row standalone until Blizzard supplies
+            -- numMembers and a later refresh can classify it.
+            uncategorizedElements[#uncategorizedElements + 1] = element
           end
         end
       end
     end
+  end
+
+  if useDividers then
+    -- Match Forever's native visual order: Groups first, Players second.
+    -- A self listing still belongs to its real category; hasSelf only forces it
+    -- visible and no longer bypasses category classification.
+    for _, element in ipairs(uncategorizedElements) do
+      dataProvider:Insert(element)
+    end
+
+    if #groupElements > 0 then
+      local groupSubtree = dataProvider:Insert({ index = nil, dividerType = groupDivider })
+      for _, element in ipairs(groupElements) do groupSubtree:Insert(element) end
+    end
+
+    if #soloElements > 0 then
+      local soloSubtree = dataProvider:Insert({ index = nil, dividerType = soloDivider })
+      for _, element in ipairs(soloElements) do soloSubtree:Insert(element) end
+    end
+  else
+    -- With Blizzard category dividers disabled, retain the original result order.
+    for _, element in ipairs(flatElements) do dataProvider:Insert(element) end
   end
 
   -- Selection can point to an element from the old provider after a filter
