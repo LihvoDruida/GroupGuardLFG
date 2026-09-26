@@ -5,6 +5,14 @@ cd "$(dirname "$0")/.." || exit 1
 
 fail=0
 
+echo "=== GroupGuardLFG verification source ==="
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "HEAD: $(git rev-parse HEAD)"
+fi
+grep '^## Version:' GroupGuardLFG.toc GroupGuardLFG_Camelot.toc || true
+grep -n 'HARNESS_REVISION' tools/tests_lfgfilters_forever.lua || true
+echo
+
 LUAC="${LUAC:-}"
 LUA="${LUA:-}"
 

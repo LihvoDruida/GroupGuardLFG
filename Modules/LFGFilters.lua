@@ -828,11 +828,15 @@ function addon:LFGFilters_CreatePanel(root)
   panel:Hide()
 
   local title = panel.TitleText or (panel.TitleContainer and panel.TitleContainer.TitleText)
-  if not title then
+  if not title or type(title.SetText) ~= "function" then
     title = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    title:SetPoint("TOP", panel, "TOP", 0, -7)
+    if title and type(title.SetPoint) == "function" then
+      title:SetPoint("TOP", panel, "TOP", 0, -7)
+    end
   end
-  title:SetText(self:Tr("LFG_FILTERS_TITLE"))
+  if title and type(title.SetText) == "function" then
+    title:SetText(self:Tr("LFG_FILTERS_TITLE"))
+  end
 
   if not panel.CloseButton then
     local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")

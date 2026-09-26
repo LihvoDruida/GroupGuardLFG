@@ -1,4 +1,7 @@
 local pass, fail = 0, 0
+local HARNESS_REVISION = "4.8.22"
+print("[GroupGuardLFG] Forever filter regression harness " .. HARNESS_REVISION)
+
 local function check(name, ok, detail)
   if ok then pass = pass + 1; print("  ✓ " .. name)
   else fail = fail + 1; print("  ✗ " .. name .. (detail and (" -> " .. tostring(detail)) or "")) end

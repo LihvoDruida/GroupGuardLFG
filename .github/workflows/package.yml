@@ -35,6 +35,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Show checked out revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "HEAD=$(git rev-parse HEAD)"
+          grep '^## Version:' GroupGuardLFG.toc GroupGuardLFG_Camelot.toc
+          grep -n 'HARNESS_REVISION' tools/tests_lfgfilters_forever.lua || true
+
       - name: Validate addon structure
         shell: bash
         run: |
