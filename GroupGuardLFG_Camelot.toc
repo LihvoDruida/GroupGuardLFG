@@ -3,8 +3,8 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.8.11
-## X-Codename: Forever LFG taint isolation
+## Version: 4.8.12
+## X-Codename: Forever priority results
 ## X-Prev-Codename: Capability-aware settings and PartyInfo APIs
 ## OptionalDeps: Plumber, RaiderIO
 ## X-Compat-Plumber: passive-hooks-only
