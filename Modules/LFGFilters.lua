@@ -314,7 +314,6 @@ local function GetForeverResultIDFromRow(row)
   return nil
 end
 
-
 local function EnumerateForeverRows(scrollBox)
   local rows = {}
   if not scrollBox then return rows end
@@ -342,26 +341,90 @@ end
 -- totalResults: Blizzard reads those fields later and a tainted value can make
 -- the next completely native category click fail with ADDON_ACTION_BLOCKED.
 -- Apply the custom filter only to already-created row presentation instead.
+local function GetForeverDividerTypes()
+  local types = _G.LFGVanillaBrowseDividerType
+  if type(types) == "table" then
+    return types.CategorySolo or 1, types.CategoryGroup or 2
+  end
+  return 1, 2
+end
+
+-- Rebuild only Forever's visual ScrollBox provider. The authoritative search
+-- state (LFGBrowseFrame.results / totalResults) remains Blizzard-owned and is
+-- never rewritten by GroupGuard. This removes non-matching entries from the
+-- rendered tree completely, so they consume no row height and create no holes.
 function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
+  if searchFrame.searching then return false end
   local scrollBox = searchFrame.ScrollBox
-  if not scrollBox then return false end
+  if not scrollBox or type(CreateTreeDataProvider) ~= "function" then return false end
 
+  local results = searchFrame.results
+  if type(results) ~= "table" then return false end
+
+  local soloDivider, groupDivider = GetForeverDividerTypes()
+  local useDividers = _G.LFGVANILLA_SETTING_BROWSE_SHOW_COLLAPSIBLE_CATEGORIES ~= false
+  local dataProvider = CreateTreeDataProvider()
+  local currentSubtree, currentCategory = nil, nil
+  local visibleCount = 0
   local active = self:LFGFilters_HasActiveFilters()
-  local rows = EnumerateForeverRows(scrollBox)
-  for _, row in ipairs(rows) do
-    local match = true
-    if active then
-      local resultID = GetForeverResultIDFromRow(row)
-      if resultID then match = self:LFGFilters_ResultMatches(resultID, searchFrame) end
-    end
 
-    -- Do not Hide() recycled ScrollBox rows: hiding them leaves provider holes
-    -- and can confuse Blizzard's virtualization. Non-matches are visually
-    -- suppressed and made non-interactive while the provider remains Blizzard-owned.
-    if type(row.SetAlpha) == "function" then pcall(row.SetAlpha, row, match and 1 or 0.12) end
-    if type(row.EnableMouse) == "function" then pcall(row.EnableMouse, row, match) end
-    pcall(function() row._ggForeverFilterSuppressed = not match end)
+  for index = 1, #results do
+    local resultID = self:SafeNumber(results[index], nil)
+    if resultID then
+      local info = self.LFG_API_GetSearchResultInfo and self:LFG_API_GetSearchResultInfo(resultID) or nil
+      if type(info) == "table" then
+        local show = (not active) or self:LFGFilters_ResultMatches(resultID, searchFrame)
+        if info.hasSelf == true then show = true end
+
+        if show then
+          visibleCount = visibleCount + 1
+          local numMembers = tonumber(info.numMembers)
+          local dividerCategory = nil
+          if info.hasSelf ~= true and numMembers then
+            dividerCategory = numMembers <= 1 and soloDivider or groupDivider
+          end
+
+          if useDividers and dividerCategory and dividerCategory ~= currentCategory then
+            currentCategory = dividerCategory
+            currentSubtree = dataProvider:Insert({ index = nil, dividerType = dividerCategory })
+          end
+
+          local element = { index = index, resultID = resultID, category = dividerCategory }
+          if currentSubtree then
+            currentSubtree:Insert(element)
+          else
+            dataProvider:Insert(element)
+          end
+        end
+      end
+    end
+  end
+
+  -- Selection can point to an element from the old provider after a filter
+  -- change. Clear it before swapping only the presentation tree.
+  if searchFrame.selectionBehavior and type(searchFrame.selectionBehavior.ClearSelections) == "function" then
+    pcall(searchFrame.selectionBehavior.ClearSelections, searchFrame.selectionBehavior)
+  end
+
+  local retain = _G.ScrollBoxConstants and _G.ScrollBoxConstants.RetainScrollPosition or nil
+  self._ggForeverProviderApplying = true
+  local ok = pcall(scrollBox.SetDataProvider, scrollBox, dataProvider, retain)
+  self._ggForeverProviderApplying = false
+  if not ok then return false end
+
+  -- Native totalResults intentionally remains untouched. This status only
+  -- describes the filtered presentation and is never consumed by Search().
+  self._ggForeverVisibleResults = visibleCount
+  if searchFrame.NoResultsFound then
+    if visibleCount == 0 and not searchFrame.searchFailed then
+      searchFrame.NoResultsFound:Show()
+      if type(searchFrame.NoResultsFound.SetText) == "function" then
+        searchFrame.NoResultsFound:SetText(_G.LFG_LIST_NO_RESULTS_FOUND or self:Tr("LFG_FILTERS_NO_MATCHES"))
+      end
+    else
+      searchFrame.NoResultsFound:Hide()
+    end
   end
   return true
 end
@@ -374,7 +437,6 @@ function addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
   local function apply()
     if addon and addon._ggForeverPresentationToken == token then
       addon:LFGFilters_ApplyForeverPresentation(searchFrame)
-      addon:LFGFilters_UpdatePriorityPanel(searchFrame)
     end
   end
   if C_Timer and type(C_Timer.After) == "function" then
@@ -625,184 +687,6 @@ local function GetForeverSideTabWidth(root)
   return width
 end
 
-local PRIORITY_ROWS = 14
-local PRIORITY_ROW_HEIGHT = 22
-
-local function GetForeverRawResults()
-  if not (C_LFGList and type(C_LFGList.GetFilteredSearchResults) == "function") then return {} end
-  local ok, _, results = pcall(C_LFGList.GetFilteredSearchResults)
-  if not ok or type(results) ~= "table" then return {} end
-  return CopyArray(results)
-end
-
-function addon:LFGFilters_BuildForeverPriorityResults(searchFrame)
-  local raw = GetForeverRawResults()
-  local matched, other = {}, {}
-  for index, rawID in ipairs(raw) do
-    local resultID = self:SafeNumber(rawID, nil)
-    if resultID then
-      local info = self.LFG_API_GetSearchResultInfo and self:LFG_API_GetSearchResultInfo(resultID) or nil
-      local item = { resultID = resultID, sourceIndex = index, info = info }
-      if self:LFGFilters_ResultMatches(resultID, searchFrame) then
-        matched[#matched + 1] = item
-      else
-        other[#other + 1] = item
-      end
-    end
-  end
-  local out = {}
-  for _, item in ipairs(matched) do item.ggMatch = true; out[#out + 1] = item end
-  for _, item in ipairs(other) do item.ggMatch = false; out[#out + 1] = item end
-  return out, #matched, #other
-end
-
-function addon:LFGFilters_CreatePriorityPanel()
-  if self.lfgPriorityPanel then return self.lfgPriorityPanel end
-  local panel = CreateStandardPanel(UIParent)
-  panel:SetSize(330, 374)
-  panel:SetFrameStrata("DIALOG")
-  panel:SetClampedToScreen(true)
-  panel:EnableMouse(true)
-  panel:EnableMouseWheel(true)
-  panel:Hide()
-
-  local title = panel.TitleText or (panel.TitleContainer and panel.TitleContainer.TitleText)
-  if not title then
-    title = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    title:SetPoint("TOP", panel, "TOP", 0, -7)
-  end
-  title:SetText(self:Tr("LFG_PRIORITY_TITLE"))
-
-  if not panel.CloseButton then
-    local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
-    panel.CloseButton = close
-  end
-  panel.CloseButton:SetScript("OnClick", function() panel:Hide() end)
-
-  local help = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  help:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -34)
-  help:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -14, -34)
-  help:SetJustifyH("LEFT")
-  help:SetText(self:Tr("LFG_PRIORITY_HELP"))
-  panel.ggHelp = help
-
-  local count = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  count:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -70)
-  count:SetWidth(300)
-  count:SetJustifyH("LEFT")
-  panel.ggCount = count
-
-  panel.ggRows = {}
-  for i = 1, PRIORITY_ROWS do
-    local row = CreateFrame("Button", nil, panel)
-    row:SetHeight(PRIORITY_ROW_HEIGHT)
-    row:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -88 - (i - 1) * PRIORITY_ROW_HEIGHT)
-    row:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -88 - (i - 1) * PRIORITY_ROW_HEIGHT)
-    row:EnableMouse(true)
-
-    local bg = row:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(1, 1, 1, 0.035)
-    row.ggBG = bg
-
-    local marker = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    marker:SetPoint("LEFT", row, "LEFT", 4, 0)
-    marker:SetWidth(16)
-    marker:SetJustifyH("CENTER")
-    row.ggMarker = marker
-
-    local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    text:SetPoint("LEFT", marker, "RIGHT", 4, 0)
-    text:SetPoint("RIGHT", row, "RIGHT", -42, 0)
-    text:SetJustifyH("LEFT")
-    text:SetWordWrap(false)
-    row.ggText = text
-
-    local members = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    members:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-    members:SetWidth(36)
-    members:SetJustifyH("RIGHT")
-    row.ggMembers = members
-
-    row:SetScript("OnEnter", function(self)
-      if not self.ggItem or not GameTooltip then return end
-      local info = self.ggItem.info
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText((info and info.name) or ("Result " .. tostring(self.ggItem.resultID)))
-      if info and info.leaderName then GameTooltip:AddLine((addon:Tr("LABEL_LEADER") or "Leader") .. ": " .. info.leaderName, 1, 1, 1) end
-      if info and info.comment and info.comment ~= "" then GameTooltip:AddLine(info.comment, 0.85, 0.85, 0.85, true) end
-      GameTooltip:AddLine(self.ggItem.ggMatch and addon:Tr("LFG_PRIORITY_MATCH") or addon:Tr("LFG_PRIORITY_OTHER"), self.ggItem.ggMatch and 0.3 or 0.7, self.ggItem.ggMatch and 1 or 0.7, self.ggItem.ggMatch and 0.3 or 0.7)
-      GameTooltip:Show()
-    end)
-    row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    panel.ggRows[i] = row
-  end
-
-  panel.ggOffset = 0
-  panel:SetScript("OnMouseWheel", function(self, delta)
-    local maxOffset = math.max(0, (self.ggTotal or 0) - PRIORITY_ROWS)
-    self.ggOffset = math.max(0, math.min(maxOffset, (self.ggOffset or 0) - delta * 3))
-    if addon then addon:LFGFilters_UpdatePriorityPanel(_G.LFGBrowseFrame, true) end
-  end)
-
-  self.lfgPriorityPanel = panel
-  return panel
-end
-
-function addon:LFGFilters_LayoutPriorityPanel()
-  local panel = self.lfgPriorityPanel
-  local filterPanel = self.lfgFilterPanel
-  local root = self.GetLFGRootFrame and self:GetLFGRootFrame() or nil
-  if not panel or not root then return end
-  panel:ClearAllPoints()
-  if filterPanel and filterPanel:IsShown() then
-    panel:SetPoint("TOPLEFT", filterPanel, "TOPRIGHT", 8, 0)
-  else
-    local sideTabWidth = GetForeverSideTabWidth(root)
-    panel:SetPoint("TOPLEFT", root, "TOPRIGHT", sideTabWidth + FILTER_PANEL_SIDE_GAP, -8)
-  end
-end
-
-function addon:LFGFilters_UpdatePriorityPanel(searchFrame, keepOffset)
-  if not (self.IsForeverClient and self:IsForeverClient()) then return end
-  if searchFrame ~= _G.LFGBrowseFrame then return end
-  local panel = self:LFGFilters_CreatePriorityPanel()
-  if not panel then return end
-  local active = self:LFGFilters_HasActiveFilters()
-  if not active then panel:Hide(); return end
-
-  local items, matched, other = self:LFGFilters_BuildForeverPriorityResults(searchFrame)
-  panel.ggItems = items
-  panel.ggTotal = #items
-  if not keepOffset then panel.ggOffset = 0 end
-  panel.ggOffset = math.max(0, math.min(panel.ggOffset or 0, math.max(0, #items - PRIORITY_ROWS)))
-  panel.ggCount:SetText(self:Tr("LFG_PRIORITY_MATCH") .. ": " .. tostring(matched) .. "   •   " .. self:Tr("LFG_PRIORITY_OTHER") .. ": " .. tostring(other))
-
-  for i, row in ipairs(panel.ggRows) do
-    local item = items[(panel.ggOffset or 0) + i]
-    row.ggItem = item
-    if item then
-      local info = item.info
-      local name = info and info.name
-      if not name or name == "" then name = (info and info.leaderName) or ("#" .. tostring(item.resultID)) end
-      row.ggMarker:SetText(item.ggMatch and "▲" or "•")
-      row.ggText:SetText(name)
-      row.ggMembers:SetText(info and info.numMembers and tostring(info.numMembers) or "")
-      row:SetAlpha(item.ggMatch and 1 or 0.48)
-      row:Show()
-    else
-      row.ggMarker:SetText("")
-      row.ggText:SetText(i == 1 and #items == 0 and self:Tr("LFG_PRIORITY_EMPTY") or "")
-      row.ggMembers:SetText("")
-      row:SetAlpha(0.65)
-      row:SetShown(i == 1 and #items == 0)
-    end
-  end
-  self:LFGFilters_LayoutPriorityPanel()
-  panel:Show()
-end
-
 local function PositionForeverFilterButton(button, searchFrame)
   if not button or not searchFrame then return false end
   local optionsButton = searchFrame.OptionsButton
@@ -813,10 +697,18 @@ local function PositionForeverFilterButton(button, searchFrame)
     -- Blizzard's native options gear is LFGBrowseFrame.OptionsButton. Keep the
     -- custom filter control in the same header utility rail, directly below it.
     button:SetPoint("TOPRIGHT", optionsButton, "BOTTOMRIGHT", 0, -FILTER_BUTTON_VERTICAL_GAP)
+    if type(optionsButton.GetFrameStrata) == "function" and type(button.SetFrameStrata) == "function" then
+      local ok, strata = pcall(optionsButton.GetFrameStrata, optionsButton)
+      if ok and type(strata) == "string" and strata ~= "" then button:SetFrameStrata(strata) end
+    end
     if type(optionsButton.GetFrameLevel) == "function" and type(button.SetFrameLevel) == "function" then
       local ok, level = pcall(optionsButton.GetFrameLevel, optionsButton)
-      if ok and tonumber(level) then button:SetFrameLevel(tonumber(level)) end
+      if ok and tonumber(level) then button:SetFrameLevel(tonumber(level) + 20) end
     end
+    -- Explicitly show after re-anchoring. Some Forever builds recycle/hide
+    -- header utility controls while switching Browse categories. The GroupGuard
+    -- launcher is addon-owned and should not inherit that transient visibility.
+    if type(button.Show) == "function" then button:Show() end
     return true
   end
   return false
@@ -844,7 +736,6 @@ function addon:LFGFilters_OnChanged()
   self:LFGFilters_UpdateButtonState()
   self:LFGFilters_UpdateStatusText()
   self:LFGFilters_RefreshCurrentResults()
-  if _G.LFGBrowseFrame then self:LFGFilters_UpdatePriorityPanel(_G.LFGBrowseFrame) end
   if self.LFG_DebouncedHighlightResults then self:LFG_DebouncedHighlightResults(0.03) end
 end
 
@@ -1120,7 +1011,21 @@ function addon:LFGFilters_CreateButton(searchFrame)
 
   local canGroup = self.HasClientCapability and self:HasClientCapability("lfgSearchMemberCounts")
   local canPlayer = self.HasClientCapability and self:HasClientCapability("lfgSearchPlayerInfo")
-  button:SetShown(self.db and self.db.lfg_filters_enabled ~= false and (canGroup or canPlayer))
+  local isForeverBrowse = self.IsForeverClient and self:IsForeverClient() and searchFrame == _G.LFGBrowseFrame
+  -- The launcher must stay visible even when the filter master switch is off.
+  -- Hiding the only way back into the filter panel made a saved
+  -- lfg_filters_enabled=false state effectively irreversible from the LFG UI.
+  -- Capability probes can also be briefly false while Forever's
+  -- Blizzard_GroupFinder_VanillaStyle loads on demand, so the native Forever
+  -- browse frame itself is enough to expose the button.
+  local shouldShowButton = canGroup or canPlayer or isForeverBrowse
+  if type(button.SetShown) == "function" then
+    button:SetShown(shouldShowButton == true)
+  elseif shouldShowButton then
+    button:Show()
+  else
+    button:Hide()
+  end
   self:LFGFilters_UpdateButtonState()
   return button
 end
@@ -1143,11 +1048,9 @@ function addon:LFGFilters_HookFrames()
         addon:LFGFilters_CreateButton(searchFrame)
         addon:LFGFilters_LayoutPanel()
         if addon.db and addon.db.lfg_filter_panel_open and addon.lfgFilterPanel then addon.lfgFilterPanel:Show() end
-        if addon.LFGFilters_HasActiveFilters and addon:LFGFilters_HasActiveFilters() then addon:LFGFilters_UpdatePriorityPanel(searchFrame) end
       end)
       searchFrame:HookScript("OnHide", function()
         if addon.lfgFilterPanel then addon.lfgFilterPanel:Hide() end
-        if addon.lfgPriorityPanel then addon.lfgPriorityPanel:Hide() end
       end)
     end
   end
@@ -1177,7 +1080,9 @@ function addon:LFGFilters_HookFrames()
   -- row update, still without touching Blizzard's result data model.
   if not self._ggForeverRowFilterHooked and type(_G.LFGBrowseSearchEntry_Update) == "function" and type(hooksecurefunc) == "function" then
     local ok = pcall(hooksecurefunc, "LFGBrowseSearchEntry_Update", function()
-      if addon then addon:LFGFilters_ScheduleForeverPresentation(_G.LFGBrowseFrame) end
+      if addon and not addon._ggForeverProviderApplying then
+        addon:LFGFilters_ScheduleForeverPresentation(_G.LFGBrowseFrame)
+      end
     end)
     if ok then self._ggForeverRowFilterHooked = true end
   end
@@ -1201,8 +1106,10 @@ function addon:LFGFilters_DebugDump(limit)
     "frameHook=", tostring(self._ggForeverFrameFilterHooked == true),
     "mixinHook=", tostring(self._ggForeverFilterHooked == true),
     "active=", tostring(self:LFGFilters_HasActiveFilters()))
+  local shownCount = self._ggForeverVisibleResults
+  if shownCount == nil then shownCount = searchFrame and type(searchFrame.results) == "table" and #searchFrame.results or 0 end
   print((self.printPrefix or "GroupGuard LFG:"), "rawTotal=", tostring(total), "rawCount=", tostring(type(results) == "table" and #results or 0),
-    "shownCount=", tostring(searchFrame and type(searchFrame.results) == "table" and #searchFrame.results or 0))
+    "shownCount=", tostring(shownCount))
 
   if type(results) ~= "table" then return end
   if self.LFG_API_ClearCaches then self:LFG_API_ClearCaches("search") end

@@ -1,3 +1,12 @@
+### 4.8.16 — Forever native LFG filtering rebuild
+- Return to the stable 4.8.11 Forever filter architecture and keep the two native result categories independent: **Groups** use Dungeon Needs filters, while **Players** use class/role filters.
+- Remove the 4.8.15 behavior that applied player class/role matching across members of group listings.
+- Rebuild only the native Forever ScrollBox display provider after Blizzard finishes a search. Non-matching results are omitted from the visual tree completely, so they consume no row height and leave no empty gaps.
+- Keep `LFGBrowseFrame.results`, `totalResults`, dropdown state and protected `C_LFGList.Search()` Blizzard-owned and untouched.
+- Preserve Blizzard's native result order and native Groups/Players collapsible sections.
+- Restore the 16x16 GroupGuard filter button below `LFGBrowseFrame.OptionsButton` and raise it to the native button strata/frame level so it remains visible on current Forever builds.
+- Keep the filter button available while the load-on-demand Forever LFG capability probes are still initializing.
+
 
 ### 4.8.11 — Forever LFG taint isolation
 - Remove the Camelot `ForeverLoadGuard` that assigned a temporary value to Blizzard global `LFGWhoListFrame`.

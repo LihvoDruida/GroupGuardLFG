@@ -49,6 +49,10 @@ rm -f luac.out
   cd tools || exit 1
   "$LUA" tests_extra.lua
 ) || fail=1
+(
+  cd tools || exit 1
+  "$LUA" tests_lfgfilters_forever.lua
+) || fail=1
 
 [ "$fail" -eq 0 ] && echo "✓ all checks passed" || echo "✗ checks failed"
 exit "$fail"
