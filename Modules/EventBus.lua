@@ -272,9 +272,6 @@ local function OnEvent(self, event, arg1, ...)
         SafeInit("raid_assist", "ScheduleRaidAssist", 0.05, "addon_loaded")
       end
     elseif arg1 == "Blizzard_GroupFinder" or arg1 == "Blizzard_LookingForGroupUI" or arg1 == "Blizzard_GroupFinder_VanillaStyle" then
-      if arg1 == "Blizzard_GroupFinder_VanillaStyle" and addon.ForeverLoadGuard_RebindWhoListFrame then
-        pcall(addon.ForeverLoadGuard_RebindWhoListFrame, addon)
-      end
       -- Mainline and Forever group finders are load-on-demand and use different
       -- frame implementations. Re-probe capabilities after Blizzard creates them.
       SafeInit("client_capabilities", "RefreshClientCapabilities")

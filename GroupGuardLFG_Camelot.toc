@@ -3,8 +3,8 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.8.10
-## X-Codename: Strict dungeon role combinations
+## Version: 4.8.11
+## X-Codename: Forever LFG taint isolation
 ## X-Prev-Codename: Capability-aware settings and PartyInfo APIs
 ## OptionalDeps: Plumber, RaiderIO
 ## X-Compat-Plumber: passive-hooks-only
@@ -12,7 +12,6 @@
 ## X-Curse-Project-ID: 1573624
 ## SavedVariables: GroupGuardLFGDB
 
-Core\ForeverLoadGuard.lua
 Core\Bootstrap.lua
 Core\ClientSupport.lua
 Core\SafeAPI.lua

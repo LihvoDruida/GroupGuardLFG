@@ -1,4 +1,10 @@
 
+### 4.8.11 — Forever LFG taint isolation
+- Remove the Camelot `ForeverLoadGuard` that assigned a temporary value to Blizzard global `LFGWhoListFrame`.
+- Stop rebinding `LFGWhoListFrame` after `Blizzard_GroupFinder_VanillaStyle` loads. Writing to this Blizzard global can persistently taint the VanillaStyle LFG execution path and later block protected `Search()`.
+- Keep the 4.8.10 presentation-only filtering rules: no writes to `LFGBrowseFrame.results` / `totalResults` and no addon-driven Forever result rebuilds.
+- Retail behavior remains unchanged.
+
 ### 4.8.10 — Forever protected Search taint hotfix
 
 - Forever filters no longer overwrite `LFGBrowseFrame.results` / `totalResults`.
@@ -48,9 +54,9 @@
 
 ## 4.8.5
 
-- Forever: add an early Camelot-only load guard for Blizzard's `LFGWhoListFrame` initialization race.
+- Historical (removed in 4.8.11): added an early Camelot-only load guard for Blizzard's `LFGWhoListFrame` initialization race.
 - Prevent `LFGBrowseMixin:OnLoad()` from crashing when an active listing exists during `/reload` before Blizzard has loaded `WhoList.xml`.
-- Rebind the temporary compatibility object to Blizzard's real `LFGWhoListFrame` as soon as `Blizzard_GroupFinder_VanillaStyle` finishes loading.
+- Historical (removed in 4.8.11): rebound the temporary compatibility object to Blizzard's real `LFGWhoListFrame`.
 - Do not replace Blizzard secure frames or Group Finder functions; the guard exists only during the TOC load gap.
 - Add a recovery path for partially loaded Forever Group Finder sessions.
 
