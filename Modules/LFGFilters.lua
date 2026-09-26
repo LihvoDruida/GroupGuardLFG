@@ -980,6 +980,15 @@ function addon:LFGFilters_CreateButton(searchFrame)
   -- Blizzard_GroupFinder_VanillaStyle loads on demand, so the native Forever
   -- browse frame itself is enough to expose the button.
   local shouldShowButton = canGroup or canPlayer or isForeverBrowse
+  -- UIParent-parented Forever controls must follow the Browse frame lifecycle
+  -- explicitly, otherwise they remain on screen after Group Finder closes.
+  if isForeverBrowse then
+    if type(searchFrame.IsVisible) == "function" then
+      shouldShowButton = shouldShowButton and searchFrame:IsVisible()
+    elseif type(searchFrame.IsShown) == "function" then
+      shouldShowButton = shouldShowButton and searchFrame:IsShown()
+    end
+  end
   if type(button.SetShown) == "function" then
     button:SetShown(shouldShowButton == true)
   elseif shouldShowButton then
@@ -1005,6 +1014,21 @@ function addon:LFGFilters_HookFrames()
     local root = self.GetLFGRootFrame and self:GetLFGRootFrame() or nil
     self:LFGFilters_CreatePanel(root)
     self:LFGFilters_LayoutPanel()
+
+    -- Forever's launcher is parented to UIParent, so it does not inherit the
+    -- Group Finder root visibility. Mirror the root lifecycle explicitly to
+    -- prevent the icon from remaining on screen after the LFG window closes.
+    if root and not self._ggFilterRootVisibilityHooked and type(root.HookScript) == "function" then
+      self._ggFilterRootVisibilityHooked = true
+      root:HookScript("OnHide", function()
+        if addon.lfgFilterButton then addon.lfgFilterButton:Hide() end
+        if addon.lfgFilterPanel then addon.lfgFilterPanel:Hide() end
+      end)
+      root:HookScript("OnShow", function()
+        local activeSearch = addon.GetLFGSearchFrame and addon:GetLFGSearchFrame() or nil
+        if activeSearch then addon:LFGFilters_CreateButton(activeSearch) end
+      end)
+    end
     if searchFrame == _G.LFGBrowseFrame then
       self:LFGFilters_HookForeverFrame(searchFrame)
     end
@@ -1019,6 +1043,10 @@ function addon:LFGFilters_HookFrames()
       end)
       searchFrame:HookScript("OnHide", function()
         if addon.lfgFilterPanel then addon.lfgFilterPanel:Hide() end
+        -- The Forever launcher is parented to UIParent to avoid tainting the
+        -- protected LFG frame tree, so it will not inherit LFGBrowseFrame
+        -- visibility automatically. Hide it explicitly when Browse closes.
+        if addon.lfgFilterButton then addon.lfgFilterButton:Hide() end
       end)
     end
   end

@@ -124,8 +124,23 @@ local function frame(parent)
   function f:SetHitRectInsets() end
   function f:RegisterForClicks() end
   function f:SetScript(k,v) self.scripts[k]=v end
-  function f:HookScript() end
-  function f:CreateTexture() local t=frame(self); function t:SetColorTexture() end; return t end
+  function f:HookScript(k,v)
+    self.hooks = self.hooks or {}
+    self.hooks[k] = self.hooks[k] or {}
+    table.insert(self.hooks[k], v)
+  end
+  function f:RunHooks(k)
+    for _, fn in ipairs((self.hooks and self.hooks[k]) or {}) do fn(self) end
+  end
+  function f:CreateTexture()
+    local t=frame(self)
+    function t:SetColorTexture() end
+    function t:SetTexture(v) self.texture=v end
+    function t:SetTexCoord(...) self.texCoord={...} end
+    function t:SetVertexColor(...) self.vertexColor={...} end
+    function t:SetBlendMode(v) self.blendMode=v end
+    return t
+  end
   function f:CreateFontString() return frame(self) end
   function f:SetPoint(...) self.points={...} end
   function f:ClearAllPoints() self.points={} end
@@ -134,6 +149,11 @@ local function frame(parent)
   function f:Show() self.shown=true end
   function f:Hide() self.shown=false end
   function f:IsShown() return self.shown end
+  function f:IsVisible()
+    if not self.shown then return false end
+    if self.parent and type(self.parent.IsVisible) == "function" then return self.parent:IsVisible() end
+    return true
+  end
   function f:IsEnabled() return true end
   function f:SetFrameStrata(v) self.strata=v end
   function f:GetFrameStrata() return self.strata end
@@ -143,18 +163,39 @@ local function frame(parent)
 end
 UIParent=frame(nil); _G.UIParent=UIParent
 CreateFrame=function(_,_,parent) return frame(parent) end
+local lfgRoot=frame(nil); _G.LFGParentFrame=lfgRoot
 local options=frame(nil); options.level=30
-local browse=frame(nil); browse.OptionsButton=options
+local browse=frame(lfgRoot); browse.OptionsButton=options
 LFGBrowseFrame=browse; _G.LFGBrowseFrame=browse
 addon.lfgFilterButton=nil
 addon.db.lfg_filters_enabled=false
 addon.HasClientCapability=function() return false end
 addon.IsForeverClient=function() return true end
 local btn=addon:LFGFilters_CreateButton(browse)
+check("filter icon texture is assigned", btn and btn.Icon and btn.Icon.texture == "Interface\\AddOns\\GroupGuardLFG\\Media\\filter_funnel.tga", btn and btn.Icon and btn.Icon.texture)
 check("button remains visible when master filtering is disabled", btn and btn.shown == true)
 check("Forever button remains addon-owned under UIParent", btn and btn.parent == UIParent)
 check("button is anchored below Blizzard OptionsButton", btn and btn.points[2] == options and btn.points[3] == "BOTTOMRIGHT")
 check("button frame level is raised above options control", btn and btn.level > options.level, btn and btn.level)
+
+-- Hook the real lifecycle path, then emulate closing/reopening Group Finder.
+addon.GetLFGSearchFrame=function() return browse end
+addon.GetLFGRootFrame=function() return lfgRoot end
+addon:LFGFilters_HookFrames()
+lfgRoot.shown=false
+lfgRoot:RunHooks("OnHide")
+check("button hides when the LFG root closes", btn and btn.shown == false)
+lfgRoot.shown=true
+lfgRoot:RunHooks("OnShow")
+check("button returns when the LFG root reopens", btn and btn.shown == true)
+
+-- Also cover direct Browse hide/show while the root remains open.
+browse.shown=false
+browse:RunHooks("OnHide")
+check("button hides when Browse closes", btn and btn.shown == false)
+browse.shown=true
+browse:RunHooks("OnShow")
+check("button returns when Browse reopens", btn and btn.shown == true)
 
 print(string.format("\n=== Forever filter regression: %d passed, %d failed ===", pass, fail))
 os.exit(fail == 0 and 0 or 1)
