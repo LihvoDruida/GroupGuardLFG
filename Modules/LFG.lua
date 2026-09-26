@@ -287,8 +287,11 @@ end
 
 local function PaintGGHighlight(rowFrame, mode)
   if not rowFrame then return end
-  if PaintForeverNativeHighlight(rowFrame, mode) then
-    -- Hide an overlay left by an older build if the row was recycled.
+  if addon and addon.IsForeverClient and addon:IsForeverClient() then
+    -- Forever keeps Blizzard's native row chrome only. Never create GroupGuard
+    -- fill/top/bottom overlay textures here: those extra 1px lines were visible
+    -- on some VanillaStyle layouts and made the stock LFG list look modified.
+    PaintForeverNativeHighlight(rowFrame, mode)
     local oldHost = GetGGHighlightHost(rowFrame)
     if oldHost then
       local oldFill = SafeField(oldHost, "_ggHL")

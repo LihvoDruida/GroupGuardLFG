@@ -22,17 +22,10 @@ local ROLE_TEXT_KEY = {
 
 local FILTER_BUTTON_SIZE = 16
 local FILTER_BUTTON_ICON_SIZE = 16
-local FILTER_BUTTON_VERTICAL_GAP = 4
+local FILTER_BUTTON_VERTICAL_GAP = 5
 local FILTER_PANEL_SIDE_GAP = 8
 
--- The Forever client showed the bundled TGA as a solid green block on some
--- builds. Keep this control texture-free: the filter glyph is assembled from
--- tiny native color textures, so it is stable across Retail 12.x and Camelot
--- and still matches the bare Blizzard options-button visual language.
-local FILTER_GLYPH_NORMAL = { 0.78, 0.66, 0.34 }
-local FILTER_GLYPH_HOVER = { 1.00, 0.82, 0.00 }
-local FILTER_GLYPH_ACTIVE = { 1.00, 0.82, 0.00 }
-local FILTER_GLYPH_DISABLED = { 0.45, 0.45, 0.45 }
+local FILTER_ICON_TEXTURE = "Interface\\AddOns\\GroupGuardLFG\\Media\\filter_funnel.tga"
 
 local function SafeShown(frame)
   if not frame or type(frame.IsShown) ~= "function" then return false end
@@ -600,43 +593,12 @@ local function CreateStandardPanel(root)
   return panel
 end
 
-local function SetFilterGlyphColor(glyph, color)
-  if not glyph or type(glyph.ggParts) ~= "table" then return end
-  for _, part in ipairs(glyph.ggParts) do
-    if part and type(part.SetColorTexture) == "function" then
-      part:SetColorTexture(color[1], color[2], color[3], 1)
-    end
-  end
-end
-
-local function CreateFilterGlyph(button)
-  local glyph = CreateFrame("Frame", nil, button)
-  glyph:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE)
-  glyph:SetPoint("CENTER")
-  glyph.ggParts = {}
-
-  local function AddPart(width, height, x, y)
-    local shadow = glyph:CreateTexture(nil, "BACKGROUND")
-    shadow:SetSize(width, height)
-    shadow:SetPoint("CENTER", glyph, "CENTER", x + 1, y - 1)
-    shadow:SetColorTexture(0, 0, 0, 0.75)
-
-    local part = glyph:CreateTexture(nil, "ARTWORK")
-    part:SetSize(width, height)
-    part:SetPoint("CENTER", glyph, "CENTER", x, y)
-    part:SetColorTexture(FILTER_GLYPH_NORMAL[1], FILTER_GLYPH_NORMAL[2], FILTER_GLYPH_NORMAL[3], 1)
-    glyph.ggParts[#glyph.ggParts + 1] = part
-  end
-
-  -- Compact funnel/filter mark. It deliberately uses only WoW-created
-  -- textures rather than an external image, avoiding the solid-green texture
-  -- failure seen on some Forever/Camelot builds.
-  AddPart(12, 2, 0, 4)
-  AddPart(8, 2, 0, 1)
-  AddPart(5, 2, 0, -2)
-  AddPart(2, 5, 0, -5)
-
-  return glyph
+local function CreateFilterIcon(button)
+  local icon = button:CreateTexture(nil, "ARTWORK")
+  icon:SetTexture(FILTER_ICON_TEXTURE)
+  icon:SetSize(FILTER_BUTTON_ICON_SIZE, FILTER_BUTTON_ICON_SIZE)
+  icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+  return icon
 end
 
 local function UpdateFilterButtonIconState(button)
@@ -656,20 +618,18 @@ local function UpdateFilterButtonIconState(button)
     button.Icon:SetPoint("CENTER", button, "CENTER", 0, 0)
   end
 
-  -- Mirror Blizzard's small options gear: subdued at rest, fully visible on
-  -- hover/press. Active filters remain gold instead of using a colored square.
   if not enabled then
     button.Icon:SetAlpha(0.35)
-    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_DISABLED)
-  elseif button.ggHover or button.ggPressed then
-    button.Icon:SetAlpha(1.0)
-    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_HOVER)
+    if type(button.Icon.SetVertexColor) == "function" then button.Icon:SetVertexColor(0.55, 0.55, 0.55) end
   elseif active then
     button.Icon:SetAlpha(1.0)
-    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_ACTIVE)
+    if type(button.Icon.SetVertexColor) == "function" then button.Icon:SetVertexColor(1.0, 0.82, 0.0) end
+  elseif button.ggHover or button.ggPressed then
+    button.Icon:SetAlpha(1.0)
+    if type(button.Icon.SetVertexColor) == "function" then button.Icon:SetVertexColor(1.0, 1.0, 1.0) end
   else
-    button.Icon:SetAlpha(0.80)
-    SetFilterGlyphColor(button.Icon, FILTER_GLYPH_NORMAL)
+    button.Icon:SetAlpha(0.90)
+    if type(button.Icon.SetVertexColor) == "function" then button.Icon:SetVertexColor(0.90, 0.90, 0.90) end
   end
 end
 
@@ -697,17 +657,18 @@ local function PositionForeverFilterButton(button, searchFrame)
     -- Blizzard's native options gear is LFGBrowseFrame.OptionsButton. Keep the
     -- custom filter control in the same header utility rail, directly below it.
     button:SetPoint("TOPRIGHT", optionsButton, "BOTTOMRIGHT", 0, -FILTER_BUTTON_VERTICAL_GAP)
-    if type(optionsButton.GetFrameStrata) == "function" and type(button.SetFrameStrata) == "function" then
-      local ok, strata = pcall(optionsButton.GetFrameStrata, optionsButton)
-      if ok and type(strata) == "string" and strata ~= "" then button:SetFrameStrata(strata) end
-    end
+    -- Keep the addon-owned control independent of the protected browse hierarchy,
+    -- but guarantee that it renders above the header chrome on Forever.
+    if type(button.SetFrameStrata) == "function" then button:SetFrameStrata("HIGH") end
     if type(optionsButton.GetFrameLevel) == "function" and type(button.SetFrameLevel) == "function" then
       local ok, level = pcall(optionsButton.GetFrameLevel, optionsButton)
-      if ok and tonumber(level) then button:SetFrameLevel(tonumber(level) + 20) end
+      if ok and tonumber(level) then button:SetFrameLevel(math.max(100, tonumber(level) + 50)) end
     end
     -- Explicitly show after re-anchoring. Some Forever builds recycle/hide
     -- header utility controls while switching Browse categories. The GroupGuard
     -- launcher is addon-owned and should not inherit that transient visibility.
+    if type(button.EnableMouse) == "function" then button:EnableMouse(true) end
+    if type(button.SetAlpha) == "function" then button:SetAlpha(1) end
     if type(button.Show) == "function" then button:Show() end
     return true
   end
@@ -928,7 +889,7 @@ end
 function addon:LFGFilters_CreateButton(searchFrame)
   searchFrame = searchFrame or (self.GetLFGSearchFrame and self:GetLFGSearchFrame()) or nil
   if not searchFrame then return nil end
-  local desiredParent = (searchFrame == _G.LFGBrowseFrame and UIParent) or searchFrame
+  local desiredParent = (searchFrame == _G.LFGBrowseFrame and (UIParent or searchFrame)) or searchFrame
   if self.lfgFilterButton and self.lfgFilterButton:GetParent() ~= desiredParent then
     self.lfgFilterButton:Hide()
     self.lfgFilterButton:SetParent(desiredParent)
@@ -944,7 +905,7 @@ function addon:LFGFilters_CreateButton(searchFrame)
     if type(button.SetHitRectInsets) == "function" then button:SetHitRectInsets(-2, -2, -2, -2) end
     if type(button.RegisterForClicks) == "function" then button:RegisterForClicks("LeftButtonUp") end
 
-    local icon = CreateFilterGlyph(button)
+    local icon = CreateFilterIcon(button)
     icon:SetAlpha(0.8)
     button.Icon = icon
 
@@ -1034,6 +995,13 @@ function addon:LFGFilters_HookFrames()
   local searchFrame = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or nil
   if searchFrame then
     self:LFGFilters_CreateButton(searchFrame)
+    if searchFrame == _G.LFGBrowseFrame and searchFrame.OptionsButton
+        and not self._ggForeverOptionsButtonHooked and type(searchFrame.OptionsButton.HookScript) == "function" then
+      self._ggForeverOptionsButtonHooked = true
+      searchFrame.OptionsButton:HookScript("OnShow", function()
+        if addon then addon:LFGFilters_CreateButton(_G.LFGBrowseFrame) end
+      end)
+    end
     local root = self.GetLFGRootFrame and self:GetLFGRootFrame() or nil
     self:LFGFilters_CreatePanel(root)
     self:LFGFilters_LayoutPanel()
@@ -1140,5 +1108,6 @@ function addon:LFGFilters_Init()
   if C_Timer and C_Timer.After then
     C_Timer.After(0.10, function() if addon then addon:LFGFilters_HookFrames() end end)
     C_Timer.After(0.35, function() if addon then addon:LFGFilters_HookFrames() end end)
+    C_Timer.After(1.00, function() if addon then addon:LFGFilters_HookFrames() end end)
   end
 end
