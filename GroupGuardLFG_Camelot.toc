@@ -3,7 +3,7 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.8.20
+## Version: 4.8.21
 ## X-Codename: Forever native filter button cleanup
 ## X-Prev-Codename: Capability-aware settings and PartyInfo APIs
 ## OptionalDeps: Plumber, RaiderIO

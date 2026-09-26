@@ -121,6 +121,26 @@ local function frame(parent)
   function f:GetParent() return self.parent end
   function f:SetParent(p) self.parent=p end
   function f:SetSize(w,h) self.w=w self.h=h end
+  function f:SetWidth(w) self.w=w end
+  function f:SetHeight(h) self.h=h end
+  function f:GetWidth() return self.w or 0 end
+  function f:GetHeight() return self.h or 0 end
+  function f:SetText(v) self.text=v end
+  function f:GetText() return self.text end
+  function f:SetJustifyH(v) self.justifyH=v end
+  function f:SetJustifyV(v) self.justifyV=v end
+  function f:SetTextColor(...) self.textColor={...} end
+  function f:SetChecked(v) self.checked=v == true end
+  function f:GetChecked() return self.checked == true end
+  function f:EnableMouse(v) self.mouseEnabled = v ~= false end
+  function f:EnableMouseWheel(v) self.mouseWheelEnabled = v ~= false end
+  function f:SetMouseClickEnabled(v) self.mouseClickEnabled=v end
+  function f:SetMouseMotionEnabled(v) self.mouseMotionEnabled=v end
+  function f:SetPropagateMouseClicks(v) self.propagateMouseClicks=v end
+  function f:SetPropagateMouseMotion(v) self.propagateMouseMotion=v end
+  function f:SetClampedToScreen(v) self.clampedToScreen=v end
+  function f:SetBackdrop(v) self.backdrop=v end
+  function f:SetAtlas(v) self.atlas=v end
   function f:SetHitRectInsets() end
   function f:RegisterForClicks() end
   function f:SetScript(k,v) self.scripts[k]=v end
@@ -181,21 +201,25 @@ check("button frame level is raised above options control", btn and btn.level > 
 -- Hook the real lifecycle path, then emulate closing/reopening Group Finder.
 addon.GetLFGSearchFrame=function() return browse end
 addon.GetLFGRootFrame=function() return lfgRoot end
-addon:LFGFilters_HookFrames()
-lfgRoot.shown=false
-lfgRoot:RunHooks("OnHide")
-check("button hides when the LFG root closes", btn and btn.shown == false)
-lfgRoot.shown=true
-lfgRoot:RunHooks("OnShow")
-check("button returns when the LFG root reopens", btn and btn.shown == true)
+local hookOk, hookErr = pcall(function() addon:LFGFilters_HookFrames() end)
+check("filter lifecycle hooks install without mock UI errors", hookOk == true, hookErr)
+check("filter panel is created by the lifecycle path", hookOk and addon.lfgFilterPanel ~= nil)
+if hookOk then
+  lfgRoot.shown=false
+  lfgRoot:RunHooks("OnHide")
+  check("button hides when the LFG root closes", btn and btn.shown == false)
+  lfgRoot.shown=true
+  lfgRoot:RunHooks("OnShow")
+  check("button returns when the LFG root reopens", btn and btn.shown == true)
 
--- Also cover direct Browse hide/show while the root remains open.
-browse.shown=false
-browse:RunHooks("OnHide")
-check("button hides when Browse closes", btn and btn.shown == false)
-browse.shown=true
-browse:RunHooks("OnShow")
-check("button returns when Browse reopens", btn and btn.shown == true)
+  -- Also cover direct Browse hide/show while the root remains open.
+  browse.shown=false
+  browse:RunHooks("OnHide")
+  check("button hides when Browse closes", btn and btn.shown == false)
+  browse.shown=true
+  browse:RunHooks("OnShow")
+  check("button returns when Browse reopens", btn and btn.shown == true)
+end
 
 print(string.format("\n=== Forever filter regression: %d passed, %d failed ===", pass, fail))
 os.exit(fail == 0 and 0 or 1)
