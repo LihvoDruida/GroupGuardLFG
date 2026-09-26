@@ -292,9 +292,109 @@ function addon:LFGFilters_ResultMatches(resultID, searchFrame)
   return true
 end
 
+local function GetForeverResultIDFromRow(row)
+  if not row then return nil end
+  local direct = nil
+  if addon and addon.SafeObjectField then
+    direct = addon:SafeObjectField(row, "resultID")
+      or addon:SafeObjectField(row, "resultId")
+      or addon:SafeObjectField(row, "searchResultID")
+      or addon:SafeObjectField(row, "searchResultId")
+  end
+  direct = addon and addon.SafeNumber and addon:SafeNumber(direct, nil) or tonumber(direct)
+  if direct then return direct end
+
+  local ed = addon and addon.SafeGetElementData and addon:SafeGetElementData(row) or nil
+  if type(ed) ~= "table" then return nil end
+  for _, key in ipairs({ "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID" }) do
+    local value = ed[key]
+    value = addon and addon.SafeNumber and addon:SafeNumber(value, nil) or tonumber(value)
+    if value then return value end
+  end
+  return nil
+end
+
+local function EnumerateForeverRows(scrollBox)
+  local rows = {}
+  if not scrollBox then return rows end
+
+  if type(scrollBox.ForEachFrame) == "function" then
+    pcall(scrollBox.ForEachFrame, scrollBox, function(row)
+      if row then rows[#rows + 1] = row end
+    end)
+    return rows
+  end
+
+  if type(scrollBox.GetFrames) == "function" then
+    local ok, frames = pcall(scrollBox.GetFrames, scrollBox)
+    if ok and type(frames) == "table" then
+      for _, row in ipairs(frames) do rows[#rows + 1] = row end
+      return rows
+    end
+  end
+
+  return rows
+end
+
+-- Forever/Camelot calls C_LFGList.Search() from Blizzard's protected browse
+-- path. Never write addon-filtered values back into LFGBrowseFrame.results or
+-- totalResults: Blizzard reads those fields later and a tainted value can make
+-- the next completely native category click fail with ADDON_ACTION_BLOCKED.
+-- Apply the custom filter only to already-created row presentation instead.
+function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
+  if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
+  local scrollBox = searchFrame.ScrollBox
+  if not scrollBox then return false end
+
+  local active = self:LFGFilters_HasActiveFilters()
+  local rows = EnumerateForeverRows(scrollBox)
+  for _, row in ipairs(rows) do
+    local match = true
+    if active then
+      local resultID = GetForeverResultIDFromRow(row)
+      if resultID then match = self:LFGFilters_ResultMatches(resultID, searchFrame) end
+    end
+
+    -- Do not Hide() recycled ScrollBox rows: hiding them leaves provider holes
+    -- and can confuse Blizzard's virtualization. Non-matches are visually
+    -- suppressed and made non-interactive while the provider remains Blizzard-owned.
+    if type(row.SetAlpha) == "function" then pcall(row.SetAlpha, row, match and 1 or 0.12) end
+    if type(row.EnableMouse) == "function" then pcall(row.EnableMouse, row, match) end
+    pcall(function() row._ggForeverFilterSuppressed = not match end)
+  end
+  return true
+end
+
+function addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
+  searchFrame = searchFrame or _G.LFGBrowseFrame
+  if not searchFrame then return end
+  self._ggForeverPresentationToken = (self._ggForeverPresentationToken or 0) + 1
+  local token = self._ggForeverPresentationToken
+  local function apply()
+    if addon and addon._ggForeverPresentationToken == token then
+      addon:LFGFilters_ApplyForeverPresentation(searchFrame)
+    end
+  end
+  if C_Timer and type(C_Timer.After) == "function" then
+    C_Timer.After(0, apply)
+    C_Timer.After(0.05, apply)
+  else
+    apply()
+  end
+end
+
 function addon:LFGFilters_FilterFrameResults(searchFrame)
   if self._lfgFilterApplying then return end
-  if not searchFrame or type(searchFrame.results) ~= "table" then return end
+  if not searchFrame then return end
+
+  -- Forever must stay completely out of LFGBrowseFrame's data model. The
+  -- protected Search() path can consume these frame fields on a later click.
+  if searchFrame == _G.LFGBrowseFrame then
+    self:LFGFilters_ScheduleForeverPresentation(searchFrame)
+    return
+  end
+
+  if type(searchFrame.results) ~= "table" then return end
   if not self:LFGFilters_HasActiveFilters() then return end
 
   self._lfgFilterApplying = true
@@ -332,7 +432,7 @@ function addon:LFGFilters_HookForeverFrame(searchFrame)
   if type(searchFrame.UpdateResultList) ~= "function" then return false end
 
   local ok = pcall(hooksecurefunc, searchFrame, "UpdateResultList", function(frame)
-    if addon then addon:LFGFilters_FilterFrameResults(frame) end
+    if addon then addon:LFGFilters_ScheduleForeverPresentation(frame) end
   end)
   if ok then self._ggForeverFrameFilterHooked = true end
   return ok
@@ -343,24 +443,10 @@ end
 -- even if a mixin hook was installed after LFGBrowseFrame was constructed.
 function addon:LFGFilters_RefreshForeverResults(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
-  if not (C_LFGList and type(C_LFGList.GetFilteredSearchResults) == "function") then return false end
-
-  local ok, totalResults, results = pcall(C_LFGList.GetFilteredSearchResults)
-  if not ok or type(results) ~= "table" then return false end
-
-  local rawResults = CopyArray(results)
-  if type(_G.LFGBrowseUtil_SortSearchResults) == "function" then
-    pcall(_G.LFGBrowseUtil_SortSearchResults, rawResults)
-  end
-
-  searchFrame.totalResults = tonumber(totalResults) or #rawResults
-  searchFrame.results = rawResults
-
-  if self:LFGFilters_HasActiveFilters() then
-    self:LFGFilters_FilterFrameResults(searchFrame)
-  elseif type(searchFrame.UpdateResults) == "function" then
-    UpdateResultsPreservingScroll(searchFrame)
-  end
+  -- Presentation-only refresh. Never call GetFilteredSearchResults() and write
+  -- those values into Blizzard frame fields, and never invoke UpdateResults()
+  -- from addon code on Forever. Both patterns can propagate taint into Search().
+  self:LFGFilters_ScheduleForeverPresentation(searchFrame)
   return true
 end
 
@@ -369,18 +455,16 @@ function addon:LFGFilters_RefreshCurrentResults()
   local searchFrame = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or nil
   if not searchFrame then return end
 
-  -- Forever: mirror Blizzard's LFGBrowseMixin:UpdateResultList directly.
-  -- This path does not issue C_LFGList.Search(), so changing a local filter is
-  -- instant and cannot fail because of a late/missed mixin hook.
-  if searchFrame == _G.LFGBrowseFrame and self:LFGFilters_RefreshForeverResults(searchFrame) then
+  -- Forever: presentation-only. Never invoke Blizzard's browse rebuild from
+  -- insecure addon code; let the native search/category path own its state.
+  if searchFrame == _G.LFGBrowseFrame then
+    self:LFGFilters_RefreshForeverResults(searchFrame)
     return
   end
 
-  -- Always refetch Blizzard's unfiltered result list first. This lets unchecking
-  -- a filter restore rows without issuing another server-side search.
-  if searchFrame == _G.LFGBrowseFrame and type(searchFrame.UpdateResultList) == "function" then
-    pcall(searchFrame.UpdateResultList, searchFrame)
-  elseif _G.LFGListFrame and searchFrame == _G.LFGListFrame.SearchPanel and type(_G.LFGListSearchPanel_UpdateResultList) == "function" then
+  -- Retail can safely refetch its normal result list before applying the local
+  -- filter so unchecking a filter restores rows without a server-side search.
+  if _G.LFGListFrame and searchFrame == _G.LFGListFrame.SearchPanel and type(_G.LFGListSearchPanel_UpdateResultList) == "function" then
     pcall(_G.LFGListSearchPanel_UpdateResultList, searchFrame)
   end
 end
@@ -772,9 +856,10 @@ end
 function addon:LFGFilters_CreateButton(searchFrame)
   searchFrame = searchFrame or (self.GetLFGSearchFrame and self:GetLFGSearchFrame()) or nil
   if not searchFrame then return nil end
-  if self.lfgFilterButton and self.lfgFilterButton:GetParent() ~= searchFrame then
+  local desiredParent = (searchFrame == _G.LFGBrowseFrame and UIParent) or searchFrame
+  if self.lfgFilterButton and self.lfgFilterButton:GetParent() ~= desiredParent then
     self.lfgFilterButton:Hide()
-    self.lfgFilterButton:SetParent(searchFrame)
+    self.lfgFilterButton:SetParent(desiredParent)
   end
 
   local button = self.lfgFilterButton
@@ -782,7 +867,7 @@ function addon:LFGFilters_CreateButton(searchFrame)
     -- Intentionally no UIPanelButtonTemplate here. Forever's native options
     -- control is a bare 16x16 utility icon (LFGOptionsButton), not a square
     -- panel button. Our filter button mirrors that visual language.
-    button = CreateFrame("Button", "GroupGuardLFGFilterButton", searchFrame)
+    button = CreateFrame("Button", "GroupGuardLFGFilterButton", desiredParent)
     button:SetSize(FILTER_BUTTON_SIZE, FILTER_BUTTON_SIZE)
     if type(button.SetHitRectInsets) == "function" then button:SetHitRectInsets(-2, -2, -2, -2) end
     if type(button.RegisterForClicks) == "function" then button:RegisterForClicks("LeftButtonUp") end
@@ -899,9 +984,19 @@ function addon:LFGFilters_HookFrames()
       and type(_G.LFGBrowseMixin) == "table" and type(_G.LFGBrowseMixin.UpdateResultList) == "function"
       and type(hooksecurefunc) == "function" then
     local ok = pcall(hooksecurefunc, _G.LFGBrowseMixin, "UpdateResultList", function(frame)
-      if addon then addon:LFGFilters_FilterFrameResults(frame) end
+      if addon then addon:LFGFilters_ScheduleForeverPresentation(frame) end
     end)
     if ok then self._ggForeverFilterHooked = true end
+  end
+
+  -- Recycled ScrollBox rows are rebound while scrolling without necessarily
+  -- rebuilding the whole result list. Re-apply presentation filtering after a
+  -- row update, still without touching Blizzard's result data model.
+  if not self._ggForeverRowFilterHooked and type(_G.LFGBrowseSearchEntry_Update) == "function" and type(hooksecurefunc) == "function" then
+    local ok = pcall(hooksecurefunc, "LFGBrowseSearchEntry_Update", function()
+      if addon then addon:LFGFilters_ScheduleForeverPresentation(_G.LFGBrowseFrame) end
+    end)
+    if ok then self._ggForeverRowFilterHooked = true end
   end
 end
 

@@ -1,3 +1,11 @@
+
+### 4.8.10 — Forever protected Search taint hotfix
+
+- Forever filters no longer overwrite `LFGBrowseFrame.results` / `totalResults`.
+- Forever no longer invokes Blizzard browse result rebuild methods from addon code.
+- Filter presentation is applied only after Blizzard creates visible rows.
+- The Forever filter utility button is parented to `UIParent`, not the protected browse frame.
+- Retail filtering behavior remains unchanged.
 # GroupGuard LFG
 
 ## 4.8.9
