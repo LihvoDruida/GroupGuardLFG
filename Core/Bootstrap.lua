@@ -127,8 +127,13 @@ addon.DEFAULTS = {
   lfg_filters_enabled = true,
   lfg_filter_panel_open = false,
   lfg_filter_group_roles = { TANK = false, HEALER = false, DAMAGER = false },
+  lfg_filter_group_has_roles = { TANK = false, HEALER = false, DAMAGER = false },
   lfg_filter_player_roles = { TANK = false, HEALER = false, DAMAGER = false },
   lfg_filter_player_classes = {},
+  lfg_filter_player_min_level = 0,
+  lfg_filter_player_max_level = 0,
+  lfg_filter_social_priority = true,
+  lfg_filter_presets = {},
   lfg_highlight = true,
   lfg_highlight_search_members = true,
   lfg_button_text = "Decline LFG applications (%d)",
@@ -213,12 +218,23 @@ addon.L10N = {
     LFG_DECLINE_BUTTON_FMT = "Decline LFG applications (%d)",
     LFG_FILTERS = "Filters",
     LFG_FILTERS_TITLE = "GroupGuard Filters",
-    LFG_FILTERS_GROUP_TITLE = "Dungeons — group needs",
-    LFG_FILTERS_GROUP_HELP = "Show only groups that still need every selected role.",
-    LFG_FILTERS_PLAYER_TITLE = "Players — class & role",
-    LFG_FILTERS_PLAYER_HELP = "Show solo players that match a selected class AND a selected role.",
+    LFG_FILTERS_GROUP_TITLE = "Dungeons — composition",
+    LFG_FILTERS_GROUP_HELP = "Selected 'needs' and 'already has' roles are combined with AND.",
+    LFG_FILTERS_NEEDS = "Needs",
+    LFG_FILTERS_HAS = "Already has",
+    LFG_FILTERS_PLAYER_TITLE = "Players — class, role & level",
+    LFG_FILTERS_PLAYER_HELP = "Show solo players matching the selected class, role and level range.",
     LFG_FILTERS_CLASSES = "Classes",
     LFG_FILTERS_ROLES = "Roles",
+    LFG_FILTERS_LEVEL = "Level",
+    LFG_FILTERS_LEVEL_MIN = "Min",
+    LFG_FILTERS_LEVEL_MAX = "Max",
+    LFG_FILTERS_SOCIAL_FIRST = "Friends & guild first",
+    LFG_FILTERS_PRESETS = "My filters",
+    LFG_FILTERS_PRESET_NAME = "Preset name",
+    LFG_FILTERS_PRESET_SAVE = "Save",
+    LFG_FILTERS_PRESET_EMPTY = "No saved filters",
+    LFG_FILTERS_PRESET_LIMIT = "You can keep up to %d filters.",
     LFG_FILTERS_RESET = "Reset",
     LFG_FILTERS_ACTIVE = "Custom filters active",
     LFG_FILTERS_INACTIVE = "No custom filters",
@@ -279,6 +295,11 @@ addon.L10N = {
     LFG_INSIGHTS_COMP = "Composition: T %d / H %d / DPS %d",
     LFG_INSIGHTS_MEMBERS = "Members: %d",
     LFG_INSIGHTS_SOCIAL = "Social: BNet %d / Friends %d / Guild %d",
+    LFG_INSIGHTS_ZONE = "Zone: %s",
+    LFG_INSIGHTS_PLAYSTYLE = "Playstyle: %s",
+    LFG_INSIGHTS_PLAYER_LEVEL = "Player level: %d",
+    LFG_INSIGHTS_SUGGESTED_LEVEL = "Suggested level: %s",
+    LFG_INSIGHTS_ACTIVITY = "Activity: %s",
     LFG_INSIGHTS_CLASSES = "Classes",
     LFG_INSIGHTS_SHIFT = "Hold Shift for class breakdown",
     LFG_STATS_FMT = "Visible LFG rows: %d, marked: %d, friends: %d, guild: %d",
@@ -403,12 +424,23 @@ addon.L10N = {
     LFG_DECLINE_BUTTON_FMT = "Відхилити LFG-заявки (%d)",
     LFG_FILTERS = "Фільтри",
     LFG_FILTERS_TITLE = "Фільтри GroupGuard",
-    LFG_FILTERS_GROUP_TITLE = "Підземелля — потрібні ролі",
-    LFG_FILTERS_GROUP_HELP = "Показувати лише групи, яким ще потрібні всі вибрані ролі.",
-    LFG_FILTERS_PLAYER_TITLE = "Гравці — клас і роль",
-    LFG_FILTERS_PLAYER_HELP = "Показувати одиночних гравців, які одночасно відповідають вибраному класу І ролі.",
+    LFG_FILTERS_GROUP_TITLE = "Підземелля — склад групи",
+    LFG_FILTERS_GROUP_HELP = "Вибрані «потрібні» та «вже є» ролі поєднуються через І.",
+    LFG_FILTERS_NEEDS = "Потрібні",
+    LFG_FILTERS_HAS = "Вже є",
+    LFG_FILTERS_PLAYER_TITLE = "Гравці — клас, роль і рівень",
+    LFG_FILTERS_PLAYER_HELP = "Показувати одиночних гравців, що відповідають класу, ролі та діапазону рівнів.",
     LFG_FILTERS_CLASSES = "Класи",
     LFG_FILTERS_ROLES = "Ролі",
+    LFG_FILTERS_LEVEL = "Рівень",
+    LFG_FILTERS_LEVEL_MIN = "Мін",
+    LFG_FILTERS_LEVEL_MAX = "Макс",
+    LFG_FILTERS_SOCIAL_FIRST = "Друзі та гільдія першими",
+    LFG_FILTERS_PRESETS = "Мої фільтри",
+    LFG_FILTERS_PRESET_NAME = "Назва пресету",
+    LFG_FILTERS_PRESET_SAVE = "Зберегти",
+    LFG_FILTERS_PRESET_EMPTY = "Немає збережених фільтрів",
+    LFG_FILTERS_PRESET_LIMIT = "Можна зберегти до %d фільтрів.",
     LFG_FILTERS_RESET = "Скинути",
     LFG_FILTERS_ACTIVE = "Власні фільтри активні",
     LFG_FILTERS_INACTIVE = "Власні фільтри не задані",
@@ -469,6 +501,11 @@ addon.L10N = {
     LFG_INSIGHTS_COMP = "Склад: T %d / H %d / DPS %d",
     LFG_INSIGHTS_MEMBERS = "Учасників: %d",
     LFG_INSIGHTS_SOCIAL = "Соціальне: BNet %d / друзі %d / гільдія %d",
+    LFG_INSIGHTS_ZONE = "Зона: %s",
+    LFG_INSIGHTS_PLAYSTYLE = "Стиль гри: %s",
+    LFG_INSIGHTS_PLAYER_LEVEL = "Рівень гравця: %d",
+    LFG_INSIGHTS_SUGGESTED_LEVEL = "Рекомендований рівень: %s",
+    LFG_INSIGHTS_ACTIVITY = "Активність: %s",
     LFG_INSIGHTS_CLASSES = "Класи",
     LFG_INSIGHTS_SHIFT = "Утримуй Shift для розбивки класів",
     LFG_STATS_FMT = "Видимі LFG-рядки: %d, позначено: %d, друзі: %d, гільдія: %d",
@@ -655,8 +692,19 @@ function addon:EnsureDB()
   if self.db.lfg_filters_enabled == nil then self.db.lfg_filters_enabled = true end
   if self.db.lfg_filter_panel_open == nil then self.db.lfg_filter_panel_open = false end
   if type(self.db.lfg_filter_group_roles) ~= "table" then self.db.lfg_filter_group_roles = { TANK = false, HEALER = false, DAMAGER = false } end
+  if type(self.db.lfg_filter_group_has_roles) ~= "table" then self.db.lfg_filter_group_has_roles = { TANK = false, HEALER = false, DAMAGER = false } end
   if type(self.db.lfg_filter_player_roles) ~= "table" then self.db.lfg_filter_player_roles = { TANK = false, HEALER = false, DAMAGER = false } end
   if type(self.db.lfg_filter_player_classes) ~= "table" then self.db.lfg_filter_player_classes = {} end
+  self.db.lfg_filter_player_min_level = tonumber(self.db.lfg_filter_player_min_level) or 0
+  self.db.lfg_filter_player_max_level = tonumber(self.db.lfg_filter_player_max_level) or 0
+  if self.db.lfg_filter_player_min_level < 0 then self.db.lfg_filter_player_min_level = 0 end
+  if self.db.lfg_filter_player_max_level < 0 then self.db.lfg_filter_player_max_level = 0 end
+  if self.db.lfg_filter_player_min_level > 0 and self.db.lfg_filter_player_max_level > 0
+      and self.db.lfg_filter_player_min_level > self.db.lfg_filter_player_max_level then
+    self.db.lfg_filter_player_min_level, self.db.lfg_filter_player_max_level = self.db.lfg_filter_player_max_level, self.db.lfg_filter_player_min_level
+  end
+  if self.db.lfg_filter_social_priority == nil then self.db.lfg_filter_social_priority = true end
+  if type(self.db.lfg_filter_presets) ~= "table" then self.db.lfg_filter_presets = {} end
   if self.db.realm_insights == nil then self.db.realm_insights = true end
   if self.db.realm_badges == nil then self.db.realm_badges = true end
   if self.db.realm_same_locale_only == nil then self.db.realm_same_locale_only = true end

@@ -130,6 +130,30 @@ local function FormatAge(seconds)
   return string_format("%ds", seconds)
 end
 
+local function ReadPlaystyleWord(value)
+  if not CanReadValue(value) then return nil end
+  local playstyle = tonumber(value)
+  if playstyle == nil then return nil end
+  if type(GetGeneralPlaystyleString) == "function" then
+    local ok, word = pcall(GetGeneralPlaystyleString, playstyle)
+    if ok and type(word) == "string" and word ~= "" then return word end
+  end
+  return nil
+end
+
+local function FormatSuggestedLevel(activity)
+  if type(activity) ~= "table" then return nil end
+  local minLevel = SafeNumber(activity.minLevelSuggestion, 0)
+  local maxLevel = SafeNumber(activity.maxLevelSuggestion, 0)
+  if minLevel <= 0 and maxLevel <= 0 then return nil end
+  if minLevel > 0 and maxLevel > 0 then
+    if minLevel == maxLevel then return tostring(minLevel) end
+    return tostring(minLevel) .. "-" .. tostring(maxLevel)
+  end
+  if minLevel > 0 then return tostring(minLevel) .. "+" end
+  return "≤" .. tostring(maxLevel)
+end
+
 local function AddClassCount(classCounts, classFile, count)
   classFile = SafeText(classFile)
   if not classFile or classFile == "" then return end
@@ -228,11 +252,38 @@ function addon:LFG_BuildSearchInsight(resultID)
   local loadedPlayers = ReadMemberCountsFromPlayers(resultID, info, roleCounts, classCounts)
 
   local socialTotal = SafeNumber(info.numBNetFriends, 0) + SafeNumber(info.numCharFriends, 0) + SafeNumber(info.numGuildMates, 0)
+  local leaderInfo = addon and addon.LFG_API_GetSearchResultLeaderInfo and addon:LFG_API_GetSearchResultLeaderInfo(resultID) or nil
+  local areaName = SafeText(info.areaName) or (type(leaderInfo) == "table" and SafeText(leaderInfo.areaName) or nil)
+  local playstyleText = ReadPlaystyleWord(info.generalPlaystyle)
+
+  local playerLevel = nil
+  if SafeNumber(info.numMembers, 0) <= 1 then
+    local solo = addon and addon.LFG_API_GetSearchResultPlayerInfo and addon:LFG_API_GetSearchResultPlayerInfo(resultID, 1) or nil
+    if type(solo) == "table" then
+      playerLevel = SafeNumber(solo.level, nil)
+      areaName = areaName or SafeText(solo.areaName)
+    end
+  end
+
+  local activityName, suggestedLevel = nil, nil
+  local activityIDs = info.activityIDs
+  if type(activityIDs) == "table" and activityIDs[1] then
+    local activity = addon and addon.LFG_API_GetActivityInfoTable and addon:LFG_API_GetActivityInfoTable(activityIDs[1]) or nil
+    if type(activity) == "table" then
+      activityName = SafeText(activity.fullName) or SafeText(activity.shortName)
+      suggestedLevel = FormatSuggestedLevel(activity)
+    end
+  end
 
   local insight = {
     resultID = resultID,
     ageText = FormatAge(info.age),
     numMembers = SafeNumber(info.numMembers, 0),
+    areaName = areaName,
+    playstyleText = playstyleText,
+    playerLevel = playerLevel,
+    activityName = activityName,
+    suggestedLevel = suggestedLevel,
     roleCounts = roleCounts,
     classCounts = classCounts,
     loadedPlayers = loadedPlayers,
@@ -305,6 +356,31 @@ function addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
     tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_CREATED", insight.ageText), 0.82, 0.82, 0.82, true)
   end
 
+  if insight.areaName then
+    ensureHeader()
+    tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_ZONE", insight.areaName), 0.72, 0.88, 1.0, true)
+  end
+
+  if insight.playstyleText then
+    ensureHeader()
+    tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_PLAYSTYLE", insight.playstyleText), 0.82, 0.82, 0.82, true)
+  end
+
+  if insight.playerLevel and insight.playerLevel > 0 then
+    ensureHeader()
+    tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_PLAYER_LEVEL", insight.playerLevel), 0.82, 0.82, 0.82, true)
+  end
+
+  if insight.activityName then
+    ensureHeader()
+    tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_ACTIVITY", insight.activityName), 0.82, 0.82, 0.82, true)
+  end
+
+  if insight.suggestedLevel then
+    ensureHeader()
+    tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_SUGGESTED_LEVEL", insight.suggestedLevel), 0.82, 0.82, 0.82, true)
+  end
+
   if HasAnyRoleCounts(insight.roleCounts) then
     ensureHeader()
     tooltip:AddLine("• " .. self:Tr("LFG_INSIGHTS_COMP", insight.roleCounts.TANK or 0, insight.roleCounts.HEALER or 0, insight.roleCounts.DAMAGER or 0), 0.95, 0.88, 0.62, true)
@@ -337,6 +413,21 @@ function addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
     addon._lfgCurrentSearchResultID = resultID
     tooltip:Show()
   end
+end
+
+function addon:LFG_RefreshCurrentSearchTooltip(resultID)
+  resultID = tonumber(resultID)
+  if not resultID or self._lfgCurrentSearchResultID ~= resultID then return false end
+  local tooltip = self._lfgCurrentSearchTooltip
+  if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return false end
+  if tooltip.ClearLines then tooltip:ClearLines() end
+  if tooltip == _G.LFGBrowseSearchEntryTooltip and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
+    return pcall(LFGBrowseSearchEntryTooltip_UpdateAndShow, tooltip, resultID)
+  end
+  if type(LFGListUtil_SetSearchEntryTooltip) == "function" then
+    return pcall(LFGListUtil_SetSearchEntryTooltip, tooltip, resultID)
+  end
+  return false
 end
 
 function addon:LFG_HookEnhancedSearchTooltip()

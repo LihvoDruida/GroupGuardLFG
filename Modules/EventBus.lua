@@ -184,7 +184,8 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
     if applicantUI and addon._lfgRefreshApplicants and addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
     if applicantUI and addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
     if applicantUI and addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(nil) end
-    if addon._lfgRefreshResults and addon.LFGFilters_HasActiveFilters and addon:LFGFilters_HasActiveFilters() and addon.LFGFilters_RefreshCurrentResults then
+    local needsPresentation = addon.LFGFilters_NeedsPresentation and addon:LFGFilters_NeedsPresentation()
+    if addon._lfgRefreshResults and needsPresentation and addon.LFGFilters_RefreshCurrentResults then
       addon:LFGFilters_RefreshCurrentResults()
     end
     if addon._lfgRefreshResults and addon.LFG_DebouncedHighlightResults then addon:LFG_DebouncedHighlightResults(nil) end
@@ -369,10 +370,27 @@ local function OnEvent(self, event, arg1, ...)
     addon:RequestLFGRefresh(nil, false, false)
 
   elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
-    if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
-    -- Forever does not rebuild the whole browse list for every per-result update,
-    -- so re-evaluate local class/role filters here. Scroll position is preserved.
-    addon:RequestLFGRefresh(nil, false, true)
+    -- Forever's native row already redraws this result. Invalidate only the
+    -- affected result and rebuild our visual provider only when membership,
+    -- category or social priority actually changed. Retail keeps the broader
+    -- refresh path because its search panel lifecycle differs.
+    if addon.IsForeverClient and addon:IsForeverClient() then
+      local needsPresentation = addon.LFGFilters_NeedsPresentation and addon:LFGFilters_NeedsPresentation()
+      if needsPresentation and addon.LFGFilters_HandleForeverResultUpdated then
+        -- The targeted presentation handler owns this result's SafeAPI
+        -- invalidation so it can compare the previous and current row state.
+        addon:LFGFilters_HandleForeverResultUpdated(arg1)
+      elseif addon.LFG_ForgetSearchResult then
+        addon:LFG_ForgetSearchResult(arg1)
+      elseif addon.LFG_ClearSearchCaches then
+        addon:LFG_ClearSearchCaches()
+      end
+      if addon.LFG_HighlightSearchResult then addon:LFG_HighlightSearchResult(arg1) end
+      if addon.LFG_RefreshCurrentSearchTooltip then addon:LFG_RefreshCurrentSearchTooltip(arg1) end
+    else
+      if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
+      addon:RequestLFGRefresh(nil, false, true)
+    end
 
   -- 12.1: the player's own listing was censored, or they just revealed it.
   -- Either way the cached title/description verdict is stale.

@@ -65,6 +65,10 @@ function addon:RefreshClientCapabilities()
   caps.lfg = type(C_LFGList) == "table"
   caps.lfgSearch = caps.lfg and HasFunction(C_LFGList, "Search")
   caps.lfgSearchResults = caps.lfg and (HasFunction(C_LFGList, "GetFilteredSearchResults") or HasFunction(C_LFGList, "GetSearchResults"))
+  caps.lfgCategories = caps.lfg and HasFunction(C_LFGList, "GetAvailableCategories")
+  caps.lfgActivities = caps.lfg and HasFunction(C_LFGList, "GetAvailableActivities")
+  caps.lfgCategoryInfo = caps.lfg and HasFunction(C_LFGList, "GetLfgCategoryInfo")
+  caps.lfgActivityGroupInfo = caps.lfg and HasFunction(C_LFGList, "GetActivityGroupInfo")
   caps.lfgSearchInfo = caps.lfg and HasFunction(C_LFGList, "GetSearchResultInfo")
   caps.lfgSearchPlayerInfo = caps.lfg and HasFunction(C_LFGList, "GetSearchResultPlayerInfo")
   caps.lfgSearchMemberCounts = caps.lfg and HasFunction(C_LFGList, "GetSearchResultMemberCounts")
@@ -88,6 +92,8 @@ function addon:RefreshClientCapabilities()
   caps.lfgSearchMemberRules = caps.lfgSearchUI and caps.lfgSearchPlayerInfo
   caps.lfgSearchRoleNeeds = caps.lfgSearchUI and caps.lfgSearchMemberCounts
   caps.lfgSearchTooltips = caps.lfgSearchUI and caps.lfgSearchInfo
+  caps.lfgBrowseMetadata = caps.lfgCategories and caps.lfgActivities and caps.lfgCategoryInfo
+  caps.lfgActivityGroups = caps.lfgActivityGroupInfo
   caps.lfgRealmInsights = (not isForever) and caps.lfgSearchUI and caps.lfgLeaderInfo
   caps.lfgApplicantActions = (not isForever) and caps.lfgApplicants and caps.lfgDeclineApplicant
   caps.pgfIntegration = not isForever

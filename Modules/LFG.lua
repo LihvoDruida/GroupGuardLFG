@@ -1080,6 +1080,37 @@ function addon:LFG_HighlightSearchResults()
   end
 end
 
+function addon:LFG_HighlightSearchResult(resultID)
+  if not CanReadValue(resultID) then return false end
+  resultID = tonumber(resultID)
+  if not resultID then return false end
+  local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
+  local sb = sp and sp.ScrollBox
+  if not sb or (sp.IsVisible and not sp:IsVisible()) then return false end
+
+  local frames = EnumerateScrollBoxFrames(sb)
+  if not frames then return false end
+  for _, row in ipairs(frames) do
+    if GetResultIDFromRow(row) == resultID then
+      HookRecycledLFGRow(row)
+      if not self.db or not self.db.lfg_highlight then
+        PaintGGHighlight(row, nil)
+        return true
+      end
+      local mode = nil
+      local flagged = self:EvaluateSearchResultFlag(resultID)
+      if flagged then
+        mode = "FLAG"
+      elseif self.db.social_mark_lfg and self.LFG_EvaluateSearchResultSocial then
+        mode = self:LFG_EvaluateSearchResultSocial(resultID)
+      end
+      PaintGGHighlight(row, mode)
+      return true
+    end
+  end
+  return false
+end
+
 function addon:LFG_HookViewer()
   if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then return end
   local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
@@ -1171,8 +1202,15 @@ function addon:LFG_HookSearchPanel()
       end) or hooked
     end
     if type(LFGBrowseSearchEntry_Update) == "function" then
-      hooked = GGHook("LFGBrowseSearchEntry_Update", function()
-        addon:LFG_DebouncedHighlightResults(0.08)
+      hooked = GGHook("LFGBrowseSearchEntry_Update", function(row, resultID)
+        local rid = nil
+        if CanReadValue(resultID) then rid = tonumber(resultID) end
+        if not rid then rid = GetResultIDFromRow(row) end
+        if rid and addon.LFG_HighlightSearchResult then
+          addon:LFG_HighlightSearchResult(rid)
+        else
+          addon:LFG_DebouncedHighlightResults(0.08)
+        end
       end) or hooked
     end
     if hooked then addon._ggHookedSearchPanelForever = true end

@@ -1,5 +1,5 @@
 local pass, fail = 0, 0
-local HARNESS_REVISION = "4.8.23"
+local HARNESS_REVISION = "4.9.0"
 print("[GroupGuardLFG] Forever filter regression harness " .. HARNESS_REVISION)
 
 local function check(name, ok, detail)
@@ -18,8 +18,13 @@ local addon = {
   db = {
     lfg_filters_enabled = true,
     lfg_filter_group_roles = { TANK=false, HEALER=false, DAMAGER=false },
+    lfg_filter_group_has_roles = { TANK=false, HEALER=false, DAMAGER=false },
     lfg_filter_player_roles = { TANK=false, HEALER=false, DAMAGER=false },
     lfg_filter_player_classes = {},
+    lfg_filter_player_min_level = 0,
+    lfg_filter_player_max_level = 0,
+    lfg_filter_social_priority = true,
+    lfg_filter_presets = {},
   },
   SafeNumber = function(_, v, fallback) local n=tonumber(v); if n then return n end; return fallback end,
   SafeObjectField = function(_, obj, key) return obj and obj[key] end,
@@ -47,13 +52,33 @@ check("Groups Tank+Healer uses AND when both remain", addon:LFGFilters_ResultMat
 counts[1].HEALER_REMAINING = 0
 check("Groups rejects when one selected role is already filled", addon:LFGFilters_ResultMatches(1, {}) == false)
 
+addon.db.lfg_filter_group_roles = { TANK=false, HEALER=false, DAMAGER=false }
+addon.db.lfg_filter_group_has_roles = { TANK=true, HEALER=true, DAMAGER=false }
+counts[1] = { TANK=1, HEALER=1, DAMAGER=2 }
+check("Groups Has Tank+Healer requires both roles already present", addon:LFGFilters_ResultMatches(1, {}) == true)
+counts[1].HEALER = 0
+check("Groups Has Tank+Healer rejects when healer is absent", addon:LFGFilters_ResultMatches(1, {}) == false)
+addon.db.lfg_filter_group_has_roles = { TANK=false, HEALER=false, DAMAGER=false }
+
 infos[2] = { numMembers=1, activityIDs={101} }
-players[2] = { [1] = { classFilename="DRUID", assignedRole="HEALER", lfgRoles={tank=false,healer=true,dps=true} } }
+players[2] = { [1] = { classFilename="DRUID", assignedRole="HEALER", level=42, lfgRoles={tank=false,healer=true,dps=true} } }
 addon.db.lfg_filter_player_classes = { DRUID=true }
 addon.db.lfg_filter_player_roles = { HEALER=true }
 check("Players class+role matches same solo player", addon:LFGFilters_ResultMatches(2, {}) == true)
 addon.db.lfg_filter_player_classes = { MAGE=true }
 check("Players class mismatch rejects solo player", addon:LFGFilters_ResultMatches(2, {}) == false)
+addon.db.lfg_filter_player_classes = {}
+addon.db.lfg_filter_player_roles = {}
+addon.db.lfg_filter_player_min_level = 40
+addon.db.lfg_filter_player_max_level = 50
+check("Players level range accepts an in-range solo player", addon:LFGFilters_ResultMatches(2, {}) == true)
+addon.db.lfg_filter_player_min_level = 43
+check("Players minimum level rejects a lower solo player", addon:LFGFilters_ResultMatches(2, {}) == false)
+addon.db.lfg_filter_player_min_level = 50
+addon.db.lfg_filter_player_max_level = 40
+check("Players normalize a reversed level range", addon:LFGFilters_ResultMatches(2, {}) == true)
+addon.db.lfg_filter_player_min_level = 0
+addon.db.lfg_filter_player_max_level = 0
 
 addon.db.lfg_filter_group_roles = { TANK=true, HEALER=false, DAMAGER=false }
 addon.db.lfg_filter_player_classes = {}
@@ -129,7 +154,7 @@ for _, top in ipairs(provider.children) do
   for _, child in ipairs(top.children or {}) do if child.data and child.data.resultID then flat[#flat+1]=child.data.resultID end end
 end
 local joined=table.concat(flat, ",")
-check("nonmatching result is absent from visual tree", joined == "1,2,4", joined)
+check("nonmatching result is absent and own listing is prioritized", joined == "1,4,2", joined)
 check("self listing remains visible", joined:find("4",1,true) ~= nil)
 
 -- Interleaved Blizzard results must still produce exactly one native Groups
@@ -147,6 +172,47 @@ check("native category order remains Groups then Players",
   and provider.children[2] and provider.children[2].data and provider.children[2].data.dividerType == 1)
 check("self listing is classified inside Players instead of becoming a stray top-level row",
   provider.children[2] and #provider.children[2].children == 2)
+
+-- Social results keep native category grouping but move ahead of ordinary rows.
+infos[8] = { numMembers=3, activityIDs={101}, numGuildMates=0 }
+infos[9] = { numMembers=3, activityIDs={101}, numGuildMates=1 }
+counts[8] = { TANK_REMAINING=1 }
+counts[9] = { TANK_REMAINING=1 }
+LFGBrowseFrame.results = {8,9}
+addon.db.lfg_filter_group_roles = { TANK=true, HEALER=false, DAMAGER=false }
+addon.db.lfg_filter_player_classes = {}
+addon.db.lfg_filter_social_priority = true
+addon:LFGFilters_ApplyForeverPresentation(LFGBrowseFrame)
+local socialOrder = {}
+for _, top in ipairs(provider.children) do
+  for _, child in ipairs(top.children or {}) do
+    if child.data and child.data.resultID then socialOrder[#socialOrder+1]=child.data.resultID end
+  end
+end
+check("guild/friend listings are prioritized inside their category", table.concat(socialOrder, ",") == "9,8", table.concat(socialOrder, ","))
+
+print("\n--- Saved filter presets ---")
+addon.db.lfg_filter_group_roles = { TANK=true, HEALER=true, DAMAGER=false }
+addon.db.lfg_filter_group_has_roles = { TANK=false, HEALER=false, DAMAGER=true }
+addon.db.lfg_filter_player_roles = { HEALER=true }
+addon.db.lfg_filter_player_classes = { DRUID=true }
+addon.db.lfg_filter_player_min_level = 40
+addon.db.lfg_filter_player_max_level = 50
+check("named filter preset saves", addon:LFGFilters_SavePreset("Level heal") == true)
+addon.db.lfg_filter_group_roles = {}
+addon.db.lfg_filter_group_has_roles = {}
+addon.db.lfg_filter_player_roles = {}
+addon.db.lfg_filter_player_classes = {}
+addon.db.lfg_filter_player_min_level = 0
+addon.db.lfg_filter_player_max_level = 0
+check("named filter preset restores all filter dimensions", addon:LFGFilters_ApplyState(addon.db.lfg_filter_presets[1].filters) == true
+  and addon.db.lfg_filter_group_roles.TANK == true
+  and addon.db.lfg_filter_group_roles.HEALER == true
+  and addon.db.lfg_filter_group_has_roles.DAMAGER == true
+  and addon.db.lfg_filter_player_roles.HEALER == true
+  and addon.db.lfg_filter_player_classes.DRUID == true
+  and addon.db.lfg_filter_player_min_level == 40
+  and addon.db.lfg_filter_player_max_level == 50)
 
 print("\n--- Filter launcher visibility regression ---")
 local function frame(parent)
@@ -252,6 +318,31 @@ if hookOk then
   browse.shown=true
   browse:RunHooks("OnShow")
   check("button returns when Browse reopens", btn and btn.shown == true)
+
+  print("\n--- Per-result refresh optimization ---")
+  addon.db.lfg_filters_enabled = true
+  addon.HasClientCapability = function() return true end
+  addon.db.lfg_filter_group_roles = { TANK=true, HEALER=false, DAMAGER=false }
+  addon.db.lfg_filter_group_has_roles = {}
+  infos[1] = { numMembers=4, activityIDs={101} }
+  counts[1] = { TANK_REMAINING=1, TANK=0 }
+  local oldState = addon:LFGFilters_GetForeverPresentationState(1, browse, 1)
+  addon._ggForeverPresentationState = { [1] = oldState }
+  local rebuilds = 0
+  local savedSchedule = addon.LFGFilters_ScheduleForeverPresentation
+  addon.LFGFilters_ScheduleForeverPresentation = function() rebuilds = rebuilds + 1 end
+  addon:LFGFilters_HandleForeverResultUpdated(1)
+  check("unchanged result does not rebuild the provider", rebuilds == 0, rebuilds)
+  counts[1].TANK_REMAINING = 0
+  addon:LFGFilters_HandleForeverResultUpdated(1)
+  check("visibility change rebuilds the provider once", rebuilds == 1, rebuilds)
+  addon.LFGFilters_ScheduleForeverPresentation = savedSchedule
+
+  browse.shown=false
+  addon._ggForeverRefreshPending=false
+  addon:LFGFilters_ScheduleForeverPresentation(browse)
+  check("hidden Forever browse defers presentation work", addon._ggForeverRefreshPending == true)
+  browse.shown=true
 end
 
 print(string.format("\n=== Forever filter regression: %d passed, %d failed ===", pass, fail))

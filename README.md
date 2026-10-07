@@ -1,3 +1,13 @@
+### 4.9.0 — Forever search intelligence
+- Add safe Forever LFG metadata wrappers and capability probes for search results, categories, activities, activity groups, player level, zone and general playstyle.
+- Expand dungeon composition filters with independent **Needs** and **Already has** role sets; every selected composition condition is combined with AND.
+- Add solo-player **Min / Max level** filtering with fail-open handling while Forever result data is still streaming.
+- Add **My filters** named presets (up to 20) for group needs/has roles, player roles/classes and level range.
+- Add optional **Friends & guild first** ordering inside Blizzard's native Groups and Players sections while preserving the native result data model.
+- Add Zone, Playstyle, Player level, Activity and Suggested level details to GroupGuard search tooltips when the client exposes them.
+- Optimize Forever result updates: re-evaluate only the changed result, rebuild the visual provider only when visibility/category/social priority changes, and defer presentation refreshes while Browse is hidden.
+- Preserve the taint-safe architecture: GroupGuard never writes filtered values into `LFGBrowseFrame.results` / `totalResults` and never calls protected `C_LFGList.Search()` itself.
+
 ### 4.8.16 — Forever native LFG filtering rebuild
 - Return to the stable 4.8.11 Forever filter architecture and keep the two native result categories independent: **Groups** use Dungeon Needs filters, while **Players** use class/role filters.
 - Remove the 4.8.15 behavior that applied player class/role matching across members of group listings.
@@ -111,7 +121,8 @@ GroupGuard LFG helps you keep LFG applications, party members and raid members e
 - Can grant raid assistant to selected ranks, officers or named players.
 - Supports English and Ukrainian UI text.
 - Supports both modern **WoW 12.x** LFG and **WoW Forever 1.60.x** (`_Camelot.toc`).
-- Adds a stock-style search filter panel: dungeon groups can be filtered by roles they still need; solo player listings can be filtered by class and role.
+- Adds a stock-style search filter panel: dungeon groups can be filtered by roles they still need **and** roles already present; solo player listings can be filtered by class, role and level.
+- Supports named filter presets and optional friend/guild priority inside the native Forever Groups/Players sections.
 
 ## Design rules
 

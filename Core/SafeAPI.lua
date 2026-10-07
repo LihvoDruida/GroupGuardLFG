@@ -602,6 +602,8 @@ function addon:LFG_API_GetActivityInfoTable(activityID)
         itemLevel = FirstSafeTableNumber(self, info, { "itemLevel" }, nil),
         filters = FirstSafeTableNumber(self, info, { "filters" }, nil),
         minLevel = FirstSafeTableNumber(self, info, { "minLevel" }, nil),
+        minLevelSuggestion = FirstSafeTableNumber(self, info, { "minLevelSuggestion", "minLevel" }, nil),
+        maxLevelSuggestion = FirstSafeTableNumber(self, info, { "maxLevelSuggestion", "maxLevel" }, nil),
         maxNumPlayers = FirstSafeTableNumber(self, info, { "maxNumPlayers", "maxPlayers" }, nil),
         maxPlayers = FirstSafeTableNumber(self, info, { "maxNumPlayers", "maxPlayers" }, nil),
         displayType = FirstSafeTableNumber(self, info, { "displayType" }, nil),
@@ -715,6 +717,8 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
     hasSelf = self:SafeBool(SafeTableValue(self, info, "hasSelf")),
     isDelisted = self:SafeBool(SafeTableValue(self, info, "isDelisted")),
     newPlayerFriendly = self:SafeBool(SafeTableValue(self, info, "newPlayerFriendly")),
+    generalPlaystyle = FirstSafeTableNumber(self, info, { "generalPlaystyle" }, nil),
+    areaName = FirstSafeTableText(self, info, { "areaName" }),
     activityIDs = activityIDs,
   }, true
 end
@@ -746,6 +750,8 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
     classFilename = classFile, classFileName = classFile, classFile = classFile,
     className = FirstSafeTableText(self, info, { "className", "localizedClass" }),
     specName = FirstSafeTableText(self, info, { "specName", "specializationName" }),
+    level = FirstSafeTableNumber(self, info, { "level" }, nil),
+    areaName = FirstSafeTableText(self, info, { "areaName" }),
     guildName = FirstSafeTableText(self, info, { "guildName", "guild" }),
     lfgRoles = lfgRoles,
     isLeader = self:SafeBool(SafeTableValue(self, info, "isLeader")),
@@ -784,6 +790,85 @@ function addon:LFG_API_GetSearchResultLeaderInfo(resultID)
     lfgRoles = lfgRoles,
     isLeader = self:SafeBool(SafeTableValue(self, info, "isLeader")),
   }
+end
+
+function addon:LFG_API_GetSearchResults()
+  if not C_LFGList then return {}, 0 end
+  local fn = type(C_LFGList.GetSearchResults) == "function" and C_LFGList.GetSearchResults
+    or (type(C_LFGList.GetFilteredSearchResults) == "function" and C_LFGList.GetFilteredSearchResults)
+  if not fn then return {}, 0 end
+  local ok, first, second = pcall(fn)
+  if not ok then return {}, 0 end
+
+  -- Forever currently returns total, results. Keep the wrapper tolerant of
+  -- adjacent/backported clients that expose results, total or only results.
+  local total, rawResults = nil, nil
+  if self:SafeCanAccessTable(first) then
+    rawResults = first
+    total = self:SafeNumber(second, nil)
+  elseif self:SafeCanAccessTable(second) then
+    total = self:SafeNumber(first, nil)
+    rawResults = second
+  else
+    total = self:SafeNumber(first, nil)
+  end
+  local results = {}
+  if self:SafeCanAccessTable(rawResults) then
+    for i = 1, #rawResults do
+      local id = self:SafeNumber(SafeTableValue(self, rawResults, i), nil)
+      if id then results[#results + 1] = id end
+    end
+  end
+  total = self:SafeNumber(total, #results) or #results
+  return results, total
+end
+
+function addon:LFG_API_GetAvailableCategories()
+  if not (C_LFGList and type(C_LFGList.GetAvailableCategories) == "function") then return {} end
+  local ok, raw = pcall(C_LFGList.GetAvailableCategories)
+  if not ok or not self:SafeCanAccessTable(raw) then return {} end
+  local out = {}
+  for i = 1, #raw do
+    local id = self:SafeNumber(SafeTableValue(self, raw, i), nil)
+    if id then out[#out + 1] = id end
+  end
+  return out
+end
+
+function addon:LFG_API_GetAvailableActivities(categoryID, activityGroupID)
+  categoryID = self:SafeNumber(categoryID, nil)
+  activityGroupID = self:SafeNumber(activityGroupID, nil)
+  if not (C_LFGList and type(C_LFGList.GetAvailableActivities) == "function" and categoryID) then return {} end
+  local ok, raw = pcall(C_LFGList.GetAvailableActivities, categoryID, activityGroupID)
+  if not ok or not self:SafeCanAccessTable(raw) then return {} end
+  local out = {}
+  for i = 1, #raw do
+    local id = self:SafeNumber(SafeTableValue(self, raw, i), nil)
+    if id then out[#out + 1] = id end
+  end
+  return out
+end
+
+function addon:LFG_API_GetCategoryInfo(categoryID)
+  categoryID = self:SafeNumber(categoryID, nil)
+  if not (C_LFGList and type(C_LFGList.GetLfgCategoryInfo) == "function" and categoryID) then return nil end
+  local ok, info = pcall(C_LFGList.GetLfgCategoryInfo, categoryID)
+  if not ok or not self:SafeCanAccessTable(info) then return nil end
+  return {
+    categoryID = categoryID,
+    name = FirstSafeTableText(self, info, { "name" }),
+    separateRecommended = self:SafeBool(SafeTableValue(self, info, "separateRecommended")),
+    autoChooseActivity = self:SafeBool(SafeTableValue(self, info, "autoChooseActivity")),
+    showPlaystyleDropdown = self:SafeBool(SafeTableValue(self, info, "showPlaystyleDropdown")),
+  }
+end
+
+function addon:LFG_API_GetActivityGroupInfo(activityGroupID)
+  activityGroupID = self:SafeNumber(activityGroupID, nil)
+  if not (C_LFGList and type(C_LFGList.GetActivityGroupInfo) == "function" and activityGroupID) then return nil end
+  local ok, value = pcall(C_LFGList.GetActivityGroupInfo, activityGroupID)
+  if not ok then return nil end
+  return self:SafeText(value)
 end
 
 function addon:LFG_API_GetSearchResultMemberCounts(resultID)
@@ -1000,6 +1085,11 @@ addon.LFGRaw.GetActiveEntryInfo = function() return _rawGetActiveEntryInfo(addon
 addon.LFGRaw.GetActivityInfoTable = function(activityID) return _rawGetActivityInfoTable(addon, activityID) end
 addon.LFGRaw.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex, activityID) return _rawGetListingScore(addon, applicantID, memberIndex, activityID) end
 addon.LFGRaw.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return _rawGetBestScore(addon, applicantID, memberIndex) end
+addon.LFGRaw.GetSearchResults = function() return addon:LFG_API_GetSearchResults() end
+addon.LFGRaw.GetAvailableCategories = function() return addon:LFG_API_GetAvailableCategories() end
+addon.LFGRaw.GetAvailableActivities = function(categoryID, activityGroupID) return addon:LFG_API_GetAvailableActivities(categoryID, activityGroupID) end
+addon.LFGRaw.GetCategoryInfo = function(categoryID) return addon:LFG_API_GetCategoryInfo(categoryID) end
+addon.LFGRaw.GetActivityGroupInfo = function(activityGroupID) return addon:LFG_API_GetActivityGroupInfo(activityGroupID) end
 addon.LFGRaw.GetSearchResultInfo = function(resultID) return _rawGetSearchResultInfo(addon, resultID) end
 addon.LFGRaw.GetSearchResultPlayerInfo = function(resultID, memberIndex) return _rawGetSearchResultPlayerInfo(addon, resultID, memberIndex) end
 addon.LFGRaw.GetSearchResultLeaderInfo = function(resultID) return _rawGetSearchResultLeaderInfo(addon, resultID) end
@@ -1013,6 +1103,11 @@ addon.LFG.GetActiveEntryInfo = function() return addon:LFG_API_GetActiveEntryInf
 addon.LFG.GetActivityInfoTable = function(activityID) return addon:LFG_API_GetActivityInfoTable(activityID) end
 addon.LFG.GetApplicantDungeonScoreForListing = function(applicantID, memberIndex, activityID) return addon:LFG_API_GetApplicantDungeonScoreForListing(applicantID, memberIndex, activityID) end
 addon.LFG.GetApplicantBestDungeonScore = function(applicantID, memberIndex) return addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex) end
+addon.LFG.GetSearchResults = function() return addon:LFG_API_GetSearchResults() end
+addon.LFG.GetAvailableCategories = function() return addon:LFG_API_GetAvailableCategories() end
+addon.LFG.GetAvailableActivities = function(categoryID, activityGroupID) return addon:LFG_API_GetAvailableActivities(categoryID, activityGroupID) end
+addon.LFG.GetCategoryInfo = function(categoryID) return addon:LFG_API_GetCategoryInfo(categoryID) end
+addon.LFG.GetActivityGroupInfo = function(activityGroupID) return addon:LFG_API_GetActivityGroupInfo(activityGroupID) end
 addon.LFG.GetSearchResultInfo = function(resultID) return addon:LFG_API_GetSearchResultInfo(resultID) end
 addon.LFG.GetSearchResultPlayerInfo = function(resultID, memberIndex) return addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex) end
 addon.LFG.GetSearchResultLeaderInfo = function(resultID) return addon:LFG_API_GetSearchResultLeaderInfo(resultID) end
@@ -1073,10 +1168,10 @@ function addon:LFG_ForgetSearchResult(resultID)
 
   local cache = self._lfgAPICache
   if cache then
-    for _, name in ipairs({ "searchInfo", "searchPlayer", "searchLeader" }) do
+    for _, name in ipairs({ "searchInfo", "searchPlayer", "searchLeader", "searchCounts" }) do
       local bucket = cache[name]
       if bucket then
-        if name == "searchInfo" or name == "searchLeader" then
+        if name == "searchInfo" or name == "searchLeader" or name == "searchCounts" then
           bucket.values[resultID] = nil
           bucket.expires[resultID] = nil
         else
