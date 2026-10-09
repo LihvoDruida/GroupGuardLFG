@@ -555,6 +555,8 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   -- Native totalResults intentionally remains untouched. This status only
   -- describes the filtered presentation and is never consumed by Search().
   self._ggForeverVisibleResults = visibleCount
+  self._ggForeverPresentationProvider = dataProvider
+  self._ggForeverPresentationResults = results
   if searchFrame.NoResultsFound then
     if visibleCount == 0 and not searchFrame.searchFailed then
       searchFrame.NoResultsFound:Show()
@@ -566,6 +568,19 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
     end
   end
   return true
+end
+
+-- Return a count only for our currently installed visual provider and result list.
+function addon:LFGFilters_GetForeverVisibleCount()
+  local browse = _G.LFGBrowseFrame
+  if not browse or not SafeVisible(browse) then return nil, "browse hidden" end
+  if browse.searching or self._ggForeverRefreshPending then return nil, "presentation pending" end
+  if self._ggForeverPresentationResults ~= browse.results then return nil, "result list changed" end
+  local scrollBox = browse.ScrollBox
+  if not scrollBox or type(scrollBox.GetDataProvider) ~= "function" then return nil, "provider unavailable" end
+  local ok, provider = pcall(scrollBox.GetDataProvider, scrollBox)
+  if not ok or provider ~= self._ggForeverPresentationProvider or provider == nil then return nil, "provider replaced" end
+  return self._ggForeverVisibleResults
 end
 
 function addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
@@ -1160,6 +1175,7 @@ function addon:LFGFilters_RebuildPanelContents()
   Text("GameFontNormal", self:Tr("LFG_FILTERS_PLAYER_TITLE"), 8, -242, 294)
   Text("GameFontHighlightSmall", self:Tr("LFG_FILTERS_PLAYER_HELP"), 8, -262, 294)
 
+  local contentHeight = 340
   if playerAvailable then
     Text("GameFontNormalSmall", self:Tr("LFG_FILTERS_ROLES"), 8, -294, 294)
     local x = 26
@@ -1198,6 +1214,7 @@ function addon:LFGFilters_RebuildPanelContents()
 
     Text("GameFontNormalSmall", self:Tr("LFG_FILTERS_CLASSES"), 8, -389, 294)
     local classes = self:LFGFilters_GetAvailableClasses()
+    contentHeight = 404 + math.ceil(#classes / 2) * 21 + 12
     for index, classInfo in ipairs(classes) do
       local col = (index - 1) % 2
       local row = math.floor((index - 1) / 2)
@@ -1212,11 +1229,38 @@ function addon:LFGFilters_RebuildPanelContents()
     Text("GameFontDisableSmall", self:Tr("LFG_FILTERS_UNAVAILABLE"), 8, -294, 294)
   end
 
+  if panel.ggContentScroll then
+    content:SetHeight(contentHeight)
+    local scroll = panel.ggContentScroll
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+    scroll:SetVerticalScroll(math.min(scroll:GetVerticalScroll() or 0, scroll:GetVerticalScrollRange() or 0))
+  end
   self:LFGFilters_UpdateStatusText()
+end
+
+-- A secure Search child makes the Forever panel protected. Defer visibility and
+-- positioning changes until combat ends rather than writing protected frame state.
+local function PanelCombatLocked()
+  return addon.ForeverSearch and InCombatLockdown and InCombatLockdown()
+end
+
+function addon:LFGFilters_SetPanelShown(shown)
+  local panel = self.lfgFilterPanel
+  if not panel then return end
+  if PanelCombatLocked() then self._ggDeferredPanelShown = shown; return end
+  self._ggDeferredPanelShown = nil
+  if shown then panel:Show() else panel:Hide() end
+end
+
+function addon:LFGFilters_ApplyDeferredPanel()
+  if PanelCombatLocked() then return end
+  self:LFGFilters_LayoutPanel()
+  if self._ggDeferredPanelShown ~= nil then self:LFGFilters_SetPanelShown(self._ggDeferredPanelShown) end
 end
 
 function addon:LFGFilters_CreatePanel(root)
   if self.lfgFilterPanel then return self.lfgFilterPanel end
+  if PanelCombatLocked() then return nil end
   root = root or (self.GetLFGRootFrame and self:GetLFGRootFrame()) or UIParent
   if not root then return nil end
 
@@ -1224,7 +1268,9 @@ function addon:LFGFilters_CreatePanel(root)
   -- Forever's ScrollBox consumes wheel input; a child panel anchored outside the
   -- parent can otherwise bubble wheel events back into the browse list.
   local panel = CreateStandardPanel(UIParent or root)
-  panel:SetSize(336, 640)
+  local languageSearch = self.ForeverSearch
+  local languageHeight = languageSearch and languageSearch.AttachPanel and 72 or 0
+  panel:SetSize(languageHeight > 0 and 352 or 336, 640)
   panel:SetFrameStrata("DIALOG")
   if type(root.GetFrameLevel) == "function" and type(panel.SetFrameLevel) == "function" then
     local ok, level = pcall(root.GetFrameLevel, root)
@@ -1237,8 +1283,7 @@ function addon:LFGFilters_CreatePanel(root)
   if type(panel.SetMouseMotionEnabled) == "function" then panel:SetMouseMotionEnabled(true) end
   if type(panel.SetPropagateMouseClicks) == "function" then panel:SetPropagateMouseClicks(false) end
   if type(panel.SetPropagateMouseMotion) == "function" then panel:SetPropagateMouseMotion(false) end
-  -- Explicitly consume the wheel while the cursor is over the side panel. The
-  -- filter window itself has no scrollable content.
+  -- Consume panel wheel input; the embedded language layout installs its filter scroll handler below.
   if type(panel.SetScript) == "function" then panel:SetScript("OnMouseWheel", function() end) end
   panel:Hide()
   if type(panel.HookScript) == "function" then
@@ -1264,14 +1309,35 @@ function addon:LFGFilters_CreatePanel(root)
     panel.CloseButton = close
   end
   panel.CloseButton:SetScript("OnClick", function()
-    panel:Hide()
+    addon:LFGFilters_SetPanelShown(false)
     if panel.ggPresetPopup then panel.ggPresetPopup:Hide() end
     if addon.db then addon.db.lfg_filter_panel_open = false end
   end)
 
-  local content = CreateFrame("Frame", nil, panel)
-  content:SetPoint("TOPLEFT", panel, "TOPLEFT", 11, -31)
-  content:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -11, 43)
+  local content
+  if languageHeight > 0 then
+    languageSearch.AttachPanel(panel)
+    -- Keep the language row fixed while the existing long filter list scrolls.
+    local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 11, -31 - languageHeight)
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -27, 43)
+    content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(314, 560)
+    scroll:SetScrollChild(content)
+    scroll:EnableMouseWheel(true)
+    local function wheel(_, delta)
+      local current = scroll:GetVerticalScroll() or 0
+      local maximum = scroll:GetVerticalScrollRange() or 0
+      scroll:SetVerticalScroll(math.max(0, math.min(maximum, current - delta * 32)))
+    end
+    scroll:SetScript("OnMouseWheel", wheel)
+    panel:SetScript("OnMouseWheel", wheel)
+    panel.ggContentScroll = scroll
+  else
+    content = CreateFrame("Frame", nil, panel)
+    content:SetPoint("TOPLEFT", panel, "TOPLEFT", 11, -31)
+    content:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -11, 43)
+  end
   panel.ggContent = content
 
   local status = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
@@ -1293,6 +1359,7 @@ function addon:LFGFilters_CreatePanel(root)
 end
 
 function addon:LFGFilters_LayoutPanel()
+  if PanelCombatLocked() then return end
   local panel = self.lfgFilterPanel
   local root = self.GetLFGRootFrame and self:GetLFGRootFrame() or nil
   if not panel or not root then return end
@@ -1368,10 +1435,10 @@ function addon:LFGFilters_CreateButton(searchFrame)
       if not panel then return end
       addon:LFGFilters_LayoutPanel()
       if panel:IsShown() then
-        panel:Hide()
+        addon:LFGFilters_SetPanelShown(false)
         if addon.db then addon.db.lfg_filter_panel_open = false end
       else
-        panel:Show()
+        addon:LFGFilters_SetPanelShown(true)
         if addon.db then addon.db.lfg_filter_panel_open = true end
       end
     end)
@@ -1447,7 +1514,7 @@ function addon:LFGFilters_HookFrames()
       self._ggFilterRootVisibilityHooked = true
       root:HookScript("OnHide", function()
         if addon.lfgFilterButton then addon.lfgFilterButton:Hide() end
-        if addon.lfgFilterPanel then addon.lfgFilterPanel:Hide() end
+        if addon.lfgFilterPanel then addon:LFGFilters_SetPanelShown(false) end
       end)
       root:HookScript("OnShow", function()
         local activeSearch = addon.GetLFGSearchFrame and addon:GetLFGSearchFrame() or nil
@@ -1467,10 +1534,10 @@ function addon:LFGFilters_HookFrames()
         if addon._ggForeverRefreshPending and searchFrame == _G.LFGBrowseFrame then
           addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
         end
-        if addon.db and addon.db.lfg_filter_panel_open and addon.lfgFilterPanel then addon.lfgFilterPanel:Show() end
+        if addon.db and addon.db.lfg_filter_panel_open and addon.lfgFilterPanel then addon:LFGFilters_SetPanelShown(true) end
       end)
       searchFrame:HookScript("OnHide", function()
-        if addon.lfgFilterPanel then addon.lfgFilterPanel:Hide() end
+        if addon.lfgFilterPanel then addon:LFGFilters_SetPanelShown(false) end
         -- The Forever launcher is parented to UIParent to avoid tainting the
         -- protected LFG frame tree, so it will not inherit LFGBrowseFrame
         -- visibility automatically. Hide it explicitly when Browse closes.

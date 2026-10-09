@@ -1,3 +1,71 @@
+### 4.9.4 — Search recovery and dispatch diagnostics
+
+Fix the live log sequence: request #4 timed out, then #5–#10 all remained
+“language unconfirmed” despite receiving responses. Uncertainty now belongs to
+that response window. The first ambiguous response still carries a warning;
+its terminal event clears the window, so later searches start clean. Failures
+and late responses received without a new pending request also clear it.
+
+A post-hook now records **Dispatch** with the actual category, activities and
+language argument passed to `C_LFGList.Search`. Preparing a secure action is no
+longer logged as evidence that it executed. If PostClick observes no matching
+API invocation, the panel immediately says **Search was not sent**, clears the
+pending attempt and allows a manual retry. No timeout uncertainty is created
+for an unsent click. Synchronous responses remain supported.
+
+View diagnostics wait for the queued presentation passes and report a count
+only when our provider is still installed for the current native result list.
+A stale/replaced provider is reported as **not settled** instead of a misleading
+cached count. The server API exposes no response request ID in this event;
+“Search complete” describes completion of the observed active search, not an
+independent verification of each listing's language or the player's name.
+
+The same filter panel, language selector, secure Search button, saved settings
+and group/player filters remain in place. Replace the complete GroupGuardLFG
+folder and reload the UI to discard the old controller's session state.
+
+### 4.9.3 — Protected search fix
+
+Fix the reported `ADDON_ACTION_BLOCKED / UNKNOWN()` at `ForeverSearch/Search.lua`.
+The existing **Search** button now inherits Blizzard's `SecureActionButtonTemplate`.
+PreClick validates the selection and prepares a native macro containing only numeric
+activity/category IDs and whitelisted locale booleans. Blizzard's inherited OnClick
+executes it from the player's click; GroupGuard no longer invokes the protected
+`C_LFGList.Search` from addon Lua, `pcall`, timers or diagnostic commands.
+PostClick clears the action. No custom globals or addon callbacks run in the macro.
+
+The language selector remains in the existing filter panel. Groups, players, saved
+selections and existing role/class/level filters use the same behavior as 4.9.2.
+Synchronous or delayed `UNKNOWN()` rejection associated with our pending search
+ends the attempt and disables further attempts until UI reload. Combat guards defer
+protected panel visibility/position changes. An unavailable macro API or oversized
+request disables that attempt instead of falling back to a direct protected call.
+
+Replace the complete `Interface/AddOns/GroupGuardLFG` folder and restart WoW
+(or `/reload` after replacing files). Keep your saved settings.
+Validation uses Lua 5.1 with mocked APIs. A real Forever client is still required to
+verify hardware-click authorization and the resulting multilingual server search.
+
+### 4.9.2 — Integrated language search
+
+Search groups and solo players across languages from the existing **GroupGuard filter panel**.
+
+1. Open Browse and click the existing GroupGuard filter icon under the options gear.
+2. In **Search languages** at the top of that same panel choose All languages, Game default, or several individual languages.
+3. Click **Search** beside the language selector to request listings using that choice.
+
+The previous globe launcher is removed. No additional side tab, standalone settings panel or alternate navigation is created. The language row stays fixed; existing role/class/level/preset controls scroll below it in the same panel. Reset/preset rebuilds reuse the language controls and preserve the saved language choice.
+
+Languages come from the game API, are saved with GroupGuardLFGDB, and apply to both groups and solo players. Existing role, class, level and social filters continue to process the returned listings. Listings are not translated. The native refresh arrow and automatic searches retain the game's own languages.
+
+Concurrent requests, five-second cooldown, empty selections, combat, API failures, timeout and protected rejection are handled by the existing manual search controller. No automatic searches are added. The feature is disabled on Retail.
+
+Diagnostics: `/gglanguages info`, `/gglanguages log [errors|clear]`. Installation: replace `Interface/AddOns/GroupGuardLFG` with the folder in this archive and restart WoW; existing settings are kept. ForeverLFG is not required.
+
+Search lifecycle, language filtering, base English strings and menu selection are adapted from ForeverLFG 0.5.3, copyright (c) 2026 Forever, MIT. Full license: `LICENSE-ForeverLFG`.
+
+Validation: `bash tools/check_all.sh`, Lua 5.1. Automated tests mock game APIs; appearance and server permissions need checking in live Forever.
+
 ### 4.9.0 — Forever search intelligence
 - Add safe Forever LFG metadata wrappers and capability probes for search results, categories, activities, activity groups, player level, zone and general playstyle.
 - Expand dungeon composition filters with independent **Needs** and **Already has** role sets; every selected composition condition is combined with AND.

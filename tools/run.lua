@@ -42,19 +42,18 @@ NORMAL_FONT_COLOR = { r=1,g=1,b=1 }
 
 
 local addonTable = {}
-local files = {
-  "Core/Bootstrap.lua","Core/SafeAPI.lua","Core/Performance.lua","Core/Rules.lua",
-  "Core/Alerts.lua","Core/Social.lua","Core/GroupScan.lua","Data/RealmLocaleData.lua",
-  "UI/Notify.lua","Modules/FrameMarkers.lua","Modules/LFG.lua","Modules/LFGEnhancements.lua",
-  "Modules/RealmInsights.lua","Modules/LFGAdvisor.lua","Modules/ApplicantEnhancements.lua",
-  "Modules/GroupActions.lua","Modules/RaidAssist.lua","Modules/PugDetector.lua",
-  "Modules/RaidManagerButtons.lua","Modules/EventBus.lua","UI/Settings.lua",
-}
+-- Exercise the shipped TOC order instead of a stale hand-maintained subset.
+local files = {}
+for line in io.lines("../GroupGuardLFG.toc") do
+  line = line:gsub("\r", "")
+  if line:match("%.lua$") then files[#files+1] = line:gsub("\\", "/") end
+end
+
 for _, f in ipairs(files) do
   local chunk, err = loadfile("../" .. f)
   if not chunk then print_orig("LOAD ERROR " .. f .. ": " .. tostring(err)); os.exit(1) end
   local ok, e = pcall(chunk, "GroupGuardLFG", addonTable)
   if not ok then print_orig("RUNTIME ERROR " .. f .. ": " .. tostring(e)); os.exit(1) end
 end
-print_orig("✓ всі 21 файл завантажилися без помилок")
+print_orig("✓ всі " .. #files .. " файли TOC завантажилися без помилок")
 return addonTable

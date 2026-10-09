@@ -66,5 +66,10 @@ rm -f luac.out
   "$LUA" tests_lfg_metadata.lua
 ) || fail=1
 
+(
+  cd tools || exit 1
+  "$LUA" tests_forever_languages.lua
+) || fail=1
+
 [ "$fail" -eq 0 ] && echo "✓ all checks passed" || echo "✗ checks failed"
 exit "$fail"

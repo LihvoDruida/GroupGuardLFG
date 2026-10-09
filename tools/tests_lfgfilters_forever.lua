@@ -130,7 +130,7 @@ CreateTreeDataProvider = function()
   return p
 end
 local provider
-local scrollBox = { SetDataProvider=function(_, p) provider=p end }
+local scrollBox = { SetDataProvider=function(_, p) provider=p end, GetDataProvider=function() return provider end }
 local noResults = { shown=false, Show=function(self) self.shown=true end, Hide=function(self) self.shown=false end, SetText=function() end }
 LFGBrowseFrame = { searching=false, ScrollBox=scrollBox, results={1,2,3,4}, NoResultsFound=noResults }
 _G.LFGBrowseFrame = LFGBrowseFrame
@@ -147,6 +147,20 @@ addon.db.lfg_filter_player_classes = { DRUID=true }
 addon.db.lfg_filter_player_roles = {}
 local ok = addon:LFGFilters_ApplyForeverPresentation(LFGBrowseFrame)
 check("provider rebuild succeeds", ok == true)
+LFGBrowseFrame.IsShown=function() return true end
+check("diagnostic count belongs to the installed filtered provider", addon:LFGFilters_GetForeverVisibleCount()==addon._ggForeverVisibleResults)
+local savedProvider=provider
+provider={}
+check("native-overwritten provider invalidates the cached count", addon:LFGFilters_GetForeverVisibleCount()==nil)
+provider=savedProvider
+local savedResults=LFGBrowseFrame.results
+LFGBrowseFrame.results={1,2,3,4}
+check("new native result list invalidates the cached count", addon:LFGFilters_GetForeverVisibleCount()==nil)
+LFGBrowseFrame.results=savedResults
+LFGBrowseFrame.searching=true
+check("search in progress has no settled presentation count", addon:LFGFilters_GetForeverVisibleCount()==nil)
+LFGBrowseFrame.searching=false
+
 check("visible result count excludes nonmatches", addon._ggForeverVisibleResults == 3, addon._ggForeverVisibleResults)
 local flat = {}
 for _, top in ipairs(provider.children) do

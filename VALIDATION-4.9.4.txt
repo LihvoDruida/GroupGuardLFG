@@ -1,0 +1,277 @@
+GroupGuardLFG 4.9.4 — live search lifecycle recovery
+Lua runtime/compiler: 5.1.5
+Core 11 PASS; Extra 4 PASS; Forever filters 47 PASS; Metadata 14 PASS; Language search/UI 109 PASS.
+Total: 185 PASS, 0 FAIL. Lua syntax and accidental globals: PASS.
+
+Live evidence supplied by the user:
+#4 ruRU timed out after 30 s. #5 zhCN and #6–#10 esMX/ruRU/koKR
+received responses in about 0.8 s, but all inherited response-unmatched.
+The prior controller never cleared its session-wide uncertainty flag.
+
+Changes:
+- Retain the first ambiguous response warning; clear the window at a terminal
+  results/failure event so later requests recover.
+- Record Dispatch from the secure API post-hook, with actual request arguments.
+- A secure click with no observed matching invocation immediately reports
+  SEARCH_NOT_SENT, disarms the button and creates no 30-second pending search.
+- Keep synchronous response support and manual retry only.
+- Delay View diagnostics until after both queued presentation passes; verify
+  provider identity and current result-list identity before reporting a count.
+- No added interface, direct protected API call, timer retry or Blizzard state write.
+
+Regression tests replay the supplied language sequence, failures/late responses,
+no-dispatch clicks, stale providers/results, synchronous responses, UNKNOWN(),
+cooldown, combat, language sets, groups/players and the existing filter panel.
+
+Manual checks required:
+1. Replace the full GroupGuardLFG folder, then /reload.
+2. Select Korean and physically click Search in the existing filter panel.
+3. /gglanguages log should contain Dispatch for the observed API invocation,
+   followed by the response. A missing dispatch shows an immediate not-sent error.
+4. After a timeout, the first ambiguous response may retain a warning; later
+   completed searches must no longer keep language-unconfirmed indefinitely.
+5. View count must describe the current filtered provider or report not settled.
+6. Check All languages, Game default, multi-select, native refresh and combat.
+
+Game APIs and secure click lifecycle are mocked. Live client/server validation
+of this build has not been performed. Search-result events expose no request ID
+in the inspected API; results are associated with the observed active request.
+No per-listing language confirmation is inferred from player names.
+
+Full automated output:
+
+=== GroupGuardLFG verification source ===
+GroupGuardLFG.toc:## Version: 4.9.4
+GroupGuardLFG_Camelot.toc:## Version: 4.9.4
+2:local HARNESS_REVISION = "4.9.0"
+3:print("[GroupGuardLFG] Forever filter regression harness " .. HARNESS_REVISION)
+
+✓ всі 29 файли TOC завантажилися без помилок
+
+--- 1. Негативне кешування (дані не з'являються) ---
+  ✓ miss for activityInfo кешується коротко, а не 120с
+  ✓ після появи даних вони читаються
+  ✓ реальні дані кешуються надовго
+
+--- 2. Помилка в хуку не має виходити назовні ---
+  ✓ виклик пережив помилку всередині хука
+  ✓ збій зафіксовано для діагностики
+
+--- 3. Заявка без даних не кешується як 'чиста' ---
+  ✓ вердикт не виставлено
+  ✓ порожній результат НЕ потрапив у кеш
+
+--- 4. Секретні значення 12.1 не валять код ---
+  ✓ IsGroupLeader на secret -> false без помилки
+  ✓ GroupRole на secret -> nil без помилки
+  ✓ PlayerCanManageGroup переживає secret
+  ✓ UnitClass на secret -> nil без помилки
+
+=== 11 пройдено, 0 провалено ===
+✓ всі 29 файли TOC завантажилися без помилок
+
+--- 5. Ініціалізація: збій одного кроку не спиняє решту ---
+  ✓ крок після збою виконався
+  ✓ збій записано у діагностику
+
+--- 6. Відновлення геометрії не знімає прив'язки ---
+  ✓ об'єкт без прив'язок дійсно має 0 точок
+  ✓ об'єкт з прив'язкою має 1 точку
+
+=== 4 пройдено, 0 провалено ===
+[GroupGuardLFG] Forever filter regression harness 4.9.0
+
+--- Forever filters: independent Groups / Players ---
+  ✓ Groups Tank+Healer uses AND when both remain
+  ✓ Groups rejects when one selected role is already filled
+  ✓ Groups Has Tank+Healer requires both roles already present
+  ✓ Groups Has Tank+Healer rejects when healer is absent
+  ✓ Players class+role matches same solo player
+  ✓ Players class mismatch rejects solo player
+  ✓ Players level range accepts an in-range solo player
+  ✓ Players minimum level rejects a lower solo player
+  ✓ Players normalize a reversed level range
+  ✓ Group filter does not remove Players category
+  ✓ Player filter does not remove Groups category
+  ✓ Unavailable streamed player data fails open
+  ✓ Players two classes use OR inside class selection
+  ✓ Players two roles use OR inside role selection
+  ✓ Players class set still rejects an unselected class
+
+--- Forever protected-state isolation ---
+  ✓ Forever FilterFrameResults schedules presentation only
+  ✓ Forever results table is not replaced
+  ✓ Forever totalResults is not modified
+
+--- Forever visual provider rebuild: no hidden row height ---
+  ✓ provider rebuild succeeds
+  ✓ diagnostic count belongs to the installed filtered provider
+  ✓ native-overwritten provider invalidates the cached count
+  ✓ new native result list invalidates the cached count
+  ✓ search in progress has no settled presentation count
+  ✓ visible result count excludes nonmatches
+  ✓ nonmatching result is absent and own listing is prioritized
+  ✓ self listing remains visible
+  ✓ visual tree contains one Groups divider
+  ✓ visual tree contains one Players divider
+  ✓ native category order remains Groups then Players
+  ✓ self listing is classified inside Players instead of becoming a stray top-level row
+  ✓ guild/friend listings are prioritized inside their category
+
+--- Saved filter presets ---
+  ✓ named filter preset saves
+  ✓ named filter preset restores all filter dimensions
+
+--- Filter launcher visibility regression ---
+  ✓ filter icon texture is assigned
+  ✓ button remains visible when master filtering is disabled
+  ✓ Forever button remains addon-owned under UIParent
+  ✓ button is anchored below Blizzard OptionsButton
+  ✓ button frame level is raised above options control
+  ✓ filter lifecycle hooks install without mock UI errors
+  ✓ filter panel is created by the lifecycle path
+  ✓ button hides when the LFG root closes
+  ✓ button returns when the LFG root reopens
+  ✓ button hides when Browse closes
+  ✓ button returns when Browse reopens
+
+--- Per-result refresh optimization ---
+  ✓ unchanged result does not rebuild the provider
+  ✓ visibility change rebuilds the provider once
+  ✓ hidden Forever browse defers presentation work
+
+=== Forever filter regression: 47 passed, 0 failed ===
+✓ всі 29 файли TOC завантажилися без помилок
+
+--- Forever LFG metadata SafeAPI ---
+  ✓ search result exposes playstyle
+  ✓ search result exposes area
+  ✓ solo result exposes level
+  ✓ solo result exposes zone
+  ✓ activity exposes suggested level range
+  ✓ search results sanitize result ids
+  ✓ search results wrapper tolerates results,total order
+  ✓ available categories wrapper works
+  ✓ available activities wrapper works
+  ✓ category metadata wrapper works
+  ✓ activity group wrapper works
+
+--- Client capability probes ---
+  ✓ Forever client detected
+  ✓ browse metadata capability detected
+  ✓ activity group capability detected
+
+=== LFG metadata: 14 passed, 0 failed ===
+--- Forever multilingual search ---
+  PASS fresh profile selects all languages
+  PASS donor SavedVariables remain untouched
+  PASS all includes each API language once
+  PASS multi selection canonicalized without duplicate codes
+  PASS game default passes nil
+  PASS unavailable language rejected
+  PASS changing languages sends no search
+  PASS UA interface text independent of search languages
+  PASS initialization sends no search
+  PASS manual multi-language request succeeds
+  PASS Forever seven-argument Search contract preserved
+  PASS activities copied instead of sharing native table
+  PASS native search state unchanged
+  PASS concurrent custom request refused
+  PASS response counts include groups and solo players
+  PASS five second cooldown prevents duplicate request
+  PASS cooldown expiry does not auto search
+  PASS default request accepted
+  PASS default language argument is nil
+  PASS failure finishes pending search
+  PASS empty selection saved and search disabled
+  PASS combat refuses request
+  PASS empty activity selection uses filtered category list
+  PASS timeout is distinct from empty successful results
+  PASS timeout does not retry
+  PASS external native search is observed
+  PASS can manually search after native response and cooldown
+  PASS native search supersedes addon request without false success
+  PASS superseded native results do not claim selected languages
+  PASS secret category rejected
+  PASS secret activity rejected
+  PASS search can start with inaccessible result metadata
+  PASS inaccessible result data is counted as missing
+  PASS missing language API disables all-language search
+  PASS game default works without language-list API
+  PASS unrelated addon block does not disable search
+  PASS blocked Search returns failure
+  PASS blocked session never retries and menu stays disabled
+  PASS diagnostic journal bounded at 50 entries
+GG:	Search log cleared.
+  PASS clearing journal preserves languages
+  PASS Retail does not initialize module or create frames
+  PASS language controls belong to the existing filter panel
+  PASS no additional globe or language launcher is created
+  PASS integrated controls preserve native refresh
+  PASS opening embedded language dropdown sends no request
+  PASS embedded Search button sends selected languages
+  PASS embedded Search disables during active request
+  PASS embedded Search enables after cooldown without request
+  PASS embedded checkbox changes saved languages without request
+  PASS embedded Search uses saved checkbox selection
+  PASS panel reattachment reuses controls
+  PASS closing original panel hides all embedded controls
+  PASS reopening original panel does not query
+  PASS empty embedded selection disables Search
+  PASS all-language request returns listings for our filters
+  PASS language request preserves configured GroupGuard role filters
+  PASS multi-language results still reject group needing only tank
+  PASS multi-language results accept group needing tank and healer
+  PASS multi-language player results retain class/role OR matching
+  PASS real filter panel creation attaches embedded language row
+  PASS existing filter content has a scroll viewport
+  PASS filter wheel scrolls down inside bounds
+  PASS filter scroll clamps at bottom
+  PASS filter scroll clamps at top
+  PASS filter rebuild preserves embedded controls
+  PASS protected panel hide is deferred during combat
+  PASS panel close in combat does not invoke protected Hide
+  PASS deferred panel close runs after combat
+  PASS selection changed during request requires another search
+  PASS timeout remains incomplete
+  PASS response after timeout never falsely confirms language
+  PASS next completed search recovers after the ambiguous response
+  PASS timeout uncertainty does not stick across later searches
+  PASS macro error is immediately reported as not sent
+  PASS unsent macro never waits for a response or retries
+  PASS observer installation failure prevents untracked request
+  PASS no programmatic Request without the embedded button
+  PASS PreClick only arms a macro, without calling Search
+  PASS macro uses only native API and literals
+  PASS secure engine action preserves all seven search arguments
+  PASS PostClick disarms macro and issuing state
+  PASS another addon's UNKNOWN does not cancel our request
+  PASS asynchronous UNKNOWN ends our request and disables Search
+  PASS UNKNOWN rejection never retries
+  PASS synchronous UNKNOWN rejection disables Search
+  PASS UNKNOWN outside our attempt is not attributed to search
+  PASS no direct fallback when secure macro API is absent
+  PASS combat never writes protected attributes or launches Search
+  PASS combat end restores the embedded Search button
+  PASS secure template native OnClick remains installed
+  PASS oversized activity macro is rejected without truncation
+  PASS observed request times out without confirmation
+  PASS first response after timeout stays conservatively unconfirmed
+  PASS user log recovery sequence zhCN,esMX
+  PASS user log recovery sequence esMX
+  PASS user log recovery sequence ruRU
+  PASS user log recovery sequence koKR
+  PASS user log recovery sequence koKR
+  PASS journal records actual native API dispatches
+  PASS late response without a new pending request clears old uncertainty
+  PASS terminal failure also clears the uncertainty window
+  PASS missing secure dispatch does not fake a 30-second search
+  PASS unsent click keeps manual retry available without cooldown
+  PASS no dispatch does not poison later request attribution
+  PASS view diagnostic does not report a stale previous count
+  PASS view diagnostic waits until the presentation passes finish
+  PASS verified empty presentation is reported as zero
+  PASS synchronous response survives post-hook dispatch observation
+  PASS synchronous completion never starts a timeout or retry
+Multilingual search: 109 passed, 0 failed
+✓ all checks passed
