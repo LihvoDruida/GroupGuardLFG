@@ -71,5 +71,15 @@ rm -f luac.out
   "$LUA" tests_forever_languages.lua
 ) || fail=1
 
+(
+  cd tools || exit 1
+  "$LUA" tests_runtime_audit.lua
+) || fail=1
+
+(
+  cd tools || exit 1
+  "$LUA" tests_settings_ui.lua
+) || fail=1
+
 [ "$fail" -eq 0 ] && echo "✓ all checks passed" || echo "✗ checks failed"
 exit "$fail"

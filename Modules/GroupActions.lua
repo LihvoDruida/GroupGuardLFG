@@ -179,6 +179,9 @@ local function PlayerCanManageGroup()
 end
 
 local function PartyInfoCall(methodName, legacyFn, name, exactNameMatch)
+  if addon.Safe and addon.Safe.PartyCall then
+    return addon.Safe.PartyCall(methodName, legacyFn, name, exactNameMatch)
+  end
   local api = type(C_PartyInfo) == "table" and C_PartyInfo[methodName] or nil
   if type(api) == "function" then
     return pcall(api, name, exactNameMatch)
@@ -219,7 +222,6 @@ local function TryUninviteTarget(target)
   if resolved.name and resolved.name ~= resolved.fullName then identifiers[#identifiers + 1] = resolved.name end
 
   local attempted = false
-  local anyOk = false
   local lastErr = nil
   local used = {}
 
@@ -228,13 +230,17 @@ local function TryUninviteTarget(target)
       used[id] = true
       attempted = true
       local ok, err
-      if modernUninvite then
+      if addon.Safe and addon.Safe.PartyCall then
+        ok, err = addon.Safe.PartyCall("UninviteUnit", UninviteUnit, id, nil, true)
+      elseif modernUninvite then
         ok, err = pcall(C_PartyInfo.UninviteUnit, id, nil, true)
       else
         ok, err = pcall(UninviteUnit, id)
       end
       if ok then
-        anyOk = true
+        -- A successful request is enough. Sending both Name-Realm and Name
+        -- duplicated removal requests before the roster event could arrive.
+        return true, nil, resolved
       else
         lastErr = err
       end
@@ -242,8 +248,7 @@ local function TryUninviteTarget(target)
   end
 
   if not attempted then return false, "no_identifier", resolved end
-  if not anyOk then return false, tostring(lastErr or "uninvite_failed"), resolved end
-  return true, nil, resolved
+  return false, tostring(lastErr or "uninvite_failed"), resolved
 end
 
 local function TargetDisplayName(target)

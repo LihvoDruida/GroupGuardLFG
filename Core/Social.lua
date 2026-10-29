@@ -80,7 +80,7 @@ local function CacheLookup(cache, name)
 end
 
 local function AddFriendName(cache, name)
-  CacheName(cache, name, true)
+  CacheName(cache, addon:SafeText(name), true)
 end
 
 -- 12.1 can disable the friend systems outright (parental controls, region
@@ -124,15 +124,16 @@ function addon:RebuildFriendCache(force)
     return
   end
 
-  if C_FriendList then
+  local hasModernFriends = C_FriendList and type(C_FriendList.GetNumFriends) == "function" and type(C_FriendList.GetFriendInfoByIndex) == "function"
+  if legacyEnabled and hasModernFriends then
     if C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex then
       local okN, n = pcall(C_FriendList.GetNumFriends)
-      n = okN and tonumber(n) or 0
+      n = okN and self:SafeNumber(n, 0) or 0
       for i = 1, n do
         local ok, info = pcall(C_FriendList.GetFriendInfoByIndex, i)
         if ok then
-          if type(info) == "table" then
-            AddFriendName(cache, info.name)
+          if self:SafeCanAccessTable(info) then
+            AddFriendName(cache, self:SafeText(self:SafeTableField(info, "name")))
           elseif type(info) == "string" then
             AddFriendName(cache, info)
           end
@@ -142,7 +143,7 @@ function addon:RebuildFriendCache(force)
   end
 
   -- Pre-Retail global API; skipped when the legacy list is switched off.
-  if legacyEnabled and GetNumFriends and GetFriendInfo then
+  if legacyEnabled and not hasModernFriends and GetNumFriends and GetFriendInfo then
     local okN, n = pcall(GetNumFriends)
     n = okN and tonumber(n) or 0
     for i = 1, n do
@@ -151,22 +152,23 @@ function addon:RebuildFriendCache(force)
     end
   end
 
-  if battleNetEnabled and C_BattleNet and C_BattleNet.GetFriendNumGameAccounts and C_BattleNet.GetFriendGameAccountInfo and C_BattleNet.GetNumFriends then
+  local hasModernBNet = C_BattleNet and type(C_BattleNet.GetFriendNumGameAccounts) == "function" and type(C_BattleNet.GetFriendGameAccountInfo) == "function" and type(C_BattleNet.GetNumFriends) == "function"
+  if battleNetEnabled and hasModernBNet then
     local okN, n = pcall(C_BattleNet.GetNumFriends)
-    n = okN and tonumber(n) or 0
+    n = okN and self:SafeNumber(n, 0) or 0
     for i = 1, n do
       local okG, gameAccounts = pcall(C_BattleNet.GetFriendNumGameAccounts, i)
-      gameAccounts = okG and tonumber(gameAccounts) or 0
+      gameAccounts = okG and self:SafeNumber(gameAccounts, 0) or 0
       for j = 1, gameAccounts do
         local ok, info = pcall(C_BattleNet.GetFriendGameAccountInfo, i, j)
-        if ok and type(info) == "table" then
-          AddFriendName(cache, info.characterName)
+        if ok and self:SafeCanAccessTable(info) then
+          AddFriendName(cache, self:SafeText(self:SafeTableField(info, "characterName")))
         end
       end
     end
   end
 
-  if battleNetEnabled and BNGetNumFriends and BNGetNumFriendGameAccounts and BNGetFriendGameAccountInfo then
+  if battleNetEnabled and not hasModernBNet and BNGetNumFriends and BNGetNumFriendGameAccounts and BNGetFriendGameAccountInfo then
     local okN, n = pcall(BNGetNumFriends)
     n = okN and tonumber(n) or 0
     for i = 1, n do
@@ -193,9 +195,7 @@ function addon:RebuildGuildCache(force)
   local rankNameByIndex = {}
 
   local inGuild = self.Safe and self.Safe.IsInGuild and self.Safe.IsInGuild() or false
-  if inGuild and GuildRoster then
-    pcall(GuildRoster)
-  end
+  if inGuild then self.Safe.RequestGuildRoster() end
 
   if GetNumGuildMembers and GetGuildRosterInfo then
     local okN, n = pcall(GetNumGuildMembers)
@@ -287,7 +287,7 @@ end
 
 function addon:GetGuildRankOptions()
   local inGuild = self.Safe and self.Safe.IsInGuild and self.Safe.IsInGuild() or false
-  if inGuild and GuildRoster then pcall(GuildRoster) end
+  if inGuild then self.Safe.RequestGuildRoster() end
   if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
   local byIndex = {}

@@ -6,8 +6,8 @@ addon._debounceTimers = addon._debounceTimers or {}
 
 function addon:RunSafeAsync(label, callback, ...)
   if type(callback) ~= "function" then return false end
-  local args = { ... }
-  local ok, err = pcall(function() callback(unpack(args)) end)
+  local args, count = { ... }, select("#", ...)
+  local ok, err = pcall(function() callback(unpack(args, 1, count)) end)
   if not ok then
     self._asyncFailures = self._asyncFailures or {}
     local key = label or "async"
@@ -24,7 +24,7 @@ function addon:RunDebounced(key, delay, callback)
   delay = tonumber(delay) or 0
   if delay > 0 and delay < 0.03 then delay = 0.03 end
 
-  if not (C_Timer and C_Timer.NewTimer) then
+  if not (C_Timer and (C_Timer.NewTimer or C_Timer.After)) then
     self:RunSafeAsync("debounce:" .. tostring(key), callback)
     return
   end
@@ -41,7 +41,9 @@ function addon:RunDebounced(key, delay, callback)
 
   local bucket = { callback = callback }
   self._debounceTimers[key] = bucket
-  local okTimer, timer = pcall(C_Timer.NewTimer, delay, function()
+  local okTimer, timer = pcall(C_Timer.NewTimer or C_Timer.After, delay, function()
+    -- After has no cancellable handle; identity also invalidates stale callbacks.
+    if addon._debounceTimers[key] ~= bucket then return end
     local cb = bucket.callback
     addon._debounceTimers[key] = nil
     if type(cb) == "function" then addon:RunSafeAsync("debounce:" .. tostring(key), cb) end

@@ -3,9 +3,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.9.4
-## X-Codename: Integrated language search
-## X-Prev-Codename: Forever multilingual search
+## Version: 4.9.5
+## X-Codename: API and event lifecycle audit
+## X-Prev-Codename: Integrated language search
 ## OptionalDeps: Plumber, RaiderIO
 ## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg
@@ -15,6 +15,7 @@
 Core\Bootstrap.lua
 Core\ClientSupport.lua
 Core\SafeAPI.lua
+Core\ForeverLoadGuard.lua
 Core\Performance.lua
 Core\Rules.lua
 Core\Alerts.lua

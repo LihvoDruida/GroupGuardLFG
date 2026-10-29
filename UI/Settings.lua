@@ -273,7 +273,9 @@ local function AddSlider(parent, anchor, label, minV, maxV, step, getFunc, setFu
   if high then high:SetText(tostring(maxV)) end
   if text then text:SetText("") end
 
+  local syncing = false
   slider:SetScript("OnValueChanged", function(self, value)
+    if syncing then return end
     setFunc(value)
     showSavedHint(parent, labelFS)
   end)
@@ -281,12 +283,16 @@ local function AddSlider(parent, anchor, label, minV, maxV, step, getFunc, setFu
   -- первинна ініціалізація
   local ok, v = pcall(getFunc)
   if not ok then v = minV end
+  syncing = true
   slider:SetValue(v or minV)
+  syncing = false
 
   slider:HookScript("OnShow", function(self)
     local ok2, v2 = pcall(getFunc)
     if not ok2 then v2 = minV end
+    syncing = true
     self:SetValue(v2 or minV)
+    syncing = false
   end)
 
   return slider, labelFS
@@ -364,6 +370,17 @@ local function CreateScrolledPage(name, width, height, titleText)
   child:SetWidth(width - 40)
   child:SetHeight(math.max(height - 16, 1550))
   scroll:SetScrollChild(child)
+  -- Preserve the designed control widths while fitting a narrow Settings canvas.
+  -- Scale the content, not the Blizzard Settings frame or its protected parents.
+  local designWidth = width - 40
+  local function fitContent()
+    local available = addon:SafeNumber(scroll:GetWidth(), designWidth)
+    if available > 0 and type(child.SetScale) == "function" then
+      child:SetScale(math.min(1, available / designWidth))
+    end
+  end
+  scroll:HookScript("OnSizeChanged", fitContent)
+  page:HookScript("OnShow", fitContent)
 
   local title = FS(child, "GameFontNormalLarge", titleText)
   title:SetPoint("TOPLEFT", 16, -12)
@@ -428,7 +445,7 @@ local function CreateMultiRankDropdown(parent, anchor, labelText)
   UIDropDownMenu_SetWidth(dropdown, 285)
   UIDropDownMenu_Initialize(dropdown, function(self, level)
     if not addon.db then addon:EnsureDB() end
-    if GuildRoster then pcall(GuildRoster) end
+    if addon.Safe and addon.Safe.RequestGuildRoster then addon.Safe.RequestGuildRoster() end
     if addon.RebuildGuildCache then addon:RebuildGuildCache(true) end
 
     local opts = addon.GetGuildRankOptions and addon:GetGuildRankOptions() or {}
@@ -468,7 +485,7 @@ local function CreateMultiRankDropdown(parent, anchor, labelText)
   reload:SetPoint("LEFT", dropdown, "RIGHT", -8, 2)
   reload:SetText(LS("Refresh ranks"))
   reload:SetScript("OnClick", function()
-    if GuildRoster then pcall(GuildRoster) end
+    if addon.Safe and addon.Safe.RequestGuildRoster then addon.Safe.RequestGuildRoster() end
     if addon.RebuildGuildCache then addon:RebuildGuildCache(true) end
     refreshText()
     SyncAll("raid_assist_rank_refresh")
@@ -1117,6 +1134,7 @@ end
 function addon:CreateFallbackPanel()
   local panel = CreateFrame("Frame", "GroupGuardLFGFallbackConfig", UIParent, "BackdropTemplate")
   panel:SetSize(720, 580)
+  panel:HookScript("OnShow", function() addon:FitWindowToScreen(panel, 720, 580) end)
   panel:SetPoint("CENTER")
   panel:SetFrameStrata("DIALOG")
   panel:EnableMouse(true)
@@ -1178,7 +1196,7 @@ local function PrintDebugInfo(mode)
     end
   end
 
-  local clientName = addon.IsForeverClient and addon:IsForeverClient() and "WoW Forever" or (addon.IsRetail12Client and addon:IsRetail12Client() and "Retail 12.x" or "Unknown")
+  local clientName = addon.Client and addon.Client.flavor or "unknown"
   print(addon:Tr("CMD_LFG_FRAME_STATE", "Client", clientName))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "LFG root", root and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))
   print(addon:Tr("CMD_LFG_FRAME_STATE", "Search/Browse", sp and addon:Tr("CMD_YES") or addon:Tr("CMD_NO")))

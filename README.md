@@ -1,3 +1,21 @@
+### 4.9.5 — API, event scheduling and combat notifications
+
+- Coalesce roster/settings event bursts; ignore unrelated unit updates.
+- Fix party-member counting and clear resolved identity retries.
+- Separate outgoing search applications from incoming applicants.
+- Prefer namespaced party/guild APIs; avoid duplicate legacy friend enumeration.
+- Bound LFG caches, reject non-finite numeric keys and preserve nil async arguments.
+- Defer banners and flashes during combat; preserve native animation scripts.
+- Scale addon settings content to fit narrow canvases.
+- Replace the unused Forever frame-placeholder workaround with passive diagnostics.
+- Keep Retail interface tags 120105/120100/120007; add 16001 to the generic
+  fallback TOC. Camelot remains 16001. Classic/SoD recognition is diagnostic;
+  this release does not advertise unverified Classic interface compatibility.
+
+Validation: 236 assertions on Lua 5.1 and the same 236 on Lua 5.4;
+42 Lua files compile on both runtimes. See `API-AUDIT-4.9.5.md` and
+`VALIDATION-4.9.5.txt`. Client/server UI and taint validation still require WoW.
+
 ### 4.9.4 — Search recovery and dispatch diagnostics
 
 Fix the live log sequence: request #4 timed out, then #5–#10 all remained

@@ -20,6 +20,7 @@ function addon:SafeCanRead(value)
 end
 
 function addon:SafeCanAccessTable(value)
+  if not self:SafeCanRead(value) then return false end
   if type(value) ~= "table" then return false end
   if type(canaccesstable) == "function" then
     local ok, allowed = pcall(canaccesstable, value)
@@ -41,10 +42,9 @@ end
 
 function addon:SafeNumber(value, fallback)
   if not self:SafeCanRead(value) then return fallback end
-  if type(value) == "number" then return value end
-  if type(value) == "string" then return tonumber(value) or fallback end
   local ok, result = pcall(tonumber, value)
-  return (ok and type(result) == "number") and result or fallback
+  if ok and type(result) == "number" and result == result and result ~= math.huge and result ~= -math.huge then return result end
+  return fallback
 end
 
 function addon:SafeBool(value)
@@ -57,7 +57,7 @@ end
 -- error in a tainted execution path, so object access is checked before we
 -- inspect or decorate frames returned by Blizzard UI code.
 function addon:SafeCanAccessObject(object)
-  if object == nil then return false end
+  if not self:SafeCanRead(object) then return false end
   local objectType = type(object)
   if objectType ~= "table" and objectType ~= "userdata" then return false end
 
@@ -102,6 +102,15 @@ end
 function addon:SafeCall(fn, ...)
   if type(fn) ~= "function" then return false end
   return pcall(fn, ...)
+end
+
+-- Only for addon-owned, unprotected windows with known design dimensions.
+function addon:FitWindowToScreen(frame, width, height)
+  if not frame or not UIParent or type(frame.SetScale) ~= "function" then return end
+  local w = self:SafeNumber(UIParent:GetWidth(), width)
+  local h = self:SafeNumber(UIParent:GetHeight(), height)
+  if w <= 0 or h <= 0 then return end
+  frame:SetScale(math.min(1, math.max(0.1, (w - 32) / width), math.max(0.1, (h - 32) / height)))
 end
 
 -- Public Safe namespace for modules. Keep old addon:Safe* methods for
@@ -179,7 +188,31 @@ end
 function SafeNS.InCombatLockdown()
   if type(InCombatLockdown) ~= "function" then return false end
   local ok, value = pcall(InCombatLockdown)
-  return ok and addon:SafeBool(value) or false
+  -- Unreadable combat state must never authorize a protected UI mutation.
+  if not ok or not addon:SafeCanRead(value) then return true end
+  return value == true
+end
+
+-- Compatibility dispatch does not grant secure/hardware-event privileges.
+-- Callers must retain the client's click requirements; never retry a protected
+-- failure through a legacy global to try to bypass those requirements.
+function SafeNS.PartyCall(method, legacy, ...)
+  if SafeNS.InCombatLockdown() then return false, "combat_lockdown" end
+  local fn = type(C_PartyInfo) == "table" and C_PartyInfo[method]
+  if type(fn) ~= "function" then fn = legacy end
+  if type(fn) ~= "function" then return false, "missing_" .. tostring(method) end
+  return pcall(fn, ...)
+end
+
+function SafeNS.RequestGuildRoster()
+  local now = GetTime and GetTime() or 0
+  if addon._lastGuildRosterRequest and now - addon._lastGuildRosterRequest < 10 then return true end
+  local fn = C_GuildInfo and C_GuildInfo.GuildRoster
+  if type(fn) ~= "function" then fn = GuildRoster end
+  if type(fn) ~= "function" then return false end
+  local ok = pcall(fn)
+  if ok then addon._lastGuildRosterRequest = now end
+  return ok
 end
 function SafeNS.CanInspect(unit)
   if type(CanInspect) ~= "function" then return false end
@@ -905,7 +938,7 @@ local function CacheBucket(self, name)
   self._lfgAPICache = self._lfgAPICache or {}
   local bucket = self._lfgAPICache[name]
   if not bucket then
-    bucket = { values = {}, expires = {} }
+    bucket = { values = {}, expires = {}, count = 0 }
     self._lfgAPICache[name] = bucket
   end
   return bucket
@@ -921,6 +954,7 @@ local function CacheGet(self, name, key)
   if expires then
     bucket.values[key] = nil
     bucket.expires[key] = nil
+    bucket.count = math.max(0, (bucket.count or 1) - 1)
   end
   return false, nil
 end
@@ -932,6 +966,14 @@ end
 local CACHE_MISS_TTL = 0.25
 local function CacheSet(self, name, key, value, ttl)
   local bucket = CacheBucket(self, name)
+  if bucket.expires[key] == nil then
+    -- Old result IDs otherwise survive indefinitely when they are never read
+    -- again. Bound memory without a periodic sweep during gameplay.
+    if bucket.count >= 512 then
+      bucket.values, bucket.expires, bucket.count = {}, {}, 0
+    end
+    bucket.count = bucket.count + 1
+  end
   bucket.values[key] = value == nil and GG_NIL or value
   if value == nil then
     bucket.expires[key] = CacheNow() + math.min(ttl or CACHE_MISS_TTL, CACHE_MISS_TTL)
@@ -984,7 +1026,7 @@ function addon:LFG_API_GetApplicantMemberInfo(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not applicantID or not memberIndex or memberIndex < 1 then return nil end
-  local key = (applicantID * 8) + memberIndex
+  local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
   local hit, value = CacheGet(self, "memberInfo", key)
   if hit then return value end
   return CacheSet(self, "memberInfo", key, _rawGetApplicantMemberInfo(self, applicantID, memberIndex), 0.65)
@@ -1024,7 +1066,7 @@ function addon:LFG_API_GetApplicantBestDungeonScore(applicantID, memberIndex)
   applicantID = self:SafeNumber(applicantID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not applicantID or not memberIndex or memberIndex < 1 then return nil end
-  local key = (applicantID * 8) + memberIndex
+  local key = tostring(applicantID) .. ":" .. tostring(memberIndex)
   local hit, value = CacheGet(self, "bestScore", key)
   if hit then return value end
   return CacheSet(self, "bestScore", key, _rawGetBestScore(self, applicantID, memberIndex), 2.5)
@@ -1048,7 +1090,7 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   resultID = self:SafeNumber(resultID, nil)
   memberIndex = self:SafeNumber(memberIndex, nil)
   if not resultID or not memberIndex or memberIndex < 1 then return nil end
-  local key = (resultID * 64) + memberIndex
+  local key = tostring(resultID) .. ":" .. tostring(memberIndex)
   local hit, value = CacheGet(self, "searchPlayer", key)
   if hit then return value end
   return CacheSet(self, "searchPlayer", key, _rawGetSearchResultPlayerInfo(self, resultID, memberIndex), 0.65)
@@ -1173,12 +1215,14 @@ function addon:LFG_ForgetSearchResult(resultID)
       if bucket then
         if name == "searchInfo" or name == "searchLeader" or name == "searchCounts" then
           bucket.values[resultID] = nil
+          if bucket.expires[resultID] then bucket.count = math.max(0, (bucket.count or 1) - 1) end
           bucket.expires[resultID] = nil
         else
           for key in pairs(bucket.expires) do
-            if type(key) == "number" and math.floor(key / 64) == resultID then
+            if type(key) == "string" and key:match("^([^:]+):") == tostring(resultID) then
               bucket.values[key] = nil
               bucket.expires[key] = nil
+              bucket.count = math.max(0, (bucket.count or 1) - 1)
             end
           end
         end
@@ -1217,7 +1261,7 @@ function addon:LFG_API_DebugDump()
   if type(self._lfgAPICache) == "table" then
     for _, bucket in pairs(self._lfgAPICache) do
       buckets = buckets + 1
-      if type(bucket) == "table" then for _ in pairs(bucket) do entries = entries + 1 end end
+      if type(bucket) == "table" and bucket.values then for _ in pairs(bucket.values) do entries = entries + 1 end end
     end
   end
   return { buckets = buckets, entries = entries }

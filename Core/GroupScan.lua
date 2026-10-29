@@ -57,6 +57,8 @@ function addon:NotifyGroupDetected(name, guild)
 end
 
 function addon:CheckGroup()
+  -- A previous incomplete roster must not keep retrying after it has resolved.
+  self._needsRecheck = false
   if self:IsDisabledNow() then
     return false
   end
@@ -69,8 +71,11 @@ function addon:CheckGroup()
     return false
   end
 
-  local unitPrefix = SafeIsInRaid() and "raid" or "party"
-  local num = SafeGroupCount()
+  local inRaid = SafeIsInRaid()
+  local unitPrefix = inRaid and "raid" or "party"
+  -- GetNumGroupMembers includes the player in a party: party5 never exists.
+  local count = SafeGroupCount()
+  local num = math.max(0, math.min(inRaid and count or (count - 1), inRaid and 40 or 4))
   local sawNil = false
 
   for i = 1, num do

@@ -43,6 +43,9 @@ function addon:PlayAlertSound()
 end
 
 function addon:ClearAlert()
+  self._deferredBanner = nil
+  self._lastBannerPayload = nil
+  self._bannerGeneration = (self._bannerGeneration or 0) + 1
   if self.Banner and self.Banner.timer then
     pcall(function() self.Banner.timer:Cancel() end)
     self.Banner.timer = nil
@@ -95,6 +98,16 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
   if self.ShouldSuppressAlerts and kind ~= "TEST" and kind ~= "ACTION" and self:ShouldSuppressAlerts("banner") then return end
   if not (self.db and self.db.show_banner) then return end
   if not self.Banner then return end
+  local payload = { primary = primaryText, secondary = secondaryText, kind = kind, detail = detailText }
+  self._lastBannerPayload = payload
+  if self.Safe and self.Safe.InCombatLockdown() then
+    self._deferredBanner = payload -- bounded: the latest notification wins
+    return
+  end
+  self._deferredBanner = nil
+  self._bannerGeneration = (self._bannerGeneration or 0) + 1
+  local generation = self._bannerGeneration
+  if self.FitWindowToScreen then self:FitWindowToScreen(self.Banner, 430, 214) end
 
   self:ApplyBannerKind(kind or "DETECTED")
   local fontPrimary   = self:GetFontForText(primaryText)
@@ -128,10 +141,12 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
   local hold = tonumber(self.db.banner_hold_time) or 10
   if self.Banner.timer and self.Banner.timer.Cancel then self.Banner.timer:Cancel() end
   local function hideBanner()
+    if addon._bannerGeneration ~= generation then return end
     if addon.Banner then
       if UIFrameFadeOut then
         UIFrameFadeOut(addon.Banner, 0.16, addon.Banner:GetAlpha() or 1, 0)
         local function finishHide()
+          if addon._bannerGeneration ~= generation then return end
           if addon.Banner then addon.Banner:Hide(); addon.Banner:SetAlpha(1) end
         end
         if C_Timer and C_Timer.After then C_Timer.After(0.18, finishHide) else finishHide() end
@@ -145,6 +160,27 @@ function addon:ShowBanner(primaryText, secondaryText, unusedOverlayText, kind, d
   else
     self.Banner.timer = nil
   end
+end
+
+function addon:SuspendBannerForCombat()
+  if self.Banner and self.Banner:IsShown() then
+    self._deferredBanner = self._lastBannerPayload
+    self._bannerGeneration = (self._bannerGeneration or 0) + 1
+    if self.Banner.timer and self.Banner.timer.Cancel then self.Banner.timer:Cancel() end
+    self.Banner.timer = nil
+    self.Banner:Hide() -- addon-owned unprotected frame
+  end
+  if self.Flash then self.Flash:Hide() end
+end
+
+function addon:FlushDeferredBanner()
+  if self.Safe and self.Safe.InCombatLockdown() then return end
+  local payload = self._deferredBanner
+  self._deferredBanner = nil
+  if not payload then return end
+  -- A member may have left while combat was active. Revalidate the warning.
+  if (payload.kind == nil or payload.kind == "DETECTED") and not self:CheckGroup() then return end
+  self:ShowBanner(payload.primary, payload.secondary, false, payload.kind, payload.detail)
 end
 
 function addon:UpdateBanner(primaryText, secondaryText, unusedOverlayText, kind, detailText)
@@ -216,6 +252,7 @@ function addon:NotifyLFGAutoDeclined(count, details)
 end
 
 function addon:FlashScreen()
+  if self.Safe and self.Safe.InCombatLockdown() then return end
   if self:IsDisabledNow() then return end
   if self.ShouldSuppressAlerts and self:ShouldSuppressAlerts("flash") then return end
   if not (self.db and self.db.screen_flash) then return end

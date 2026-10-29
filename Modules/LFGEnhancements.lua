@@ -490,23 +490,18 @@ function addon:LFG_SetupApplicantPingMute()
     return
   end
   local anim = QueueStatusButton and QueueStatusButton.EyeHighlightAnim
-  if not anim or not anim.GetScript or not anim.SetScript then return end
-
-  self._ggApplicantPingHooked = true
-  local originalOnPlay = anim:GetScript("OnPlay")
-  local originalOnLoop = anim:GetScript("OnLoop")
-
-  local function wrap(original)
-    return function(...)
-      if addon and addon.LFG_ShouldMuteApplicantPing and addon:LFG_ShouldMuteApplicantPing() then
-        return
-      end
-      if original then return original(...) end
+  local hook = self:SafeObjectMethod(anim, "HookScript")
+  local stop = self:SafeObjectMethod(anim, "Stop")
+  if not hook or not stop then return end
+  local function afterPlay()
+    if addon:LFG_ShouldMuteApplicantPing() then
+      pcall(stop, anim)
     end
   end
-
-  anim:SetScript("OnPlay", wrap(originalOnPlay))
-  anim:SetScript("OnLoop", wrap(originalOnLoop))
+  -- Preserve Blizzard's original scripts and their secure execution context.
+  local played = pcall(hook, anim, "OnPlay", self:WrapHookCallback(afterPlay, "applicant_ping_play"))
+  local looped = pcall(hook, anim, "OnLoop", self:WrapHookCallback(afterPlay, "applicant_ping_loop"))
+  self._ggApplicantPingHooked = played and looped
 end
 
 function addon:LFG_InitEnhancements()

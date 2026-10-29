@@ -1,4 +1,5 @@
 -- Manual request contract and interaction regression tests; no live server required.
+local loadstring = loadstring or load
 local passed, failed = 0, 0
 local function check(name, condition)
     if condition then passed = passed + 1; print("  PASS " .. name)

@@ -49,6 +49,18 @@ function addon:RefreshClientCapabilities()
   local iface = interfaceVersion or 0
   local isForever = (iface >= 16000 and iface < 17000) or versionText:match("^1%.60%.") ~= nil
   local isRetail12 = iface >= 120000 and iface < 130000
+  local project = self.SafeNumber and self:SafeNumber(WOW_PROJECT_ID) or tonumber(WOW_PROJECT_ID)
+  local isMainline = not isForever and ((WOW_PROJECT_MAINLINE ~= nil and project == WOW_PROJECT_MAINLINE) or iface >= 100000)
+  local isClassic = not isForever and not isMainline and iface >= 10000 and iface < 100000
+  local isClassicEra = isClassic and ((WOW_PROJECT_CLASSIC ~= nil and project == WOW_PROJECT_CLASSIC) or iface < 20000)
+  local seasonID
+  if isClassicEra and C_Seasons and type(C_Seasons.GetActiveSeason) == "function" then
+    local ok, id = pcall(C_Seasons.GetActiveSeason)
+    if ok then
+      if self.SafeNumber then seasonID = self:SafeNumber(id) else seasonID = tonumber(id) end
+    end
+  end
+  local discoveryID = Enum and Enum.SeasonID and Enum.SeasonID.SeasonOfDiscovery
 
   self.Client = self.Client or {}
   self.Client.version = versionText
@@ -57,7 +69,13 @@ function addon:RefreshClientCapabilities()
   self.Client.interfaceVersion = iface
   self.Client.isForever = isForever
   self.Client.isRetail12 = isRetail12
-  self.Client.groupFinderStyle = isForever and "vanilla-style" or (isRetail12 and "mainline" or "unknown")
+  self.Client.isRetail = isMainline
+  self.Client.isClassic = isClassic
+  self.Client.isClassicEra = isClassicEra
+  self.Client.seasonID = seasonID
+  self.Client.isSeasonOfDiscovery = isClassicEra and discoveryID ~= nil and seasonID == discoveryID
+  self.Client.flavor = isForever and "forever" or (isMainline and "retail" or (self.Client.isSeasonOfDiscovery and "sod" or (isClassic and "classic" or "unknown")))
+  self.Client.groupFinderStyle = isForever and "vanilla-style" or (isMainline and "mainline" or (isClassic and "classic" or "unknown"))
 
   local caps = self.Client.capabilities or {}
   self.Client.capabilities = caps

@@ -2180,6 +2180,12 @@ end
 
 function addon:LFG_RefreshApplicantChips()
   if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then return end
+  local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer()
+  local shown = viewer and self:SafeObjectMethod(viewer, "IsShown")
+  if shown then
+    local ok, visible = pcall(shown, viewer)
+    if not ok or not self:SafeBool(visible) then return end
+  end
   local rows = EnumerateApplicantRows()
   if not rows then return end
   self._ggApplicantRows = self._ggApplicantRows or {}
@@ -2204,8 +2210,13 @@ function addon:LFG_RefreshApplicantsAfterDone(applicantID)
   local info = GetApplicantInfoSafe(applicantID)
   local status = info and SafeText(info.applicationStatus)
   if status and APPLICATION_DONE[status] then
-    if C_Timer and C_Timer.After then C_Timer.After(0.08, function() if C_LFGList and C_LFGList.RefreshApplicants then pcall(C_LFGList.RefreshApplicants) end end)
-    else pcall(C_LFGList.RefreshApplicants) end
+    -- Several members of one application can finish in the same event burst.
+    local function refresh()
+      if addon.db and addon.db.applicant_auto_refresh_done and C_LFGList and type(C_LFGList.RefreshApplicants) == "function" then
+        pcall(C_LFGList.RefreshApplicants)
+      end
+    end
+    if self.RunDebounced then self:RunDebounced("applicants_done", 0.08, refresh) else refresh() end
   end
 end
 

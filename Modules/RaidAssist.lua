@@ -9,6 +9,10 @@ local C_Timer = C_Timer
 local function PromoteAssistantCompat(fullName, shortName)
   local name = fullName or shortName
   if type(name) ~= "string" or name == "" then return false end
+  if addon.Safe and addon.Safe.PartyCall then
+    local ok = addon.Safe.PartyCall("PromoteToAssistant", PromoteToAssistant, name, true)
+    return ok == true
+  end
 
   if type(C_PartyInfo) == "table" and type(C_PartyInfo.PromoteToAssistant) == "function" then
     local ok = pcall(C_PartyInfo.PromoteToAssistant, name, true)
@@ -72,7 +76,7 @@ function addon:ApplyRaidAssistNow(reason)
   end
 
   local inGuild = Safe and Safe.IsInGuild and Safe.IsInGuild() or false
-  if inGuild and GuildRoster then pcall(GuildRoster) end
+  if inGuild and addon.Safe and addon.Safe.RequestGuildRoster then addon.Safe.RequestGuildRoster() end
   if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
   local num = self.GetGroupMemberCount and self:GetGroupMemberCount() or (GetNumGroupMembers and (GetNumGroupMembers() or 0) or 0)

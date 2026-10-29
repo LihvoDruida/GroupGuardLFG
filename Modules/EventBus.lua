@@ -207,10 +207,20 @@ end
 
 function addon:SyncSettingsState(reason)
   if not self.db then return end
+  self._settingsSyncReason = reason or "settings"
+  if self.RunDebounced then
+    return self:RunDebounced("settings_sync", 0.08, function()
+      addon:ApplySettingsState(addon._settingsSyncReason)
+    end)
+  end
+  self:ApplySettingsState(reason)
+end
 
+function addon:ApplySettingsState(reason)
+  if not self.db then return end
   if self.RebuildCaches then self:RebuildCaches() end
-  if self.RebuildFriendCache then self:RebuildFriendCache(true) end
-  if self.RebuildGuildCache then self:RebuildGuildCache(true) end
+  if self.RebuildFriendCache then self:RebuildFriendCache(false) end
+  if self.RebuildGuildCache then self:RebuildGuildCache(false) end
 
   self._lfgFlagCache = {}
   self._lfgFlagReasons = {}
@@ -222,12 +232,8 @@ function addon:SyncSettingsState(reason)
   self._lfgResultSocialReasons = {}
   self._lfgResultCensored = {}
 
-  if self.RequestGroupRefresh then self:RequestGroupRefresh(0) end
+  if self.RequestGroupRefresh then self:RequestGroupRefresh() end
   if self.RequestLFGRefresh then self:RequestLFGRefresh(nil, true, true) end
-  if self.LFG_UpdateButton then self:LFG_UpdateButton() end
-  if self.LFG_DebouncedHighlight then self:LFG_DebouncedHighlight(nil) end
-  if self.LFG_DebouncedHighlightResults then self:LFG_DebouncedHighlightResults(nil) end
-  if self.UpdateFrameMarkers then self:UpdateFrameMarkers() end
   if self.ScheduleRaidAssist then self:ScheduleRaidAssist(0, reason or "settings") end
 end
 
@@ -294,13 +300,20 @@ local function OnEvent(self, event, arg1, ...)
 
   if not addon.db then addon:EnsureDB() end
 
+  -- Unit events are global (including target, nameplates and unrelated pets).
+  -- Only roster units can change the group scan or its social verdicts.
+  if event == "UNIT_NAME_UPDATE" or event == "UNIT_CONNECTION" or event == "PLAYER_FLAGS_CHANGED" or event == "PLAYER_GUILD_UPDATE" then
+    local unit = addon.SafeText and addon:SafeText(arg1)
+    if not unit or not (unit == "player" or unit:match("^party%d+$") or unit:match("^raid%d+$")) then return end
+  end
+
   if event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
     if addon.EnterInstanceLockout then addon:EnterInstanceLockout(1.5) end
     if addon.EnterStartupQuiet then addon:EnterStartupQuiet(addon.db and addon.db.startup_silent_seconds or 3.0, event) end
     addon:RebuildCaches()
     wasInGroup = SafeInGroupOrRaid()
     -- Immediate UI refresh, plus a delayed pass after Blizzard finishes rebuilding frames.
-    addon:RequestGroupRefresh(0)
+    addon:RequestGroupRefresh()
     if addon.ScheduleFrameMarkerUpdate then addon:ScheduleFrameMarkerUpdate(0.05) end
     addon:RequestLFGRefresh(nil, true, true)
     if addon.ScheduleRaidAssist and (not addon.SupportsRaidAssistActions or addon:SupportsRaidAssistActions()) then
@@ -331,15 +344,17 @@ local function OnEvent(self, event, arg1, ...)
     wasInGroup = inGroup
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {} end
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() end
-    addon:RequestGroupRefresh(0)
+    addon:RequestGroupRefresh()
     addon:RequestLFGRefresh(nil, true, true)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
 
   elseif event == "PLAYER_REGEN_DISABLED" then
     if addon.ClearFrameMarkers then addon:ClearFrameMarkers() end
+    if addon.SuspendBannerForCombat then addon:SuspendBannerForCombat() end
 
   elseif event == "PLAYER_REGEN_ENABLED" then
+    if addon.FlushDeferredBanner then addon:FlushDeferredBanner() end
     if addon.ProcessKickQueue then addon:ProcessKickQueue() end
     if addon._raidAssistQueued and addon.ScheduleRaidAssist then
       addon._raidAssistQueued = false
@@ -352,15 +367,22 @@ local function OnEvent(self, event, arg1, ...)
 
   elseif event == "LFG_LIST_APPLICANT_LIST_UPDATED"
       or event == "LFG_LIST_APPLICANT_UPDATED"
-      or event == "LFG_LIST_APPLICATION_STATUS_UPDATED"
       or event == "LFG_LIST_ACTIVE_ENTRY_UPDATE"
       or event == "LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS"
       or event == "LFG_LIST_ENTRY_EXPIRED_TIMEOUT" then
-    if (event == "LFG_LIST_APPLICANT_UPDATED" or event == "LFG_LIST_APPLICATION_STATUS_UPDATED") and addon.LFG_RefreshApplicantsAfterDone then
+    if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {}; addon._lfgFlagReasons = {} end
+    if event == "LFG_LIST_APPLICANT_UPDATED" and addon.LFG_RefreshApplicantsAfterDone then
       addon:LFG_RefreshApplicantsAfterDone(arg1)
     end
-    if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {}; addon._lfgFlagReasons = {} end
-    addon:RequestLFGRefresh(nil, true, true)
+    local entryChanged = event == "LFG_LIST_ACTIVE_ENTRY_UPDATE" or event == "LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS" or event == "LFG_LIST_ENTRY_EXPIRED_TIMEOUT"
+    if entryChanged and addon.LFG_API_ClearCaches then addon:LFG_API_ClearCaches("activity") end
+    addon:RequestLFGRefresh(nil, true, entryChanged)
+
+  elseif event == "LFG_LIST_APPLICATION_STATUS_UPDATED" then
+    -- This is the player's outgoing application, keyed by searchResultID;
+    -- it is not an applicantID in the leader's ApplicationViewer.
+    if addon.LFG_ForgetSearchResult then addon:LFG_ForgetSearchResult(arg1) end
+    addon:RequestLFGRefresh(nil, false, true)
 
   elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
@@ -425,7 +447,7 @@ local function OnEvent(self, event, arg1, ...)
     end
     if addon.LFG_ClearApplicantCaches then addon:LFG_ClearApplicantCaches() else addon._lfgFlagCache = {} end
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {} end
-    addon:RequestGroupRefresh(0)
+    addon:RequestGroupRefresh()
     addon:RequestLFGRefresh(nil, true, true)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
