@@ -92,7 +92,10 @@ end
 function addon:LFGFilters_NeedsPresentation()
   if not self.db then return false end
   if self:LFGFilters_HasActiveFilters() then return true end
-  return self.IsForeverClient and self:IsForeverClient() and self.db.lfg_filter_social_priority ~= false
+  -- Highlights and addon tooltip details also require our own rows. Disabling
+  -- filtering/social ordering must never reactivate native-row decoration.
+  return self.IsForeverClient and self:IsForeverClient() and (
+    self.db.lfg_filter_social_priority ~= false or self.db.lfg_highlight == true or self.db.lfg_tooltips == true)
 end
 
 function addon:LFGFilters_GetAvailableClasses()

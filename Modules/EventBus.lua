@@ -185,7 +185,8 @@ function addon:RequestLFGRefresh(delay, scanApplicants, refreshResults)
     if applicantUI and addon.LFG_UpdateButton then addon:LFG_UpdateButton() end
     if applicantUI and addon.LFG_DebouncedHighlight then addon:LFG_DebouncedHighlight(nil) end
     local needsPresentation = addon.LFGFilters_NeedsPresentation and addon:LFGFilters_NeedsPresentation()
-    if addon._lfgRefreshResults and needsPresentation and addon.LFGFilters_RefreshCurrentResults then
+    local forever = addon.IsForeverClient and addon:IsForeverClient()
+    if addon._lfgRefreshResults and (needsPresentation or forever) and addon.LFGFilters_RefreshCurrentResults then
       addon:LFGFilters_RefreshCurrentResults()
     end
     if addon._lfgRefreshResults and addon.LFG_DebouncedHighlightResults then addon:LFG_DebouncedHighlightResults(nil) end
@@ -398,16 +399,17 @@ local function OnEvent(self, event, arg1, ...)
     -- refresh path because its search panel lifecycle differs.
     if addon.IsForeverClient and addon:IsForeverClient() then
       local needsPresentation = addon.LFGFilters_NeedsPresentation and addon:LFGFilters_NeedsPresentation()
+      local presentationHandled = false
       if needsPresentation and addon.LFGFilters_HandleForeverResultUpdated then
         -- The targeted presentation handler owns this result's SafeAPI
         -- invalidation so it can compare the previous and current row state.
-        addon:LFGFilters_HandleForeverResultUpdated(arg1)
+        presentationHandled = addon:LFGFilters_HandleForeverResultUpdated(arg1) == true
       elseif addon.LFG_ForgetSearchResult then
         addon:LFG_ForgetSearchResult(arg1)
       elseif addon.LFG_ClearSearchCaches then
         addon:LFG_ClearSearchCaches()
       end
-      if addon.LFG_HighlightSearchResult then addon:LFG_HighlightSearchResult(arg1) end
+      if not presentationHandled and addon.LFG_HighlightSearchResult then addon:LFG_HighlightSearchResult(arg1) end
       if addon.LFG_RefreshCurrentSearchTooltip then addon:LFG_RefreshCurrentSearchTooltip(arg1) end
     else
       if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end

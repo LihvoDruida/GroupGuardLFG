@@ -1,3 +1,16 @@
+### 4.9.7 — Complete Forever row and tooltip isolation
+
+- Close the remaining 4.9.6 legacy paths that observed native ScrollBox rows, attached recycle hooks, tinted native ResultBG and refreshed Blizzard's native tooltip from addon code.
+- Route full/single-row highlights and cleanup exclusively to ForeverBrowse. Retain the native UpdateResults post-hook only to schedule the independent presentation.
+- Render insight details and Shift refresh in the addon row tooltip. Check its owner before refreshing/hiding, so recycled rows cannot affect another tooltip.
+- Keep the addon view for highlight-only or tooltip-only configurations. Restore the native view when all addon browse presentation features are off.
+- Sanitize group/leadership state before enabling invite actions and avoid repainting the same row twice on result-update events.
+- Expand integration coverage to load actual LFG, LFGEnhancements, RealmInsights and EventBus modules. Test secret hasSelf/numMembers/activityIDs, inaccessible records, native UI mutation traps, tooltip ownership, feature switches and Retail tooltip compatibility.
+
+The additional user reports were recorded before 4.9.6; they do not establish a failure of that version after installation. Inspection did establish that 4.9.6 still had native row/tooltip integration paths, now removed. This release does not claim an in-client reproduction or proof that every possible source of taint is eliminated.
+
+Validation: 292 assertions on Lua 5.1 and 292 on Lua 5.4; 44 Lua files compile on both. The 54-check browse integration suite includes all remaining integration paths above. Expanded checks detect retained native hooks/tints in 4.9.6. XML and both TOCs pass. WoW taint-engine and visual checks still require the game client. See FIX-4.9.7-UA.md and VALIDATION-4.9.7.txt.
+
 ### 4.9.6 — Forever browse secret-width taint isolation
 
 - Stop replacing Blizzard's browse ScrollBox provider or clearing its selection from addon code. Those operations ran native row initialization in an insecure context and could contaminate later native refreshes.

@@ -13,7 +13,10 @@ end
 
 local function CanInvite(info)
   if not info or info.numMembers ~= 1 or not info.leaderName then return false end
-  return not IsInGroup() or UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
+  local ok, inGroup = pcall(IsInGroup)
+  if not ok or not addon:SafeCanRead(inGroup) then return false end
+  if inGroup == false then return true end
+  return addon.Safe.IsAssistantOrLeader("player")
 end
 
 local function WhisperSelected()
@@ -63,8 +66,14 @@ local function ShowTooltip(row)
   if not row.resultID or not GameTooltip then return end
   local info = addon:LFG_API_GetSearchResultInfo(row.resultID)
   if not info then return end
+  local view = addon._ggForeverBrowseView
+  if not view then return end
+  view.tooltipRow = row
   GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
   GameTooltip:SetText(info.leaderName or "...")
+  -- A fresh base tooltip needs fresh details even if the result was rendered
+  -- within the insight module's short deduplication window.
+  GameTooltip._ggInsightResultID = nil
   if info.comment and info.comment ~= "" then GameTooltip:AddLine(info.comment, 1, 1, 1, true) end
   if info.numMembers then GameTooltip:AddLine((MEMBERS or "Members") .. ": " .. info.numMembers, 0.8, 0.8, 0.8) end
   for index = 1, math.min(info.numMembers or 0, 40) do
@@ -75,7 +84,17 @@ local function ShowTooltip(row)
     end
   end
   if addon.LFG_AddSearchTooltip then addon:LFG_AddSearchTooltip(GameTooltip, row.resultID) end
+  if addon.LFG_AppendSearchInsightTooltip then addon:LFG_AppendSearchInsightTooltip(GameTooltip, row.resultID) end
   GameTooltip:Show()
+end
+
+function addon:ForeverBrowse_RefreshTooltip(resultID)
+  local view = self._ggForeverBrowseView
+  local row = view and view.tooltipRow
+  if not row or row.resultID ~= resultID or not view:IsShown() or not row:IsVisible() then return false end
+  if not GameTooltip or not GameTooltip:IsShown() or not GameTooltip:IsOwned(row) then return false end
+  ShowTooltip(row)
+  return true
 end
 
 local function CreateRowRegions(row)
@@ -134,13 +153,19 @@ local function CreateRowRegions(row)
     end
   end)
   row:SetScript("OnEnter", ShowTooltip)
-  row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  row:SetScript("OnLeave", function(self)
+    if GameTooltip and GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    local view = addon._ggForeverBrowseView
+    if view and view.tooltipRow == self then view.tooltipRow = nil end
+  end)
   row:SetScript("OnHide", function(self)
     if GameTooltip and type(GameTooltip.IsOwned) == "function" and GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    local view = addon._ggForeverBrowseView
+    if view and view.tooltipRow == self then view.tooltipRow = nil end
   end)
 end
 
-function addon:ForeverBrowse_RenderRow(row, node)
+function addon:ForeverBrowse_RenderRow(row, node, clearHighlights)
   CreateRowRegions(row)
   local data = node.data
   row.elementNode, row.resultID, row.dividerType = node, data.resultID, data.dividerType
@@ -198,13 +223,28 @@ function addon:ForeverBrowse_RenderRow(row, node)
   end
   row.ActivityName:SetText(info.hasSelf and LFG_SELF_LISTING or table.concat(activities, ", "))
   if info.hasSelf then row.Background:SetColorTexture(0.08, 0.2, 0.1, 1) end
-  if self.db and self.db.lfg_highlight and self.EvaluateSearchResultFlag and self:EvaluateSearchResultFlag(data.resultID) then
+  local enabled = not clearHighlights and not (self.IsDisabledNow and self:IsDisabledNow())
+  if enabled and self.db and self.db.lfg_highlight and self.EvaluateSearchResultFlag and self:EvaluateSearchResultFlag(data.resultID) then
     row.Background:SetColorTexture(0.35, 0.07, 0.04, 1)
-  elseif self.db and self.db.social_mark_lfg and self.LFG_EvaluateSearchResultSocial and self:LFG_EvaluateSearchResultSocial(data.resultID) then
+  elseif enabled and self.db and self.db.lfg_highlight and self.db.social_mark_lfg and self.LFG_EvaluateSearchResultSocial and self:LFG_EvaluateSearchResultSocial(data.resultID) then
     row.Background:SetColorTexture(0.06, 0.19, 0.25, 1)
   end
   if info.isDelisted then row.Name:SetTextColor(0.4, 0.4, 0.4) end
   row.Selected:SetShown(data.resultID == self._ggForeverBrowseView.selectedResultID)
+end
+
+function addon:ForeverBrowse_RefreshRows(resultID, clearHighlights)
+  local view = self._ggForeverBrowseView
+  if not view or not view:IsShown() or not LFGBrowseFrame or not LFGBrowseFrame:IsVisible() then return false end
+  local updated = false
+  view.ScrollBox:ForEachFrame(function(row)
+    if row.resultID and row.elementNode and (resultID == nil or row.resultID == resultID) then
+      self:ForeverBrowse_RenderRow(row, row.elementNode, clearHighlights)
+      updated = true
+    end
+  end)
+  self:ForeverBrowse_UpdateSelection()
+  return updated
 end
 
 function addon:ForeverBrowse_GetScrollBox(browse)
@@ -270,5 +310,9 @@ end
 
 function addon:ForeverBrowse_Hide()
   local view = self._ggForeverBrowseView
-  if view then view:Hide() end
+  if view then
+    if view.tooltipRow and GameTooltip and GameTooltip:IsOwned(view.tooltipRow) then GameTooltip:Hide() end
+    view.tooltipRow = nil
+    view:Hide()
+  end
 end

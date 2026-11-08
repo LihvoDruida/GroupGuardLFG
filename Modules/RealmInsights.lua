@@ -379,6 +379,7 @@ function addon:LFG_HideRealmDecorations()
 end
 
 function addon:LFG_InitRealmInsights()
+  if self.IsForeverClient and self:IsForeverClient() then return end
   if self.HasClientCapability and not self:HasClientCapability("lfgRealmInsights") then
     if self.LFG_HideRealmDecorations then self:LFG_HideRealmDecorations() end
     return

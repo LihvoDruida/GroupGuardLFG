@@ -2,9 +2,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.9.6
-## X-Codename: Forever browse taint isolation
-## X-Prev-Codename: API and event lifecycle audit
+## Version: 4.9.7
+## X-Codename: Forever native row and tooltip isolation
+## X-Prev-Codename: Forever browse taint isolation
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only

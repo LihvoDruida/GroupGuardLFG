@@ -265,44 +265,11 @@ local function EnsureGGHighlight(host)
   return SafeField(host, "_ggHL"), SafeField(host, "_ggHLTop"), SafeField(host, "_ggHLBottom")
 end
 
-local function PaintForeverNativeHighlight(rowFrame, mode)
-  if not (addon and addon.IsForeverClient and addon:IsForeverClient()) then return false end
-  if not CanAccessObject(rowFrame) then return false end
-  local bg = SafeField(rowFrame, "ResultBG")
-  if not bg or not CanAccessObject(bg) then return false end
-  local setColor = addon.Safe and addon.Safe.ObjectMethod and addon.Safe.ObjectMethod(bg, "SetColorTexture")
-  if not setColor then return false end
-
-  if not mode or mode == false then
-    pcall(setColor, bg, 1, 1, 1, 0.04)
-    return true
-  end
-
-  local c = LFG_HIGHLIGHT_COLORS[mode] or LFG_HIGHLIGHT_COLORS.FLAG
-  -- Forever rows already own ResultBG. Tint that native layer instead of adding
-  -- a BACKGROUND texture behind it; the latter can be hidden by Blizzard's row.
-  pcall(setColor, bg, c[1], c[2], c[3], math.max(c[4] or 0.20, 0.16))
-  return true
-end
-
 local function PaintGGHighlight(rowFrame, mode)
   if not rowFrame then return end
-  if addon and addon.IsForeverClient and addon:IsForeverClient() then
-    -- Forever keeps Blizzard's native row chrome only. Never create GroupGuard
-    -- fill/top/bottom overlay textures here: those extra 1px lines were visible
-    -- on some VanillaStyle layouts and made the stock LFG list look modified.
-    PaintForeverNativeHighlight(rowFrame, mode)
-    local oldHost = GetGGHighlightHost(rowFrame)
-    if oldHost then
-      local oldFill = SafeField(oldHost, "_ggHL")
-      local oldTop = SafeField(oldHost, "_ggHLTop")
-      local oldBottom = SafeField(oldHost, "_ggHLBottom")
-      if oldFill then oldFill:Hide() end
-      if oldTop then oldTop:Hide() end
-      if oldBottom then oldBottom:Hide() end
-    end
-    return
-  end
+  -- Forever decorations live exclusively in ForeverBrowse's addon-owned rows.
+  -- Do not tint native ResultBG or attach cleanup state to recycled native rows.
+  if addon.IsForeverClient and addon:IsForeverClient() then return end
   local host = GetGGHighlightHost(rowFrame)
   local fill, top, bottom = EnsureGGHighlight(host)
   if not fill then return end
@@ -515,6 +482,10 @@ function addon:LFG_ClearSearchCaches()
 end
 
 function addon:LFG_ClearVisibleHighlights()
+  if self.IsForeverClient and self:IsForeverClient() then
+    if self.ForeverBrowse_RefreshRows then self:ForeverBrowse_RefreshRows(nil, true) end
+    return
+  end
   local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   local vSB = viewer and viewer.ScrollBox
   if vSB then ClearGGHighlightsInScrollBox(vSB) end
@@ -545,6 +516,7 @@ function addon:LFG_DebouncedHighlight(delay)
 end
 
 function addon:LFG_HighlightRows()
+  if self.SupportsLFGApplicantUI and not self:SupportsLFGApplicantUI() then return end
   local viewer = self.GetLFGApplicantViewer and self:GetLFGApplicantViewer() or (LFGListFrame and LFGListFrame.ApplicationViewer)
   local sb = viewer and viewer.ScrollBox
   if not sb then return end
@@ -1051,6 +1023,10 @@ function addon:LFG_RetryHighlightSearchResults(force)
 end
 
 function addon:LFG_HighlightSearchResults()
+  if self.IsForeverClient and self:IsForeverClient() then
+    if self.ForeverBrowse_RefreshRows then self:ForeverBrowse_RefreshRows() end
+    return
+  end
   local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   if not sb then return end
@@ -1084,6 +1060,9 @@ function addon:LFG_HighlightSearchResult(resultID)
   if not CanReadValue(resultID) then return false end
   resultID = tonumber(resultID)
   if not resultID then return false end
+  if self.IsForeverClient and self:IsForeverClient() then
+    return self.ForeverBrowse_RefreshRows and self:ForeverBrowse_RefreshRows(resultID) or false
+  end
   local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   if not sb or (sp.IsVisible and not sp:IsVisible()) then return false end
@@ -1143,6 +1122,10 @@ function addon:LFG_HookViewer()
 end
 
 function addon:LFG_HookSearchPanel()
+  -- Observing the native provider/rows is unnecessary for our separate view.
+  -- LFGFilters observes only the frame's completed UpdateResults pass; row
+  -- painting and tooltips must not run against Blizzard's recycled buttons.
+  if self.IsForeverClient and self:IsForeverClient() then return end
   local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)
   local sb = sp and sp.ScrollBox
   if sb and self.SafeObserveScrollBox then
@@ -1159,15 +1142,6 @@ function addon:LFG_HookSearchPanel()
       if addon and addon.LFG_AddSearchTooltip then addon:LFG_AddSearchTooltip(tooltip, resultID) end
     end)
     if ok then addon._ggTooltipHookedMainline = true end
-  end
-
-  -- Forever uses Blizzard_GroupFinder_VanillaStyle and a different tooltip
-  -- renderer, but still exposes the modern C_LFGList search result APIs.
-  if not addon._ggTooltipHookedForever and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
-    local ok = GGHook("LFGBrowseSearchEntryTooltip_UpdateAndShow", function(tooltip, resultID)
-      if addon and addon.LFG_AddSearchTooltip then addon:LFG_AddSearchTooltip(tooltip, resultID) end
-    end)
-    if ok then addon._ggTooltipHookedForever = true end
   end
 
   if addon.InitPGFIntegration then addon:InitPGFIntegration() end
@@ -1194,27 +1168,6 @@ function addon:LFG_HookSearchPanel()
     if hooked then addon._ggHookedSearchPanelMainline = true end
   end
 
-  if not addon._ggHookedSearchPanelForever then
-    local hooked = false
-    if type(LFGBrowseMixin) == "table" and type(LFGBrowseMixin.UpdateResults) == "function" then
-      hooked = GGHook(LFGBrowseMixin, "UpdateResults", function()
-        addon:LFG_RetryHighlightSearchResults()
-      end) or hooked
-    end
-    if type(LFGBrowseSearchEntry_Update) == "function" then
-      hooked = GGHook("LFGBrowseSearchEntry_Update", function(row, resultID)
-        local rid = nil
-        if CanReadValue(resultID) then rid = tonumber(resultID) end
-        if not rid then rid = GetResultIDFromRow(row) end
-        if rid and addon.LFG_HighlightSearchResult then
-          addon:LFG_HighlightSearchResult(rid)
-        else
-          addon:LFG_DebouncedHighlightResults(0.08)
-        end
-      end) or hooked
-    end
-    if hooked then addon._ggHookedSearchPanelForever = true end
-  end
 end
 
 function addon:LFG_LayoutButton()

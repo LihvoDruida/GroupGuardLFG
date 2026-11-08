@@ -416,14 +416,15 @@ function addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
 end
 
 function addon:LFG_RefreshCurrentSearchTooltip(resultID)
-  resultID = tonumber(resultID)
+  resultID = self:SafeNumber(resultID, nil)
+  if not resultID then return false end
+  if self.IsForeverClient and self:IsForeverClient() then
+    return self.ForeverBrowse_RefreshTooltip and self:ForeverBrowse_RefreshTooltip(resultID) or false
+  end
   if not resultID or self._lfgCurrentSearchResultID ~= resultID then return false end
   local tooltip = self._lfgCurrentSearchTooltip
   if not tooltip or not tooltip.IsShown or not tooltip:IsShown() then return false end
   if tooltip.ClearLines then tooltip:ClearLines() end
-  if tooltip == _G.LFGBrowseSearchEntryTooltip and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
-    return pcall(LFGBrowseSearchEntryTooltip_UpdateAndShow, tooltip, resultID)
-  end
   if type(LFGListUtil_SetSearchEntryTooltip) == "function" then
     return pcall(LFGListUtil_SetSearchEntryTooltip, tooltip, resultID)
   end
@@ -431,6 +432,9 @@ function addon:LFG_RefreshCurrentSearchTooltip(resultID)
 end
 
 function addon:LFG_HookEnhancedSearchTooltip()
+  -- Forever's own row tooltip calls the detail renderer directly. Never hook
+  -- or invoke Blizzard's tooltip renderer from an insecure refresh callback.
+  if self.IsForeverClient and self:IsForeverClient() then return true end
   if type(hooksecurefunc) ~= "function" then return false end
   local hooked = false
 
@@ -441,16 +445,6 @@ function addon:LFG_HookEnhancedSearchTooltip()
       end
     end)
     if ok then self._ggEnhancedTooltipHookedMainline = true end
-    hooked = ok or hooked
-  end
-
-  if not self._ggEnhancedTooltipHookedForever and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
-    local ok = GGHook("LFGBrowseSearchEntryTooltip_UpdateAndShow", function(tooltip, resultID)
-      if addon and addon.LFG_AppendSearchInsightTooltip then
-        addon:LFG_AppendSearchInsightTooltip(tooltip, resultID)
-      end
-    end)
-    if ok then self._ggEnhancedTooltipHookedForever = true end
     hooked = ok or hooked
   end
 
@@ -466,12 +460,7 @@ function addon:LFG_SetupTooltipModifierRefresh()
     local tooltip = addon and addon._lfgCurrentSearchTooltip
     local resultID = addon and addon._lfgCurrentSearchResultID
     if not tooltip or not resultID or not tooltip:IsShown() then return end
-    tooltip:ClearLines()
-    if tooltip == _G.LFGBrowseSearchEntryTooltip and type(LFGBrowseSearchEntryTooltip_UpdateAndShow) == "function" then
-      pcall(LFGBrowseSearchEntryTooltip_UpdateAndShow, tooltip, resultID)
-    elseif type(LFGListUtil_SetSearchEntryTooltip) == "function" then
-      pcall(LFGListUtil_SetSearchEntryTooltip, tooltip, resultID)
-    end
+    addon:LFG_RefreshCurrentSearchTooltip(resultID)
   end)
   self._ggTooltipModifierFrame = frame
 end
@@ -509,7 +498,7 @@ function addon:LFG_InitEnhancements()
   if self.LFG_SetupTooltipModifierRefresh then self:LFG_SetupTooltipModifierRefresh() end
   if self.LFG_SetupApplicantPingMute then self:LFG_SetupApplicantPingMute() end
 
-  local hasSearchTooltipHook = self._ggEnhancedTooltipHookedMainline or self._ggEnhancedTooltipHookedForever
+  local hasSearchTooltipHook = (self.IsForeverClient and self:IsForeverClient()) or self._ggEnhancedTooltipHookedMainline
   local needsApplicantPing = not self.SupportsLFGApplicantSettings or self:SupportsLFGApplicantSettings()
   local needsRetry = (not hasSearchTooltipHook) or (needsApplicantPing and not self._ggApplicantPingHooked)
   if needsRetry and C_Timer and C_Timer.After and not self._ggEnhancementRetryScheduled and (self._ggEnhancementRetryCount or 0) < 8 then
