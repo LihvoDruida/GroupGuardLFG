@@ -387,14 +387,14 @@ local function OnEvent(self, event, arg1, ...)
   elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
     -- Blizzard_GroupFinder_VanillaStyle handles this event itself and calls
-    -- UpdateResultList(). Our secure hook filters that pass. Scheduling another
-    -- UpdateResults immediately afterward caused a visible jump to the top.
+    -- UpdateResultList(). Our post-hook updates the independent addon view.
+    -- Never call Blizzard's UpdateResults from here.
     addon:RequestLFGRefresh(nil, false, false)
 
   elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
-    -- Forever's native row already redraws this result. Invalidate only the
-    -- affected result and rebuild our visual provider only when membership,
-    -- category or social priority actually changed. Retail keeps the broader
+    -- Invalidate only the affected result. Repaint its addon row, or rebuild
+    -- our visual provider when membership, category or social priority changed.
+    -- Retail keeps the broader
     -- refresh path because its search panel lifecycle differs.
     if addon.IsForeverClient and addon:IsForeverClient() then
       local needsPresentation = addon.LFGFilters_NeedsPresentation and addon:LFGFilters_NeedsPresentation()

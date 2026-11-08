@@ -2,9 +2,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.9.5
-## X-Codename: API and event lifecycle audit
-## X-Prev-Codename: Integrated language search
+## Version: 4.9.6
+## X-Codename: Forever browse taint isolation
+## X-Prev-Codename: API and event lifecycle audit
 ## OptionalDeps: PremadeGroupsFilter, Plumber, RaiderIO
 ## X-Compat-PremadeGroupsFilter: safe-hook-only
 ## X-Compat-Plumber: passive-hooks-only
@@ -28,6 +28,8 @@ UI\Notify.lua
 
 Modules\FrameMarkers.lua
 Modules\LFG.lua
+UI\ForeverBrowse.xml
+Modules\ForeverBrowse.lua
 Modules\LFGFilters.lua
 Modules\ForeverSearch\Localization.lua
 Modules\ForeverSearch\Languages.lua

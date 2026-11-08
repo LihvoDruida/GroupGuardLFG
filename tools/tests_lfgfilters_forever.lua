@@ -1,5 +1,5 @@
 local pass, fail = 0, 0
-local HARNESS_REVISION = "4.9.0"
+local HARNESS_REVISION = "4.9.6"
 print("[GroupGuardLFG] Forever filter regression harness " .. HARNESS_REVISION)
 
 local function check(name, ok, detail)
@@ -131,8 +131,16 @@ CreateTreeDataProvider = function()
 end
 local provider
 local scrollBox = { SetDataProvider=function(_, p) provider=p end, GetDataProvider=function() return provider end }
+-- A native provider/selection must never be touched by addon filtering, even
+-- when no Lua error is thrown by the setter itself (taint can surface later).
+local nativeWrites = 0
+local nativeScrollBox = { SetDataProvider=function() nativeWrites=nativeWrites+1; error("native initializer would compare a secret width") end }
+addon.ForeverBrowse_GetScrollBox = function() return scrollBox end
+addon._ggForeverBrowseView = { ScrollBox=scrollBox, collapsed={}, IsShown=function() return true end }
 local noResults = { shown=false, Show=function(self) self.shown=true end, Hide=function(self) self.shown=false end, SetText=function() end }
-LFGBrowseFrame = { searching=false, ScrollBox=scrollBox, results={1,2,3,4}, NoResultsFound=noResults }
+LFGBrowseFrame = { searching=false, ScrollBox=nativeScrollBox, results={1,2,3,4}, NoResultsFound=noResults,
+  IsShown=function() return true end,
+  selectionBehavior={ ClearSelections=function() nativeWrites=nativeWrites+1 end } }
 _G.LFGBrowseFrame = LFGBrowseFrame
 infos[1] = { numMembers=4, activityIDs={101} }
 infos[2] = { numMembers=1, activityIDs={101} }
@@ -147,6 +155,8 @@ addon.db.lfg_filter_player_classes = { DRUID=true }
 addon.db.lfg_filter_player_roles = {}
 local ok = addon:LFGFilters_ApplyForeverPresentation(LFGBrowseFrame)
 check("provider rebuild succeeds", ok == true)
+check("filtering never initializes native rows or changes native selection", nativeWrites == 0, nativeWrites)
+check("filtering leaves native empty-state presentation untouched", noResults.shown == false)
 LFGBrowseFrame.IsShown=function() return true end
 check("diagnostic count belongs to the installed filtered provider", addon:LFGFilters_GetForeverVisibleCount()==addon._ggForeverVisibleResults)
 local savedProvider=provider
@@ -314,6 +324,8 @@ check("button frame level is raised above options control", btn and btn.level > 
 -- Hook the real lifecycle path, then emulate closing/reopening Group Finder.
 addon.GetLFGSearchFrame=function() return browse end
 addon.GetLFGRootFrame=function() return lfgRoot end
+-- The isolated provider fixture above has no native UI methods.
+addon._ggForeverBrowseView=nil
 local hookOk, hookErr = pcall(function() addon:LFGFilters_HookFrames() end)
 check("filter lifecycle hooks install without mock UI errors", hookOk == true, hookErr)
 check("filter panel is created by the lifecycle path", hookOk and addon.lfgFilterPanel ~= nil)

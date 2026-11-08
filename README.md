@@ -1,3 +1,15 @@
+### 4.9.6 — Forever browse secret-width taint isolation
+
+- Stop replacing Blizzard's browse ScrollBox provider or clearing its selection from addon code. Those operations ran native row initialization in an insecure context and could contaminate later native refreshes.
+- Render filtered/sorted results in a separate addon-owned view, using sanitized SafeAPI snapshots and fixed text anchors. The new renderer never queries player-name widths or calls the native LFG row initializer.
+- Preserve group/player filters, level limits, saved presets, social ordering, category collapsing, rule/social colors, and the existing language-search controller.
+- Keep selection, whisper/invite controls, report menus, tooltips and empty state in the addon view. Native results, totals, selection, rows and provider stay Blizzard-owned.
+- Hide the addon view during native searches, failures and Browse closure. Disabling both local filtering and social sorting returns to the native list.
+- Repaint changed visible rows directly; coalesce refresh bursts into one next-frame provider update and retain scroll position.
+- Filtered rows now use an addon-owned compact layout and tooltip, rather than Blizzard's exact row artwork. Decorative native details such as the Discord indicator are not reproduced in this release.
+
+Validation: 267 assertions on Lua 5.1 and 267 on Lua 5.4; 44 Lua files compile on both runtimes. XML and TOC load order pass. Tests use mocked game APIs and cannot validate WoW's taint engine or in-game appearance. See FIX-4.9.6-UA.md and VALIDATION-4.9.6.txt. A complete UI reload or game restart is required to discard taint left by the previous version.
+
 ### 4.9.5 — API, event scheduling and combat notifications
 
 - Coalesce roster/settings event bursts; ignore unrelated unit updates.

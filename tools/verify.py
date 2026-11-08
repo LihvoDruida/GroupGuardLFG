@@ -14,6 +14,7 @@ SUITES = (
     'tests.lua', 'tests_extra.lua', 'tests_lfgfilters_forever.lua',
     'tests_lfg_metadata.lua', 'tests_forever_languages.lua',
     'tests_runtime_audit.lua', 'tests_settings_ui.lua',
+    'tests_forever_browse.lua',
 )
 
 

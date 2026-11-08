@@ -1,0 +1,6 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+  <!-- No Blizzard LFG mixins or scripts: these rows belong only to GroupGuard. -->
+  <Button name="GroupGuardLFGBrowseRowTemplate" virtual="true">
+    <Size x="400" y="38"/>
+  </Button>
+</Ui>

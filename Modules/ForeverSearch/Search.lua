@@ -64,7 +64,7 @@ local Describe, ReadOptional, Context, Summary = NS.Describe, NS.ReadOptional, N
 
 local function ObserveView(run)
     local generation = viewGeneration
-    -- Presentation is queued for the next frame and again at 0.05 s. Never
+    -- Presentation is queued for the next frame. Never
     -- report a cached count from an older/native-overwritten ScrollBox provider.
     C_Timer.After(0.1, function()
         if generation ~= viewGeneration then return end

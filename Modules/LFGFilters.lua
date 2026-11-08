@@ -79,62 +79,6 @@ local function CopyArray(source)
   return out
 end
 
--- Blizzard's Forever browser rebuilds a TreeDataProvider in UpdateResults().
--- The function calls RemoveDataProvider() before SetDataProvider(...,
--- RetainScrollPosition), so a second rebuild from an addon can still snap the
--- list to the top. Preserve scroll state explicitly: exact derived offset first,
--- percentage as a fallback. This follows the modern ScrollBox API instead of
--- manipulating scrollbar textures or legacy FauxScrollFrame state.
-local function CaptureScrollState(scrollBox)
-  if not scrollBox then return nil end
-  local state = {}
-
-  if type(scrollBox.GetDerivedScrollOffset) == "function" then
-    local ok, value = pcall(scrollBox.GetDerivedScrollOffset, scrollBox)
-    value = ok and tonumber(value) or nil
-    if value then state.offset = math.max(0, value) end
-  end
-
-  if type(scrollBox.GetScrollPercentage) == "function" then
-    local ok, value = pcall(scrollBox.GetScrollPercentage, scrollBox)
-    value = ok and tonumber(value) or nil
-    if value then
-      if value < 0 then value = 0 elseif value > 1 then value = 1 end
-      state.percentage = value
-    end
-  end
-
-  if state.offset == nil and state.percentage == nil then return nil end
-  return state
-end
-
-local function RestoreScrollState(scrollBox, state)
-  if not scrollBox or type(state) ~= "table" then return end
-  local noInterpolation = ScrollBoxConstants and ScrollBoxConstants.NoScrollInterpolation or nil
-
-  -- Prefer the exact pixel offset. It is more stable than percentage when the
-  -- number of LFG rows changes during a refresh.
-  if state.offset ~= nil and type(scrollBox.ScrollToOffset) == "function" then
-    local ok = pcall(scrollBox.ScrollToOffset, scrollBox, state.offset, noInterpolation)
-    if ok then return end
-  end
-
-  if state.percentage ~= nil and type(scrollBox.SetScrollPercentage) == "function" then
-    local ok = pcall(scrollBox.SetScrollPercentage, scrollBox, state.percentage, noInterpolation)
-    if ok then return end
-    pcall(scrollBox.SetScrollPercentage, scrollBox, state.percentage)
-  end
-end
-
-local function UpdateResultsPreservingScroll(searchFrame)
-  if not searchFrame or type(searchFrame.UpdateResults) ~= "function" then return false end
-  local scrollBox = searchFrame.ScrollBox
-  local scrollState = CaptureScrollState(scrollBox)
-  local ok = pcall(searchFrame.UpdateResults, searchFrame)
-  if ok then RestoreScrollState(scrollBox, scrollState) end
-  return ok
-end
-
 function addon:LFGFilters_HasActiveFilters()
   if not self.db or self.db.lfg_filters_enabled == false then return false end
   return HasAnySelected(self.db.lfg_filter_group_roles)
@@ -341,55 +285,6 @@ function addon:LFGFilters_ResultMatches(resultID, searchFrame)
   return true
 end
 
-local function GetForeverResultIDFromRow(row)
-  if not row then return nil end
-  local direct = nil
-  if addon and addon.SafeObjectField then
-    direct = addon:SafeObjectField(row, "resultID")
-      or addon:SafeObjectField(row, "resultId")
-      or addon:SafeObjectField(row, "searchResultID")
-      or addon:SafeObjectField(row, "searchResultId")
-  end
-  direct = addon and addon.SafeNumber and addon:SafeNumber(direct, nil) or tonumber(direct)
-  if direct then return direct end
-
-  local ed = addon and addon.SafeGetElementData and addon:SafeGetElementData(row) or nil
-  if type(ed) ~= "table" then return nil end
-  for _, key in ipairs({ "resultID", "resultId", "searchResultID", "searchResultId", "id", "ID" }) do
-    local value = ed[key]
-    value = addon and addon.SafeNumber and addon:SafeNumber(value, nil) or tonumber(value)
-    if value then return value end
-  end
-  return nil
-end
-
-local function EnumerateForeverRows(scrollBox)
-  local rows = {}
-  if not scrollBox then return rows end
-
-  if type(scrollBox.ForEachFrame) == "function" then
-    pcall(scrollBox.ForEachFrame, scrollBox, function(row)
-      if row then rows[#rows + 1] = row end
-    end)
-    return rows
-  end
-
-  if type(scrollBox.GetFrames) == "function" then
-    local ok, frames = pcall(scrollBox.GetFrames, scrollBox)
-    if ok and type(frames) == "table" then
-      for _, row in ipairs(frames) do rows[#rows + 1] = row end
-      return rows
-    end
-  end
-
-  return rows
-end
-
--- Forever/Camelot calls C_LFGList.Search() from Blizzard's protected browse
--- path. Never write addon-filtered values back into LFGBrowseFrame.results or
--- totalResults: Blizzard reads those fields later and a tainted value can make
--- the next completely native category click fail with ADDON_ACTION_BLOCKED.
--- Apply the custom filter only to already-created row presentation instead.
 local function GetForeverDividerTypes()
   local types = _G.LFGVanillaBrowseDividerType
   if type(types) == "table" then
@@ -459,14 +354,23 @@ local function SortPresentationElements(elements, socialPriorityEnabled)
   end)
 end
 
--- Rebuild only Forever's visual ScrollBox provider. The authoritative search
--- state (LFGBrowseFrame.results / totalResults) remains Blizzard-owned and is
--- never rewritten by GroupGuard. This removes non-matching entries from the
--- rendered tree completely, so they consume no row height and create no holes.
+-- Build our own visual provider. Even a presentation-only replacement of the
+-- native ScrollBox provider taints Blizzard row initialization and can leave
+-- native rows tainted on subsequent updates. All nodes, selection and rendering
+-- below belong to the independent GroupGuard view.
 function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
-  if searchFrame.searching then return false end
-  local scrollBox = searchFrame.ScrollBox
+  local needsPresentation = self:LFGFilters_NeedsPresentation()
+  if searchFrame.searching or searchFrame.searchFailed or not SafeVisible(searchFrame)
+      or not needsPresentation then
+    if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide() end
+    self._ggForeverPresentationProvider = nil
+    if not needsPresentation then self._ggForeverRefreshPending = false end
+    return false
+  end
+  -- No fallback to searchFrame.ScrollBox: invoking its native initializers in
+  -- addon context is the source of the secret-width warning.
+  local scrollBox = self.ForeverBrowse_GetScrollBox and self:ForeverBrowse_GetScrollBox(searchFrame)
   if not scrollBox or type(CreateTreeDataProvider) ~= "function" then return false end
 
   local results = searchFrame.results
@@ -526,28 +430,39 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
     if #groupElements > 0 then
       local groupSubtree = dataProvider:Insert({ index = nil, dividerType = groupDivider })
       for _, element in ipairs(groupElements) do groupSubtree:Insert(element) end
+      if self._ggForeverBrowseView and self._ggForeverBrowseView.collapsed[groupDivider] then groupSubtree:SetCollapsed(true) end
     end
 
     if #soloElements > 0 then
       local soloSubtree = dataProvider:Insert({ index = nil, dividerType = soloDivider })
       for _, element in ipairs(soloElements) do soloSubtree:Insert(element) end
+      if self._ggForeverBrowseView and self._ggForeverBrowseView.collapsed[soloDivider] then soloSubtree:SetCollapsed(true) end
     end
   else
     -- With Blizzard category dividers disabled, retain the original result order.
     for _, element in ipairs(flatElements) do dataProvider:Insert(element) end
   end
 
-  -- Selection can point to an element from the old provider after a filter
-  -- change. Clear it before swapping only the presentation tree.
-  if searchFrame.selectionBehavior and type(searchFrame.selectionBehavior.ClearSelections) == "function" then
-    pcall(searchFrame.selectionBehavior.ClearSelections, searchFrame.selectionBehavior)
+  -- Keep selection exclusively in the addon view. Never fire Blizzard's native
+  -- OnSelectionChanged callback from an insecure presentation refresh.
+  local ownView = self._ggForeverBrowseView
+  if ownView and ownView.selectedResultID then
+    local state = stateByResult[ownView.selectedResultID]
+    if not state or not state.show then ownView.selectedResultID = nil end
   end
 
   local retain = _G.ScrollBoxConstants and _G.ScrollBoxConstants.RetainScrollPosition or nil
   self._ggForeverProviderApplying = true
-  local ok = pcall(scrollBox.SetDataProvider, scrollBox, dataProvider, retain)
+  local ok, err = pcall(scrollBox.SetDataProvider, scrollBox, dataProvider, retain)
   self._ggForeverProviderApplying = false
-  if not ok then return false end
+  if not ok then
+    if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide() end
+    self._ggForeverPresentationProvider = nil
+    if self.ForeverSearch and self.ForeverSearch.Log then
+      self.ForeverSearch.Log("Error", self:SafeText(err, "GroupGuard browse rendering failed"), true)
+    end
+    return false
+  end
 
   self._ggForeverPresentationState = stateByResult
   self._ggForeverRefreshPending = false
@@ -557,16 +472,7 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   self._ggForeverVisibleResults = visibleCount
   self._ggForeverPresentationProvider = dataProvider
   self._ggForeverPresentationResults = results
-  if searchFrame.NoResultsFound then
-    if visibleCount == 0 and not searchFrame.searchFailed then
-      searchFrame.NoResultsFound:Show()
-      if type(searchFrame.NoResultsFound.SetText) == "function" then
-        searchFrame.NoResultsFound:SetText(_G.LFG_LIST_NO_RESULTS_FOUND or self:Tr("LFG_FILTERS_NO_MATCHES"))
-      end
-    else
-      searchFrame.NoResultsFound:Hide()
-    end
-  end
+  if self.ForeverBrowse_Show then self:ForeverBrowse_Show(visibleCount) end
   return true
 end
 
@@ -575,8 +481,15 @@ function addon:LFGFilters_GetForeverVisibleCount()
   local browse = _G.LFGBrowseFrame
   if not browse or not SafeVisible(browse) then return nil, "browse hidden" end
   if browse.searching or self._ggForeverRefreshPending then return nil, "presentation pending" end
+  if not self:LFGFilters_NeedsPresentation() then
+    local results = self:SafeObjectField(browse, "results")
+    if self:SafeCanAccessTable(results) then return #results end
+    return nil, "native results unavailable"
+  end
   if self._ggForeverPresentationResults ~= browse.results then return nil, "result list changed" end
-  local scrollBox = browse.ScrollBox
+  local ownView = self._ggForeverBrowseView
+  local scrollBox = ownView and ownView.ScrollBox
+  if ownView and not SafeVisible(ownView) then return nil, "presentation hidden" end
   if not scrollBox or type(scrollBox.GetDataProvider) ~= "function" then return nil, "provider unavailable" end
   local ok, provider = pcall(scrollBox.GetDataProvider, scrollBox)
   if not ok or provider ~= self._ggForeverPresentationProvider or provider == nil then return nil, "provider replaced" end
@@ -600,7 +513,6 @@ function addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
   end
   if C_Timer and type(C_Timer.After) == "function" then
     C_Timer.After(0, apply)
-    C_Timer.After(0.05, apply)
   else
     apply()
   end
@@ -624,6 +536,15 @@ function addon:LFGFilters_HandleForeverResultUpdated(resultID)
     self:LFGFilters_ScheduleForeverPresentation(searchFrame)
   else
     self._ggForeverPresentationState[resultID] = newState
+    -- Native row events cannot repaint our independent view. Update just the
+    -- changed visible row when its place in the provider has not changed.
+    local ownView = self._ggForeverBrowseView
+    if ownView and ownView.ScrollBox and self.ForeverBrowse_RenderRow then
+      ownView.ScrollBox:ForEachFrame(function(row)
+        if row.resultID == resultID and row.elementNode then self:ForeverBrowse_RenderRow(row, row.elementNode) end
+      end)
+      self:ForeverBrowse_UpdateSelection()
+    end
   end
   return true
 end
@@ -655,12 +576,8 @@ function addon:LFGFilters_FilterFrameResults(searchFrame)
   searchFrame.results = filtered
   searchFrame.totalResults = #filtered
 
-  -- Rebuild only the visual data provider; never trigger a protected Search().
-  -- Forever needs explicit scroll restoration because its UpdateResults() first
-  -- removes the old TreeDataProvider.
-  if searchFrame == _G.LFGBrowseFrame and type(searchFrame.UpdateResults) == "function" then
-    UpdateResultsPreservingScroll(searchFrame)
-  elseif _G.LFGListFrame and searchFrame == _G.LFGListFrame.SearchPanel and type(_G.LFGListSearchPanel_UpdateResults) == "function" then
+  -- Retail only; Forever returned above and never invokes native rebuilds.
+  if _G.LFGListFrame and searchFrame == _G.LFGListFrame.SearchPanel and type(_G.LFGListSearchPanel_UpdateResults) == "function" then
     pcall(_G.LFGListSearchPanel_UpdateResults, searchFrame)
   end
   self._lfgFilterApplying = false
@@ -674,18 +591,17 @@ function addon:LFGFilters_HookForeverFrame(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
   if self._ggForeverFrameFilterHooked then return true end
   if type(hooksecurefunc) ~= "function" then return false end
-  if type(searchFrame.UpdateResultList) ~= "function" then return false end
+  if type(searchFrame.UpdateResults) ~= "function" then return false end
 
-  local ok = pcall(hooksecurefunc, searchFrame, "UpdateResultList", function(frame)
+  local ok = pcall(hooksecurefunc, searchFrame, "UpdateResults", function(frame)
     if addon then addon:LFGFilters_ScheduleForeverPresentation(frame) end
   end)
   if ok then self._ggForeverFrameFilterHooked = true end
   return ok
 end
 
--- Re-read the same client-side result set Blizzard uses in
--- LFGBrowseMixin:UpdateResultList(). This makes filter changes deterministic
--- even if a mixin hook was installed after LFGBrowseFrame was constructed.
+-- Rebuild the addon view from the current native result set without changing
+-- any native provider, frame fields, selection or row state.
 function addon:LFGFilters_RefreshForeverResults(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
   -- Presentation-only refresh. Never call GetFilteredSearchResults() and write
@@ -1531,7 +1447,7 @@ function addon:LFGFilters_HookFrames()
       searchFrame:HookScript("OnShow", function()
         addon:LFGFilters_CreateButton(searchFrame)
         addon:LFGFilters_LayoutPanel()
-        if addon._ggForeverRefreshPending and searchFrame == _G.LFGBrowseFrame then
+        if searchFrame == _G.LFGBrowseFrame then
           addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
         end
         if addon.db and addon.db.lfg_filter_panel_open and addon.lfgFilterPanel then addon:LFGFilters_SetPanelShown(true) end
@@ -1542,6 +1458,7 @@ function addon:LFGFilters_HookFrames()
         -- protected LFG frame tree, so it will not inherit LFGBrowseFrame
         -- visibility automatically. Hide it explicitly when Browse closes.
         if addon.lfgFilterButton then addon.lfgFilterButton:Hide() end
+        if searchFrame == _G.LFGBrowseFrame and addon.ForeverBrowse_Hide then addon:ForeverBrowse_Hide() end
       end)
     end
   end
@@ -1555,12 +1472,12 @@ function addon:LFGFilters_HookFrames()
   end
 
   -- WoW Forever 1.60.x path. Blizzard_GroupFinder_VanillaStyle uses a
-  -- ScrollBox tree and LFGBrowseMixin:UpdateResultList(). Hook the mixin after
-  -- Blizzard fetches/sorts results, then rebuild only its data provider.
+  -- ScrollBox tree and LFGBrowseMixin:UpdateResults(). Observe the native
+  -- refresh, including searching/failure transitions, then update our own view.
   if not self._ggForeverFrameFilterHooked and not self._ggForeverFilterHooked
-      and type(_G.LFGBrowseMixin) == "table" and type(_G.LFGBrowseMixin.UpdateResultList) == "function"
+      and type(_G.LFGBrowseMixin) == "table" and type(_G.LFGBrowseMixin.UpdateResults) == "function"
       and type(hooksecurefunc) == "function" then
-    local ok = pcall(hooksecurefunc, _G.LFGBrowseMixin, "UpdateResultList", function(frame)
+    local ok = pcall(hooksecurefunc, _G.LFGBrowseMixin, "UpdateResults", function(frame)
       if addon then addon:LFGFilters_ScheduleForeverPresentation(frame) end
     end)
     if ok then self._ggForeverFilterHooked = true end
