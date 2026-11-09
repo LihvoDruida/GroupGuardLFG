@@ -1,0 +1,51 @@
+SOURCE OK: native Lua refresh and sort functions retain original identity
+SOURCE OK: original Browse event + original sort + original provider execute
+SOURCE OK: addon reads client-filtered API snapshot without rebuilding native provider
+SOURCE OK: only the list and its scrollbar are suppressed
+SOURCE OK: no replacement footer controls are created
+SOURCE OK: filtered group selection drives the original button state
+SOURCE OK: the original message button contacts the selected standard entry
+SOURCE OK: second click deselects through the native selection controller
+SOURCE OK: filtering out the selected entry clears native selection
+SOURCE OK: native OnShow cannot resurrect the unfiltered list
+SOURCE OK: another addon's native result changes do not erase our API candidates
+SOURCE OK: original client reproduces the expired-listing tooltip failure
+SOURCE OK: the expired native row cannot receive hover while its parent is suppressed
+SOURCE OK: native widgets restore when the addon releases presentation
+SOURCE OK: protected native visibility changes defer in combat
+SOURCE OK: deferred native suppression applies outside combat
+SOURCE OK: native restoration still runs after combat when addon features are disabled
+SOURCE OK: unreadable client data produces an explicit waiting state
+SOURCE OK: readable advertised healer roles recover after the client update
+SOURCE OK: solo selection enables both standard buttons
+SOURCE OK: the original invite handler uses the selected native entry
+SOURCE OK: standard button handlers, parents, anchors and visibility stay original
+SOURCE OK: original CallbackRegistry and TreeDataProvider dispatch together
+AUDIT FAIL: native provider reassignment refreshes the filtered view without a game event
+AUDIT FAIL: a secret advertised role stays unknown instead of becoming false
+AUDIT FAIL: an unavailable roles table never falls back to assigned damage
+AUDIT OK: a known selected role satisfies OR even when another role is secret
+AUDIT FAIL: an unreadable required level is reported as unavailable data
+AUDIT FAIL: full parties do not acquire imaginary open slots in the fallback
+AUDIT FAIL: a non-healer leader cannot prove that all teammates lack a healer
+AUDIT FAIL: a selected solo becoming a group disables the original invite action
+AUDIT FAIL: the original invite closure follows a changed selected leader
+AUDIT FAIL: expired cached rows cannot select a missing native result
+AUDIT FAIL: right-click uses a plain row menu without the protected MenuUtil path
+AUDIT FAIL: row menu actions remain bound to their original result
+AUDIT FAIL: a pending list refresh closes its context menu
+AUDIT FAIL: unknown self or delisted flags cannot enable standard actions
+AUDIT FAIL: late readable roles recover through bounded retries without a game event
+AUDIT FAIL: permanently unavailable data stops retrying after three attempts
+AUDIT FAIL: the filtered list preserves the original native sort within a category
+AUDIT OK: explicit friend priority overrides native order only when enabled
+AUDIT OK: class, advertised role and level bounds combine with AND
+AUDIT OK: group Needs and Already has conditions combine with AND
+AUDIT OK: only selected categories pass, and enabling both blocks retains both kinds
+AUDIT FAIL: Escape and an outside click close the row menu without a HUD catcher
+AUDIT FAIL: entering combat closes the plain row menu
+AUDIT OK: native footer stays visible when the addon releases the result list
+AUDIT FAIL: category order follows the original client when recruiting in a party
+AUDIT OK: an older metadata retry cannot overwrite a newer filter generation
+AUDIT OK: closing Browse cancels an outstanding metadata retry
+SOURCE OK: standard footer handlers remain original after all audit cases

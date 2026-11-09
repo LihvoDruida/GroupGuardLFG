@@ -1,0 +1,39 @@
+{
+  "version": "4.9.18",
+  "lua51_compiled_files": 32,
+  "layout_from_original_xml": [
+    {
+      "style": "Mainline",
+      "viewport_bottom": 64,
+      "buttons": [
+        {
+          "button": "SendMessageButton",
+          "top_from_bottom": 44.0,
+          "clearance": 20.0
+        },
+        {
+          "button": "GroupInviteButton",
+          "top_from_bottom": 44.0,
+          "clearance": 20.0
+        }
+      ]
+    },
+    {
+      "style": "Classic",
+      "viewport_bottom": 110,
+      "buttons": [
+        {
+          "button": "SendMessageButton",
+          "top_from_bottom": 101.0,
+          "clearance": 9.0
+        },
+        {
+          "button": "GroupInviteButton",
+          "top_from_bottom": 101.0,
+          "clearance": 9.0
+        }
+      ]
+    }
+  ],
+  "limits": "Static XML geometry/syntax only. No existing test suite or live WoW rendering executed."
+}

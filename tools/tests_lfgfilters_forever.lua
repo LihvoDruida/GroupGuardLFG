@@ -1,5 +1,5 @@
 local pass, fail = 0, 0
-local HARNESS_REVISION = "4.9.6"
+local HARNESS_REVISION = "4.9.12"
 print("[GroupGuardLFG] Forever filter regression harness " .. HARNESS_REVISION)
 
 local function check(name, ok, detail)
@@ -27,6 +27,7 @@ local addon = {
     lfg_filter_presets = {},
   },
   SafeNumber = function(_, v, fallback) local n=tonumber(v); if n then return n end; return fallback end,
+  SafeText = function(_, v, fallback) return type(v)=="string" and v or fallback end,
   SafeObjectField = function(_, obj, key) return obj and obj[key] end,
   SafeGetElementData = function() return nil end,
   Tr = function(_, key) return key end,
@@ -44,7 +45,7 @@ addon.LFG_API_GetSearchResultMemberCounts = function(_, id) return counts[id] en
 addon.LFG_API_GetSearchResultPlayerInfo = function(_, id, index) return players[id] and players[id][index] end
 addon.LFG_API_GetActivityInfoTable = function(_, id) return { categoryID=2, useDungeonRoleExpectations=true, maxNumPlayers=5 } end
 
-print("\n--- Forever filters: independent Groups / Players ---")
+print("\n--- Forever filters: only matching active result categories ---")
 infos[1] = { numMembers=4, activityIDs={101} }
 counts[1] = { TANK_REMAINING=1, HEALER_REMAINING=1, DAMAGER_REMAINING=0 }
 addon.db.lfg_filter_group_roles = { TANK=true, HEALER=true, DAMAGER=false }
@@ -83,13 +84,39 @@ addon.db.lfg_filter_player_max_level = 0
 addon.db.lfg_filter_group_roles = { TANK=true, HEALER=false, DAMAGER=false }
 addon.db.lfg_filter_player_classes = {}
 addon.db.lfg_filter_player_roles = {}
-check("Group filter does not remove Players category", addon:LFGFilters_ResultMatches(2, {}) == true)
+check("group-only conditions exclude the Players category", addon:LFGFilters_ResultMatches(2, {}) == false)
 addon.db.lfg_filter_group_roles = { TANK=false, HEALER=false, DAMAGER=false }
 addon.db.lfg_filter_player_classes = { MAGE=true }
-check("Player filter does not remove Groups category", addon:LFGFilters_ResultMatches(1, {}) == true)
+check("player-only conditions exclude the Groups category", addon:LFGFilters_ResultMatches(1, {}) == false)
 
 players[2] = nil
-check("Unavailable streamed player data fails open", addon:LFGFilters_ResultMatches(2, {}) == true)
+check("unavailable player data cannot pass active conditions", addon:LFGFilters_ResultMatches(2, {}) == false)
+
+check("Forever healer flags override a default assigned damage role",addon:LFGFilters_PlayerHasRole({assignedRole="DAMAGER",lfgRoles={healer=true,dps=false}},{DAMAGER=true})==false)
+check("Forever explicit healer choice is accepted",addon:LFGFilters_PlayerHasRole({assignedRole="DAMAGER",lfgRoles={healer=true,dps=false}},{HEALER=true})==true)
+check("Forever unselected role flags do not fall back to assigned damage",addon:LFGFilters_PlayerHasRole({assignedRole="DAMAGER",lfgRoles={tank=false,healer=false,dps=false}},{DAMAGER=true})==false)
+check("Forever assigned role remains a fallback when flags are unavailable",addon:LFGFilters_PlayerHasRole({assignedRole="HEALER"},{HEALER=true})==true)
+addon.IsForeverClient=function() return false end
+check("Retail retains its assigned-role contract",addon:LFGFilters_PlayerHasRole({assignedRole="DAMAGER",lfgRoles={healer=true,dps=false}},{DAMAGER=true})==true)
+addon.IsForeverClient=function() return true end
+
+addon.db.lfg_filter_group_roles={TANK=true}
+addon.db.lfg_filter_player_classes={DRUID=true}
+counts[1]={TANK_REMAINING=1}
+players[2]={{classFilename="DRUID",assignedRole="HEALER",level=42}}
+check("both active blocks retain a matching result of each kind",addon:LFGFilters_ResultMatches(1,{}) and addon:LFGFilters_ResultMatches(2,{}))
+counts[1]={}
+check("unknown required composition is excluded until data arrives",addon:LFGFilters_ResultMatches(1,{})==false)
+counts[1]={TANK_REMAINING=1}
+players[2]={{classFilename="DRUID",assignedRole="HEALER"}}
+addon.db.lfg_filter_player_min_level=40
+check("unknown required level cannot pass the player block",addon:LFGFilters_ResultMatches(2,{})==false)
+addon.db.lfg_filter_player_min_level=0
+local activityAPI=addon.LFG_API_GetActivityInfoTable
+addon.LFG_API_GetActivityInfoTable=function() return {categoryID=1,useDungeonRoleExpectations=false} end
+check("dungeon composition excludes unrelated activity groups",addon:LFGFilters_ResultMatches(1,{})==false)
+addon.LFG_API_GetActivityInfoTable=activityAPI
+addon.db.lfg_filter_group_roles={}
 
 -- Multiple selections inside the Players block are alternatives within their
 -- own set, while class + role remain an AND between the two sets.
@@ -171,15 +198,15 @@ LFGBrowseFrame.searching=true
 check("search in progress has no settled presentation count", addon:LFGFilters_GetForeverVisibleCount()==nil)
 LFGBrowseFrame.searching=false
 
-check("visible result count excludes nonmatches", addon._ggForeverVisibleResults == 3, addon._ggForeverVisibleResults)
+check("visible result count excludes nonmatches", addon._ggForeverVisibleResults == 2, addon._ggForeverVisibleResults)
 local flat = {}
 for _, top in ipairs(provider.children) do
   if top.data and top.data.resultID then flat[#flat+1]=top.data.resultID end
   for _, child in ipairs(top.children or {}) do if child.data and child.data.resultID then flat[#flat+1]=child.data.resultID end end
 end
 local joined=table.concat(flat, ",")
-check("nonmatching result is absent and own listing is prioritized", joined == "1,4,2", joined)
-check("self listing remains visible", joined:find("4",1,true) ~= nil)
+check("only matching group and player rows are emitted", joined == "1,2", joined)
+check("nonmatching own listing does not bypass selected classes", joined:find("4",1,true) == nil)
 
 -- Interleaved Blizzard results must still produce exactly one native Groups
 -- block and one Players block. The previous transition-based builder created
@@ -194,8 +221,21 @@ check("visual tree contains one Players divider", dividerCounts[1] == 1, divider
 check("native category order remains Groups then Players",
   provider.children[1] and provider.children[1].data and provider.children[1].data.dividerType == 2
   and provider.children[2] and provider.children[2].data and provider.children[2].data.dividerType == 1)
-check("self listing is classified inside Players instead of becoming a stray top-level row",
-  provider.children[2] and #provider.children[2].children == 2)
+check("Players category contains only matching players",
+  provider.children[2] and #provider.children[2].children == 1)
+players[4][1].classFilename="DRUID"
+addon:LFGFilters_ApplyForeverPresentation(LFGBrowseFrame)
+check("a matching own listing keeps social priority within its category",
+  provider.children[2].children[1].data.resultID==4 and addon._ggForeverVisibleResults==3)
+addon.db.lfg_filter_player_classes={}
+check("own solo listing is omitted in groups-only mode",addon:LFGFilters_GetForeverPresentationState(4,LFGBrowseFrame,4).show==false)
+addon.db.lfg_filter_player_classes={MAGE=true}
+players[4][1].classFilename="DRUID"
+local foreverClient=addon.IsForeverClient
+addon.IsForeverClient=function() return false end
+check("Mainline's existing own-listing behavior is preserved",addon:LFGFilters_ResultMatches(4,{})==true)
+addon.IsForeverClient=foreverClient
+addon.db.lfg_filter_player_classes={DRUID=true}
 
 -- Social results keep native category grouping but move ahead of ordinary rows.
 infos[8] = { numMembers=3, activityIDs={101}, numGuildMates=0 }
@@ -257,6 +297,11 @@ local function frame(parent)
   function f:GetChecked() return self.checked == true end
   function f:EnableMouse(v) self.mouseEnabled = v ~= false end
   function f:EnableMouseWheel(v) self.mouseWheelEnabled = v ~= false end
+  function f:SetScrollChild(child) self.scrollChild=child end
+  function f:GetVerticalScroll() return self.scrollOffset or 0 end
+  function f:SetVerticalScroll(value) self.scrollOffset=value end
+  function f:GetVerticalScrollRange() return 0 end
+  function f:UpdateScrollChildRect() end
   function f:SetMouseClickEnabled(v) self.mouseClickEnabled=v end
   function f:SetMouseMotionEnabled(v) self.mouseMotionEnabled=v end
   function f:SetPropagateMouseClicks(v) self.propagateMouseClicks=v end
@@ -354,6 +399,15 @@ if hookOk then
   counts[1] = { TANK_REMAINING=1, TANK=0 }
   local oldState = addon:LFGFilters_GetForeverPresentationState(1, browse, 1)
   addon._ggForeverPresentationState = { [1] = oldState }
+  -- The row-only optimization requires a current visible view. The previous
+  -- fixture accidentally asserted it with no presentation at all.
+  local currentProvider={}
+  browse.results={1}
+  addon._ggForeverPresentationResults=browse.results
+  addon._ggForeverPresentationProvider=currentProvider
+  addon._ggForeverVisibleResults=1
+  addon._ggForeverRefreshPending=false
+  addon._ggForeverBrowseView={IsShown=function() return true end,ScrollBox={GetDataProvider=function() return currentProvider end}}
   local rebuilds = 0
   local savedSchedule = addon.LFGFilters_ScheduleForeverPresentation
   addon.LFGFilters_ScheduleForeverPresentation = function() rebuilds = rebuilds + 1 end

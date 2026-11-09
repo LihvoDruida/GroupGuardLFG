@@ -1,0 +1,128 @@
+{
+  "date": "2026-11-09",
+  "client_sources": "client-source-manifest.json",
+  "repositories": [
+    {
+      "repository": "Ibona93/BetterGroupFinder",
+      "commit": "1cd676fd6be7b9689668289c4ded74e78cac0fe0",
+      "reviewed_files": [
+        {
+          "path": "UI/Main.lua",
+          "url": "https://github.com/Ibona93/BetterGroupFinder/blob/1cd676fd6be7b9689668289c4ded74e78cac0fe0/UI/Main.lua"
+        },
+        {
+          "path": "Logic/Engine.lua",
+          "url": "https://github.com/Ibona93/BetterGroupFinder/blob/1cd676fd6be7b9689668289c4ded74e78cac0fe0/Logic/Engine.lua"
+        },
+        {
+          "path": "UI/Popup.lua",
+          "url": "https://github.com/Ibona93/BetterGroupFinder/blob/1cd676fd6be7b9689668289c4ded74e78cac0fe0/UI/Popup.lua"
+        }
+      ]
+    },
+    {
+      "repository": "thoriphes/LFGFilterForever",
+      "commit": "e10f4ab4dff2f9f63874465c1d0412609c7c49dd",
+      "reviewed_files": [
+        {
+          "path": "LFGFilterForever.lua",
+          "url": "https://github.com/thoriphes/LFGFilterForever/blob/e10f4ab4dff2f9f63874465c1d0412609c7c49dd/LFGFilterForever.lua"
+        }
+      ]
+    },
+    {
+      "repository": "psykzz/wow-better-lfg",
+      "commit": "2a21163882e1977a2ca4071722b2220c2d2c2570",
+      "reviewed_files": [
+        {
+          "path": "BetterLFGFilters.lua",
+          "url": "https://github.com/psykzz/wow-better-lfg/blob/2a21163882e1977a2ca4071722b2220c2d2c2570/BetterLFGFilters.lua"
+        }
+      ]
+    },
+    {
+      "repository": "d4kir92/LfgUtils",
+      "commit": "be45c4bf8a8c0f01bcafa49a6dc5d8556467c4a6",
+      "reviewed_files": [
+        {
+          "path": "ForeverFilter.lua",
+          "url": "https://github.com/d4kir92/LfgUtils/blob/be45c4bf8a8c0f01bcafa49a6dc5d8556467c4a6/ForeverFilter.lua"
+        }
+      ]
+    },
+    {
+      "repository": "Pinta365/LFGForever",
+      "commit": "6a9b2127f8ecc8532465e768cf60d3cab6f534ea",
+      "reviewed_files": [
+        {
+          "path": "src/Browse.lua",
+          "url": "https://github.com/Pinta365/LFGForever/blob/6a9b2127f8ecc8532465e768cf60d3cab6f534ea/src/Browse.lua"
+        },
+        {
+          "path": "src/Core.lua",
+          "url": "https://github.com/Pinta365/LFGForever/blob/6a9b2127f8ecc8532465e768cf60d3cab6f534ea/src/Core.lua"
+        }
+      ]
+    },
+    {
+      "repository": "DomenikIrrgang/foreverlfg",
+      "commit": "bd32adc49c66fc17b6f4ab61878b08f063d1b154",
+      "reviewed_files": [
+        {
+          "path": "src/LFG.wowlua",
+          "url": "https://github.com/DomenikIrrgang/foreverlfg/blob/bd32adc49c66fc17b6f4ab61878b08f063d1b154/src/LFG.wowlua"
+        },
+        {
+          "path": "docs/design.md",
+          "url": "https://github.com/DomenikIrrgang/foreverlfg/blob/bd32adc49c66fc17b6f4ab61878b08f063d1b154/docs/design.md"
+        },
+        {
+          "path": "src/Tool.wowlua",
+          "url": "https://github.com/DomenikIrrgang/foreverlfg/blob/bd32adc49c66fc17b6f4ab61878b08f063d1b154/src/Tool.wowlua"
+        }
+      ]
+    },
+    {
+      "repository": "gitBellucci/ForeverLFGWhoStub",
+      "commit": "86845a17b100c83128c9c576446aacdad9f66d1a",
+      "reviewed_files": [
+        {
+          "path": "!ForeverLFGWhoStub.lua",
+          "url": "https://github.com/gitBellucci/ForeverLFGWhoStub/blob/86845a17b100c83128c9c576446aacdad9f66d1a/!ForeverLFGWhoStub.lua"
+        }
+      ]
+    }
+  ],
+  "releases": [
+    {
+      "author": "Eredol",
+      "project_id": 1712843,
+      "file_id": 9193364,
+      "toc_version": "1.7",
+      "filename": "LFGFilterForever-v1.7-forever.zip",
+      "sha256": "81c5c76dcbf15692ecc3469ce84b232f8b063cbc6bc86492df09a398dc6ced78"
+    },
+    {
+      "author": "Artefius",
+      "project_id": 1707849,
+      "file_id": 9480772,
+      "toc_version": "1.2.0",
+      "filename": "LFGForever.zip",
+      "sha256": "3b3f7be552ec7a6223dc3218eba3228a7431c0707621ff87798fcf1cfcb3b918"
+    },
+    {
+      "author": "Werko",
+      "project_id": 1717562,
+      "file_id": 9514291,
+      "toc_version": "0.7.48",
+      "filename": "ForeverLFG-0.7.48.zip",
+      "sha256": "6919adb58bd3890a3e679534930c2bacc26fa13433abd8cdda844c078e673e7a"
+    }
+  ],
+  "api_document": {
+    "path": "Interface/AddOns/Blizzard_APIDocumentationGenerated/LFGListInfoDocumentation.lua",
+    "git_blob_sha": "380c3ed3e73e94609dc2200cc267ff542537ac62",
+    "sha256": "474dd07caaf06c48a91bd483f09d67ff1c9090ba192bd754c51ba1c23e1362a2",
+    "commit": "9dc84f0d3bbae1768ac3405b3716000bd93eda06"
+  }
+}

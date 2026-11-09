@@ -2,6 +2,8 @@
 -- Two independent filter blocks:
 --   1) dungeon groups: role needs AND roles already present
 --   2) solo players: class AND role AND level (OR inside class/role sets)
+-- Each category is independent: an empty block leaves that category unchanged.
+-- Unknown data required by an active block is excluded until readable.
 local addonName, addon = ...
 
 local type, pairs, ipairs, tonumber = type, pairs, ipairs, tonumber
@@ -31,14 +33,14 @@ local FILTER_ICON_TEXTURE = "Interface\\AddOns\\GroupGuardLFG\\Media\\filter_fun
 local function SafeShown(frame)
   if not frame or type(frame.IsShown) ~= "function" then return false end
   local ok, shown = pcall(frame.IsShown, frame)
-  return ok and shown == true
+  return ok and addon:SafeCanRead(shown) and shown == true
 end
 
 local function SafeVisible(frame)
   if not frame then return false end
   if type(frame.IsVisible) == "function" then
     local ok, visible = pcall(frame.IsVisible, frame)
-    if ok then return visible == true end
+    if ok and addon:SafeCanRead(visible) then return visible == true end
   end
   return SafeShown(frame)
 end
@@ -79,14 +81,19 @@ local function CopyArray(source)
   return out
 end
 
-function addon:LFGFilters_HasActiveFilters()
-  if not self.db or self.db.lfg_filters_enabled == false then return false end
-  return HasAnySelected(self.db.lfg_filter_group_roles)
-      or HasAnySelected(self.db.lfg_filter_group_has_roles)
-      or HasAnySelected(self.db.lfg_filter_player_roles)
+function addon:LFGFilters_GetActiveBlocks()
+  if not self.db or self.db.lfg_filters_enabled == false then return false, false end
+  local groups = HasAnySelected(self.db.lfg_filter_group_roles) or HasAnySelected(self.db.lfg_filter_group_has_roles)
+  local players = HasAnySelected(self.db.lfg_filter_player_roles)
       or HasAnySelected(self.db.lfg_filter_player_classes)
       or (tonumber(self.db.lfg_filter_player_min_level) or 0) > 0
       or (tonumber(self.db.lfg_filter_player_max_level) or 0) > 0
+  return groups, players
+end
+
+function addon:LFGFilters_HasActiveFilters()
+  local groups, players = self:LFGFilters_GetActiveBlocks()
+  return groups or players
 end
 
 function addon:LFGFilters_NeedsPresentation()
@@ -133,12 +140,14 @@ end
 function addon:LFGFilters_IsDungeonResult(info, searchFrame)
   if type(info) ~= "table" then return false end
   local activityIDs = info.activityIDs
+  local unavailable = false
   if type(activityIDs) == "table" then
     for _, activityID in ipairs(activityIDs) do
       local activity = self.LFG_API_GetActivityInfoTable and self:LFG_API_GetActivityInfoTable(activityID) or nil
       if activity and (activity.useDungeonRoleExpectations == true or activity.categoryID == DUNGEON_CATEGORY_ID) then return true end
+      if not activity or activity.categoryID == nil then unavailable = true end
     end
-    if #activityIDs > 0 then return false end
+    if #activityIDs > 0 and not unavailable then return false end
   end
 
   -- Fallback for a client that withholds activityIDs but exposes the current category.
@@ -149,7 +158,7 @@ function addon:LFGFilters_IsDungeonResult(info, searchFrame)
     value = ok and self:SafeNumber(value, nil) or nil
     if value then return value == DUNGEON_CATEGORY_ID end
   end
-  return false
+  return nil
 end
 
 function addon:LFGFilters_GroupNeedsRole(resultID, role, info)
@@ -166,12 +175,21 @@ function addon:LFGFilters_GroupNeedsRole(resultID, role, info)
   local current = tonumber(counts[role])
   if current == nil then return nil end
 
-  local target = role == "DAMAGER" and 3 or 1
-  if role == "DAMAGER" and info and type(info.activityIDs) == "table" and info.activityIDs[1] then
+  local maxPlayers = 5
+  if info and type(info.activityIDs) == "table" and info.activityIDs[1] then
     local activity = self.LFG_API_GetActivityInfoTable and self:LFG_API_GetActivityInfoTable(info.activityIDs[1]) or nil
-    local maxPlayers = activity and (tonumber(activity.maxNumPlayers) or tonumber(activity.maxPlayers)) or nil
-    if maxPlayers and maxPlayers >= 3 then target = math.max(1, maxPlayers - 2) end
+    local maximum = activity and (tonumber(activity.maxNumPlayers) or tonumber(activity.maxPlayers))
+    if maximum and maximum > 0 then maxPlayers = maximum end
   end
+  if not (self.IsForeverClient and self:IsForeverClient()) then
+    local target = role == "DAMAGER" and (maxPlayers >= 3 and math.max(1, maxPlayers - 2) or 3) or 1
+    return current < target
+  end
+  -- Missing a role is not an open slot in an already full party. Do not
+  -- invent 1/1/3 targets for activities with a different party size.
+  if info and info.numMembers and info.numMembers >= maxPlayers then return false end
+  if maxPlayers ~= 5 then return nil end
+  local target = role == "DAMAGER" and 3 or 1
   return current < target
 end
 
@@ -184,28 +202,35 @@ function addon:LFGFilters_GroupHasRole(resultID, role)
   if current ~= nil then return current > 0 end
 
   local leaderKey = "LEADER_ROLE_" .. role
-  if counts[leaderKey] ~= nil then return counts[leaderKey] == true end
+  if counts[leaderKey] == true then return true end
+  if not (self.IsForeverClient and self:IsForeverClient()) and counts[leaderKey] ~= nil then return false end
+  -- A leader who is not a healer does not establish the roles of teammates.
   return nil
 end
 
-function addon:LFGFilters_MatchesGroupBlock(resultID, info)
+function addon:LFGFilters_MatchesGroupBlock(resultID, info, strict)
   local needsSelected = self.db and self.db.lfg_filter_group_roles
   local hasSelected = self.db and self.db.lfg_filter_group_has_roles
   if not HasAnySelected(needsSelected) and not HasAnySelected(hasSelected) then return true end
 
   -- Dungeon role selections are combinations, not alternatives. Tank + Healer
-  -- means BOTH conditions must be true. Unknown streamed data stays fail-open.
+  -- means BOTH conditions must be true. Strict Forever filtering requires
+  -- positive evidence; missing/secret composition data is not a match yet.
+  local unavailable = false
   for _, role in ipairs(ROLE_ORDER) do
     if needsSelected and needsSelected[role] == true then
       local needs = self:LFGFilters_GroupNeedsRole(resultID, role, info)
+      if strict and needs == nil then unavailable = true end
       if needs ~= nil and not needs then return false end
     end
     if hasSelected and hasSelected[role] == true then
       local hasRole = self:LFGFilters_GroupHasRole(resultID, role)
+      if strict and hasRole == nil then unavailable = true end
       if hasRole ~= nil and not hasRole then return false end
     end
   end
 
+  if unavailable then return false, "composition unavailable" end
   return true
 end
 
@@ -213,10 +238,25 @@ function addon:LFGFilters_PlayerHasRole(playerInfo, selectedRoles)
   if not HasAnySelected(selectedRoles) then return true end
   if type(playerInfo) ~= "table" then return nil end
 
+  local roles = playerInfo.lfgRoles
+  -- Forever's solo listing advertises lfgRoles. assignedRole can remain
+  -- DAMAGER even when the player explicitly listed only as a healer/tank.
+  if self.IsForeverClient and self:IsForeverClient() then
+    if type(roles) ~= "table" then return nil end
+    local unavailable = false
+    for _, entry in ipairs({ { "TANK", "tank" }, { "HEALER", "healer" }, { "DAMAGER", "dps" } }) do
+      if selectedRoles[entry[1]] then
+        local flag = roles[entry[2]]
+        if flag == true then return true end
+        if flag == nil then unavailable = true end
+      end
+    end
+    if unavailable then return nil end
+    return false
+  end
   local assigned = playerInfo.assignedRole
   if type(assigned) == "string" and SetContains(selectedRoles, assigned) then return true end
 
-  local roles = playerInfo.lfgRoles
   if type(roles) == "table" then
     if selectedRoles.TANK and roles.tank == true then return true end
     if selectedRoles.HEALER and roles.healer == true then return true end
@@ -227,7 +267,7 @@ function addon:LFGFilters_PlayerHasRole(playerInfo, selectedRoles)
   return nil
 end
 
-function addon:LFGFilters_MatchesPlayerBlock(resultID)
+function addon:LFGFilters_MatchesPlayerBlock(resultID, strict)
   local classes = self.db and self.db.lfg_filter_player_classes
   local roles = self.db and self.db.lfg_filter_player_roles
   local minLevel, maxLevel = NormalizeLevelRange(
@@ -239,18 +279,20 @@ function addon:LFGFilters_MatchesPlayerBlock(resultID)
   local levelActive = minLevel > 0 or maxLevel > 0
   if not classActive and not roleActive and not levelActive then return true end
 
-  if not (self.HasClientCapability and self:HasClientCapability("lfgSearchPlayerInfo")) then return true end
+  if not (self.HasClientCapability and self:HasClientCapability("lfgSearchPlayerInfo")) then return not strict, "player API unavailable" end
   local player = self.LFG_API_GetSearchResultPlayerInfo and self:LFG_API_GetSearchResultPlayerInfo(resultID, 1) or nil
-  if type(player) ~= "table" then return true end -- fail open while data streams in
+  if type(player) ~= "table" then return not strict, "player unavailable" end
 
-  local classMatches = true
+  local classMatches, unavailable = true, false
   if classActive then
     local classFile = player.classFilename or player.classFileName or player.classFile
-    classMatches = type(classFile) == "string" and classes[classFile] == true
+    if type(classFile) ~= "string" then
+      if strict then unavailable = true else classMatches = false end
+    else classMatches = classes[classFile] == true end
   end
 
   local roleMatches = self:LFGFilters_PlayerHasRole(player, roles)
-  if roleMatches == nil then roleMatches = true end
+  if roleMatches == nil then unavailable = strict; roleMatches = true end
 
   local levelMatches = true
   if levelActive then
@@ -258,20 +300,44 @@ function addon:LFGFilters_MatchesPlayerBlock(resultID)
     if level then
       if minLevel > 0 and level < minLevel then levelMatches = false end
       if maxLevel > 0 and level > maxLevel then levelMatches = false end
+    elseif strict then
+      unavailable = true
     end
   end
 
-  return classMatches and roleMatches and levelMatches
+  if not (classMatches and roleMatches and levelMatches) then return false end
+  if unavailable then return false, "player fields unavailable" end
+  return true
 end
 
 function addon:LFGFilters_ResultMatches(resultID, searchFrame)
   if not self:LFGFilters_HasActiveFilters() then return true end
+  local forever = self.IsForeverClient and self:IsForeverClient()
   resultID = self:SafeNumber(resultID, nil)
-  if not resultID then return true end
+  if not resultID then return not forever end
 
   local info = self.LFG_API_GetSearchResultInfo and self:LFG_API_GetSearchResultInfo(resultID) or nil
-  if type(info) ~= "table" then return true end
-  if info.hasSelf == true then return true end -- never hide the player's own listing
+  if type(info) ~= "table" then return not forever end
+
+  if forever then
+    if info.hasSelf == true then return true end
+    local groups, players = self:LFGFilters_GetActiveBlocks()
+    local members = tonumber(info.numMembers)
+    if not members or members < 1 then return false end
+    if members == 1 then
+      if not players then return true end
+      return self:LFGFilters_MatchesPlayerBlock(resultID, true)
+    end
+    if not groups then return true end
+    local dungeon = self:LFGFilters_IsDungeonResult(info, searchFrame)
+    if dungeon == nil then return false, "activity unavailable" end
+    if not dungeon then return true end
+    return self:LFGFilters_MatchesGroupBlock(resultID, info, true)
+  end
+
+  -- Keep the established Mainline behavior; its one-member group listings are
+  -- not Forever's separate solo-player category.
+  if info.hasSelf == true then return true end
 
   local numMembers = tonumber(info.numMembers)
   if not numMembers then return true end
@@ -324,65 +390,109 @@ function addon:LFGFilters_GetSocialPriority(resultID, info)
   return 2
 end
 
-function addon:LFGFilters_GetForeverPresentationState(resultID, searchFrame, index)
+function addon:LFGFilters_GetForeverPresentationState(resultID, searchFrame, index, nativeNodes)
   local info = self.LFG_API_GetSearchResultInfo and self:LFG_API_GetSearchResultInfo(resultID) or nil
   if type(info) ~= "table" then
-    return { show = false, category = nil, priority = 2, index = index or 0 }, nil
+    return { show = false, category = nil, priority = 2, index = index or 0, dataReason = "missing" }, nil
+  end
+  if type(info.numMembers) ~= "number" or info.numMembers < 1 then
+    return { show = false, category = nil, priority = 2, index = index or 0, dataReason = "unreadable" }, info
+  end
+  if nativeNodes and not nativeNodes[resultID] then
+    return { show = false, category = nil, priority = 2, index = index or 0, dataReason = "native row pending" }, info
   end
 
-  local show = (not self:LFGFilters_HasActiveFilters()) or self:LFGFilters_ResultMatches(resultID, searchFrame)
-  if info.hasSelf == true then show = true end
+  local show, dataReason = true, nil
+  if self:LFGFilters_HasActiveFilters() then show, dataReason = self:LFGFilters_ResultMatches(resultID, searchFrame) end
+  if show and (info.hasSelf == nil or info.isDelisted == nil or not info.leaderName or info.leaderName == "") then
+    dataReason = "actions unavailable"
+  end
 
   local soloDivider, groupDivider = GetForeverDividerTypes()
   local numMembers = tonumber(info.numMembers)
   local category = numMembers and (numMembers <= 1 and soloDivider or groupDivider) or nil
+  if info.hasSelf == true then category = nil end
+  local nativeData = nativeNodes and self:SafeObjectField(nativeNodes[resultID], "data")
+  local nativeIndex = nativeData and self:SafeNumber(self:SafeTableField(nativeData, "index"), nil)
   return {
     show = show == true,
     category = category,
     priority = self:LFGFilters_GetSocialPriority(resultID, info),
-    index = index or 0,
+    index = nativeIndex or index or 0,
+    dataReason = dataReason,
   }, info
 end
 
 local function SamePresentationState(a, b)
   if type(a) ~= "table" or type(b) ~= "table" then return false end
-  return a.show == b.show and a.category == b.category and a.priority == b.priority
+  return a.show == b.show and a.category == b.category and a.priority == b.priority and a.dataReason == b.dataReason
 end
 
 local function SortPresentationElements(elements, socialPriorityEnabled)
-  if not socialPriorityEnabled or #elements < 2 then return end
+  if #elements < 2 then return end
   table_sort(elements, function(a, b)
-    if a.priority ~= b.priority then return a.priority < b.priority end
+    if socialPriorityEnabled and a.priority ~= b.priority then return a.priority < b.priority end
     return a.index < b.index
   end)
 end
 
 -- Build our own visual provider. Even a presentation-only replacement of the
 -- native ScrollBox provider taints Blizzard row initialization and can leave
--- native rows tainted on subsequent updates. All nodes, selection and rendering
--- below belong to the independent GroupGuard view.
+-- native rows tainted on subsequent updates. Visual nodes and rendering belong
+-- to the independent GroupGuard view. Selection uses original native nodes
+-- through the public SelectionBehavior API only.
 function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
   local needsPresentation = self:LFGFilters_NeedsPresentation()
   if searchFrame.searching or searchFrame.searchFailed or not SafeVisible(searchFrame)
       or not needsPresentation then
-    if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide() end
+    local reason = not SafeVisible(searchFrame) and "browse hidden"
+        or not needsPresentation and "presentation disabled"
+        or searchFrame.searching and "search in progress" or "search failed"
+    if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide(reason) end
     self._ggForeverPresentationProvider = nil
-    if not needsPresentation then self._ggForeverRefreshPending = false end
+    if not needsPresentation then
+      self._ggForeverRefreshPending = false
+      self._ggForeverPresentationError = nil
+      self:LFGFilters_UpdateStatusText()
+    end
     return false
   end
   -- No fallback to searchFrame.ScrollBox: invoking its native initializers in
   -- addon context is the source of the secret-width warning.
   local scrollBox = self.ForeverBrowse_GetScrollBox and self:ForeverBrowse_GetScrollBox(searchFrame)
-  if not scrollBox or type(CreateTreeDataProvider) ~= "function" then return false end
+  if not scrollBox or type(CreateTreeDataProvider) ~= "function" then
+    self:LFGFilters_ReportPresentationError("GroupGuard results view is unavailable")
+    return false
+  end
 
-  local results = searchFrame.results
-  if type(results) ~= "table" then return false end
+  local results, total, readable
+  if self.LFG_API_GetFilteredSearchResults then results, total, readable = self:LFG_API_GetFilteredSearchResults() end
+  local source = "api"
+  if not readable then
+    source = "native fallback"
+    local nativeResults = self:SafeObjectField(searchFrame, "results")
+    if self:SafeCanAccessTable(nativeResults) then
+      results = {}
+      for index = 1, #nativeResults do
+        local id = self:SafeNumber(nativeResults[index], nil)
+        if id then results[#results + 1] = id end
+      end
+      total = #results
+    end
+  end
+  if type(results) ~= "table" then
+    if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide("native results unavailable") end
+    self._ggForeverPresentationProvider = nil
+    return false
+  end
 
   local soloDivider, groupDivider = GetForeverDividerTypes()
   local useDividers = _G.LFGVANILLA_SETTING_BROWSE_SHOW_COLLAPSIBLE_CATEGORIES ~= false
   local dataProvider = CreateTreeDataProvider()
   local visibleCount = 0
+  local unavailableCount = 0
+  local nativeNodes, nativeProvider = self:ForeverBrowse_GetNativeNodes()
 
   -- Forever search results are not guaranteed to arrive grouped by result type.
   -- Keep one bucket per native category and emit each divider at most once.
@@ -397,10 +507,11 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
     local resultID = self:SafeNumber(results[index], nil)
     if resultID and not seenResultIDs[resultID] then
       seenResultIDs[resultID] = true
-      local state = self:LFGFilters_GetForeverPresentationState(resultID, searchFrame, index)
+      local state = self:LFGFilters_GetForeverPresentationState(resultID, searchFrame, index, nativeNodes)
+      if state.dataReason then unavailableCount = unavailableCount + 1 end
       stateByResult[resultID] = state
       if state.show then
-        local element = { index = index, resultID = resultID, category = state.category, priority = state.priority }
+        local element = { index = state.index, resultID = resultID, category = useDividers and state.category or nil, priority = state.priority }
 
         visibleCount = visibleCount + 1
         flatElements[#flatElements + 1] = element
@@ -423,31 +534,32 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   SortPresentationElements(flatElements, socialPriorityEnabled)
 
   if useDividers then
-    -- Match Forever's native visual order: Groups first, Players second.
-    -- A self listing still belongs to its real category; hasSelf only forces it
-    -- visible and no longer bypasses category classification.
+    -- Preserve the client's category order too: it puts players first while
+    -- in a party. Explicit social priority changes order only within a section.
     for _, element in ipairs(uncategorizedElements) do
       dataProvider:Insert(element)
     end
 
-    if #groupElements > 0 then
-      local groupSubtree = dataProvider:Insert({ index = nil, dividerType = groupDivider })
-      for _, element in ipairs(groupElements) do groupSubtree:Insert(element) end
-      if self._ggForeverBrowseView and self._ggForeverBrowseView.collapsed[groupDivider] then groupSubtree:SetCollapsed(true) end
+    local sections = { { divider = groupDivider, elements = groupElements }, { divider = soloDivider, elements = soloElements } }
+    for _, section in ipairs(sections) do
+      section.index = math.huge
+      for _, element in ipairs(section.elements) do section.index = math.min(section.index, element.index) end
     end
-
-    if #soloElements > 0 then
-      local soloSubtree = dataProvider:Insert({ index = nil, dividerType = soloDivider })
-      for _, element in ipairs(soloElements) do soloSubtree:Insert(element) end
-      if self._ggForeverBrowseView and self._ggForeverBrowseView.collapsed[soloDivider] then soloSubtree:SetCollapsed(true) end
+    table_sort(sections, function(a, b) return a.index < b.index end)
+    for _, section in ipairs(sections) do
+      if #section.elements > 0 then
+        local subtree = dataProvider:Insert({ index = nil, dividerType = section.divider })
+        for _, element in ipairs(section.elements) do subtree:Insert(element) end
+        if self._ggForeverBrowseView and self._ggForeverBrowseView.collapsed[section.divider] then subtree:SetCollapsed(true) end
+      end
     end
   else
     -- With Blizzard category dividers disabled, retain the original result order.
     for _, element in ipairs(flatElements) do dataProvider:Insert(element) end
   end
 
-  -- Keep selection exclusively in the addon view. Never fire Blizzard's native
-  -- OnSelectionChanged callback from an insecure presentation refresh.
+  -- Visual selection mirrors the standard controller. Once the new filter
+  -- state is installed, it clears filtered-out selections through the native API.
   local ownView = self._ggForeverBrowseView
   if ownView and ownView.selectedResultID then
     local state = stateByResult[ownView.selectedResultID]
@@ -455,15 +567,12 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   end
 
   local retain = _G.ScrollBoxConstants and _G.ScrollBoxConstants.RetainScrollPosition or nil
+  self._ggForeverPresentationError = nil
   self._ggForeverProviderApplying = true
   local ok, err = pcall(scrollBox.SetDataProvider, scrollBox, dataProvider, retain)
   self._ggForeverProviderApplying = false
-  if not ok then
-    if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide() end
-    self._ggForeverPresentationProvider = nil
-    if self.ForeverSearch and self.ForeverSearch.Log then
-      self.ForeverSearch.Log("Error", self:SafeText(err, "GroupGuard browse rendering failed"), true)
-    end
+  if not ok or self._ggForeverPresentationError then
+    self:LFGFilters_ReportPresentationError(err or self._ggForeverPresentationError)
     return false
   end
 
@@ -475,8 +584,42 @@ function addon:LFGFilters_ApplyForeverPresentation(searchFrame)
   self._ggForeverVisibleResults = visibleCount
   self._ggForeverPresentationProvider = dataProvider
   self._ggForeverPresentationResults = results
-  if self.ForeverBrowse_Show then self:ForeverBrowse_Show(visibleCount) end
+  self._ggForeverNativeResultsRef = self:SafeObjectField(searchFrame, "results")
+  self._ggForeverNativeProviderRef = nativeProvider
+  self._ggForeverResultSource = source
+  self._ggForeverRawTotalResults = total
+  self._ggForeverUnavailableResults = unavailableCount
+  if self.ForeverBrowse_Show and not self:ForeverBrowse_Show(visibleCount) then return false end
+  self:LFGFilters_UpdateStatusText()
+  -- Restricted or late-arriving metadata may become readable without a new
+  -- result event. Retry briefly, then wait for game events; never poll forever.
+  local retries = self._ggForeverDataRetryCount or 0
+  if unavailableCount > 0 and retries < 3 and C_Timer and type(C_Timer.After) == "function" then
+    self._ggForeverDataRetryCount = retries + 1
+    local token = self._ggForeverPresentationToken
+    C_Timer.After(0.5 * (2 ^ retries), function()
+      if addon._ggForeverPresentationToken ~= token or not SafeVisible(searchFrame)
+          or not addon:LFGFilters_NeedsPresentation() then return end
+      if addon.LFG_API_ClearCaches then addon:LFG_API_ClearCaches("search") end
+      addon:LFGFilters_ScheduleForeverPresentation(searchFrame, true)
+    end)
+  elseif unavailableCount == 0 then
+    self._ggForeverDataRetryCount = 0
+  end
   return true
+end
+
+function addon:LFGFilters_ReportPresentationError(err)
+  local message = self:SafeText(err, "GroupGuard browse rendering failed")
+  if self.ForeverBrowse_Hide then self:ForeverBrowse_Hide("render error") end
+  self._ggForeverPresentationProvider = nil
+  self._ggForeverPresentationError = message
+  self:LFGFilters_UpdateStatusText()
+  if self._ggForeverLastReportedError ~= message then
+    self._ggForeverLastReportedError = message
+    print(self.printPrefix or "GroupGuard LFG:", self:Tr("LFG_FILTERS_RENDER_FAILED"), message)
+    if self.ForeverSearch and self.ForeverSearch.Log then self.ForeverSearch.Log("Error", message, true) end
+  end
 end
 
 -- Return a count only for our currently installed visual provider and result list.
@@ -484,12 +627,14 @@ function addon:LFGFilters_GetForeverVisibleCount()
   local browse = _G.LFGBrowseFrame
   if not browse or not SafeVisible(browse) then return nil, "browse hidden" end
   if browse.searching or self._ggForeverRefreshPending then return nil, "presentation pending" end
+  if browse.searchFailed then return nil, "search failed" end
   if not self:LFGFilters_NeedsPresentation() then
     local results = self:SafeObjectField(browse, "results")
     if self:SafeCanAccessTable(results) then return #results end
     return nil, "native results unavailable"
   end
-  if self._ggForeverPresentationResults ~= browse.results then return nil, "result list changed" end
+  if self._ggForeverNativeResultsRef ~= self:SafeObjectField(browse, "results") then return nil, "result list changed" end
+  if self._ggForeverNativeProviderRef ~= self:ForeverBrowse_GetNativeProvider() then return nil, "native provider changed" end
   local ownView = self._ggForeverBrowseView
   local scrollBox = ownView and ownView.ScrollBox
   if ownView and not SafeVisible(ownView) then return nil, "presentation hidden" end
@@ -499,11 +644,13 @@ function addon:LFGFilters_GetForeverVisibleCount()
   return self._ggForeverVisibleResults
 end
 
-function addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
+function addon:LFGFilters_ScheduleForeverPresentation(searchFrame, retry)
   searchFrame = searchFrame or _G.LFGBrowseFrame
   if not searchFrame then return end
+  if not retry then self._ggForeverDataRetryCount = 0 end
+  if self.ForeverBrowse_CloseMenu then self:ForeverBrowse_CloseMenu() end
+  self._ggForeverRefreshPending = true
   if not SafeVisible(searchFrame) then
-    self._ggForeverRefreshPending = true
     return
   end
 
@@ -511,7 +658,8 @@ function addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
   local token = self._ggForeverPresentationToken
   local function apply()
     if addon and addon._ggForeverPresentationToken == token then
-      addon:LFGFilters_ApplyForeverPresentation(searchFrame)
+      local ok, err = pcall(addon.LFGFilters_ApplyForeverPresentation, addon, searchFrame)
+      if not ok then addon:LFGFilters_ReportPresentationError(err) end
     end
   end
   if C_Timer and type(C_Timer.After) == "function" then
@@ -529,6 +677,14 @@ function addon:LFGFilters_HandleForeverResultUpdated(resultID)
   if self.LFG_ForgetSearchResult then self:LFG_ForgetSearchResult(resultID) end
   if not SafeVisible(searchFrame) then
     self._ggForeverRefreshPending = true
+    return true
+  end
+
+  -- Equal match/category state is only enough for a row repaint while a
+  -- current, visible provider exists. A hidden view (including a zero-match
+  -- view) must be rebuilt after a search or an interrupted native refresh.
+  if self:LFGFilters_GetForeverVisibleCount() == nil then
+    self:LFGFilters_ScheduleForeverPresentation(searchFrame)
     return true
   end
 
@@ -586,29 +742,40 @@ function addon:LFGFilters_FilterFrameResults(searchFrame)
   self._lfgFilterApplying = false
 end
 
--- Forever's LFGBrowseFrame is created from LFGBrowseMixin. Hooking the mixin
--- table *after* the XML frame already exists is not sufficient on every client:
--- the frame can retain the original function reference copied from the mixin.
--- Resolve and hook the concrete frame object as well.
+-- Forever's protected search chain must retain the original Lua functions.
+-- Observe frame lifecycle/click scripts and game events; never hook or replace
+-- Browse.UpdateResults, UpdateResultList or its sorting callbacks.
 function addon:LFGFilters_HookForeverFrame(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
-  if self._ggForeverFrameFilterHooked then return true end
-  if type(hooksecurefunc) ~= "function" then return false end
-  if type(searchFrame.UpdateResults) ~= "function" then return false end
-
-  local ok = pcall(hooksecurefunc, searchFrame, "UpdateResults", function(frame)
-    if addon then addon:LFGFilters_ScheduleForeverPresentation(frame) end
-  end)
-  if ok then self._ggForeverFrameFilterHooked = true end
-  return ok
+  local scroll = self:SafeObjectField(searchFrame, "ScrollBox")
+  local register = self:SafeObjectMethod(scroll, "RegisterCallback")
+  local events = _G.ScrollBoxListMixin and _G.ScrollBoxListMixin.Event
+  local event = events and events.OnDataProviderReassigned
+  if not self._ggForeverProviderObserved and register and event then
+    -- The original CallbackRegistry invokes observers through securecallfunction.
+    -- Only queue work here: never replace a native method or modify its provider.
+    local ok = pcall(register, scroll, event, function()
+      if addon.LFG_API_ClearCaches then addon:LFG_API_ClearCaches("search") end
+      addon:LFGFilters_ScheduleForeverPresentation(searchFrame)
+    end, self)
+    self._ggForeverProviderObserved = ok
+  end
+  if self._ggForeverBrowseEventDriven then return true end
+  local refresh = searchFrame.RefreshButton
+  if refresh and type(refresh.HookScript) == "function" then
+    refresh:HookScript("OnClick", function() addon:LFGFilters_ScheduleForeverPresentation(searchFrame) end)
+  end
+  self._ggForeverBrowseEventDriven = true
+  return true
 end
 
 -- Rebuild the addon view from the current native result set without changing
--- any native provider, frame fields, selection or row state.
+-- any native provider or search fields. Standard selection is synchronized
+-- through the client's SelectionBehavior API by ForeverBrowse.
 function addon:LFGFilters_RefreshForeverResults(searchFrame)
   if not searchFrame or searchFrame ~= _G.LFGBrowseFrame then return false end
-  -- Presentation-only refresh. Never call GetFilteredSearchResults() and write
-  -- those values into Blizzard frame fields, and never invoke UpdateResults()
+  -- Presentation-only refresh. Never write our API snapshots into Blizzard
+  -- frame fields, and never invoke UpdateResults()
   -- from addon code on Forever. Both patterns can propagate taint into Search().
   self:LFGFilters_ScheduleForeverPresentation(searchFrame)
   return true
@@ -793,6 +960,10 @@ end
 function addon:LFGFilters_UpdateStatusText()
   local panel = self.lfgFilterPanel
   if not panel or not panel.ggStatus then return end
+  if self._ggForeverPresentationError then
+    panel.ggStatus:SetText(self:Tr("LFG_FILTERS_RENDER_FAILED"))
+    return
+  end
   local active = self:LFGFilters_HasActiveFilters()
   local count = CountSelected(self.db and self.db.lfg_filter_group_roles)
       + CountSelected(self.db and self.db.lfg_filter_group_has_roles)
@@ -800,10 +971,22 @@ function addon:LFGFilters_UpdateStatusText()
       + CountSelected(self.db and self.db.lfg_filter_player_classes)
   if (tonumber(self.db and self.db.lfg_filter_player_min_level) or 0) > 0 then count = count + 1 end
   if (tonumber(self.db and self.db.lfg_filter_player_max_level) or 0) > 0 then count = count + 1 end
-  panel.ggStatus:SetText(active and (self:Tr("LFG_FILTERS_ACTIVE") .. " (" .. count .. ")") or self:Tr("LFG_FILTERS_INACTIVE"))
+  local text = active and (self:Tr("LFG_FILTERS_ACTIVE") .. " (" .. count .. ")") or self:Tr("LFG_FILTERS_INACTIVE")
+  local view = self._ggForeverBrowseView
+  if view and SafeVisible(view) and self._ggForeverVisibleResults ~= nil then
+    local results = self._ggForeverPresentationResults
+    text = self:Tr("LFG_FILTERS_COUNT", count, self._ggForeverVisibleResults, type(results) == "table" and #results or 0)
+    if (self._ggForeverUnavailableResults or 0) > 0 then
+      text = text .. "\n" .. self:Tr("LFG_FILTERS_WAITING_COUNT", self._ggForeverUnavailableResults)
+    end
+  end
+  panel.ggStatus:SetText(text)
 end
 
-function addon:LFGFilters_OnChanged()
+function addon:LFGFilters_OnChanged(enableFilters)
+  -- An explicit filter selection must take effect even if an older saved
+  -- profile disabled the master flag (the panel has no master checkbox).
+  if self.db and enableFilters ~= false then self.db.lfg_filters_enabled = true end
   self:LFGFilters_UpdateButtonState()
   self:LFGFilters_UpdateStatusText()
   self:LFGFilters_RefreshCurrentResults()
@@ -1023,6 +1206,7 @@ function addon:LFGFilters_RebuildPanelContents()
 
   local groupAvailable = self.HasClientCapability and self:HasClientCapability("lfgSearchMemberCounts")
   local playerAvailable = self.HasClientCapability and self:HasClientCapability("lfgSearchPlayerInfo")
+  local forever = self.IsForeverClient and self:IsForeverClient()
   local presets = self.db and self.db.lfg_filter_presets or {}
 
   Text("GameFontNormal", self:Tr("LFG_FILTERS_PRESETS"), 8, -2, 104)
@@ -1054,13 +1238,13 @@ function addon:LFGFilters_RebuildPanelContents()
 
   local social = KeepChild(CreateCheck(content, 8, -48, self:Tr("LFG_FILTERS_SOCIAL_FIRST"), self.db.lfg_filter_social_priority ~= false, function(value)
     addon.db.lfg_filter_social_priority = value
-    addon:LFGFilters_OnChanged()
+    addon:LFGFilters_OnChanged(false)
   end))
   social.ggLabel:SetWidth(250)
 
   Divider(-76)
   Text("GameFontNormal", self:Tr("LFG_FILTERS_GROUP_TITLE"), 8, -88, 294)
-  Text("GameFontHighlightSmall", self:Tr("LFG_FILTERS_GROUP_HELP"), 8, -108, 294)
+  Text("GameFontHighlightSmall", self:Tr(forever and "LFG_FILTERS_GROUP_HELP_FOREVER" or "LFG_FILTERS_GROUP_HELP"), 8, -108, 294)
 
   if groupAvailable then
     Text("GameFontNormalSmall", self:Tr("LFG_FILTERS_NEEDS"), 8, -139, 80)
@@ -1092,7 +1276,7 @@ function addon:LFGFilters_RebuildPanelContents()
 
   Divider(-230)
   Text("GameFontNormal", self:Tr("LFG_FILTERS_PLAYER_TITLE"), 8, -242, 294)
-  Text("GameFontHighlightSmall", self:Tr("LFG_FILTERS_PLAYER_HELP"), 8, -262, 294)
+  Text("GameFontHighlightSmall", self:Tr(forever and "LFG_FILTERS_PLAYER_HELP_FOREVER" or "LFG_FILTERS_PLAYER_HELP"), 8, -262, 294)
 
   local contentHeight = 340
   if playerAvailable then
@@ -1189,9 +1373,17 @@ function addon:LFGFilters_CreatePanel(root)
   local panel = CreateStandardPanel(UIParent or root)
   local languageSearch = self.ForeverSearch
   local languageHeight = languageSearch and languageSearch.AttachPanel and 72 or 0
-  panel:SetSize(languageHeight > 0 and 352 or 336, 640)
+  local panelWidth = (languageHeight > 0 or (self.IsForeverClient and self:IsForeverClient())) and 352 or 336
+  panel:SetSize(panelWidth, 640)
+  panel.ggDesignWidth, panel.ggDesignHeight = panelWidth, 640
   panel:SetFrameStrata("DIALOG")
-  if type(root.GetFrameLevel) == "function" and type(panel.SetFrameLevel) == "function" then
+  if self.IsForeverClient and self:IsForeverClient() then
+    -- Keep the filter panel above the independently layered results (100-103),
+    -- without depending on potentially secret native window levels.
+    panel:SetFrameLevel(200)
+    if panel.SetFixedFrameStrata then panel:SetFixedFrameStrata(true) end
+    if panel.SetFixedFrameLevel then panel:SetFixedFrameLevel(true) end
+  elseif type(root.GetFrameLevel) == "function" and type(panel.SetFrameLevel) == "function" then
     local ok, level = pcall(root.GetFrameLevel, root)
     if ok and tonumber(level) then panel:SetFrameLevel(tonumber(level) + 20) end
   end
@@ -1234,8 +1426,8 @@ function addon:LFGFilters_CreatePanel(root)
   end)
 
   local content
-  if languageHeight > 0 then
-    languageSearch.AttachPanel(panel)
+  if languageHeight > 0 or (self.IsForeverClient and self:IsForeverClient()) then
+    if languageHeight > 0 then languageSearch.AttachPanel(panel) end
     -- Keep the language row fixed while the existing long filter list scrolls.
     local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 11, -31 - languageHeight)
@@ -1263,6 +1455,7 @@ function addon:LFGFilters_CreatePanel(root)
   status:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 18, 17)
   status:SetWidth(218)
   status:SetJustifyH("LEFT")
+  status:SetWordWrap(true)
   panel.ggStatus = status
 
   local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -1282,6 +1475,16 @@ function addon:LFGFilters_LayoutPanel()
   local panel = self.lfgFilterPanel
   local root = self.GetLFGRootFrame and self:GetLFGRootFrame() or nil
   if not panel or not root then return end
+
+  if self.IsForeverClient and self:IsForeverClient() then
+    local width, height = panel.ggDesignWidth or 352, panel.ggDesignHeight or 640
+    local screenHeight = UIParent and type(UIParent.GetHeight) == "function" and self:SafeNumber(UIParent:GetHeight(), nil)
+    if screenHeight and screenHeight > 0 then height = math.min(height, math.max(320, screenHeight - 32)) end
+    -- Shorten the scroll viewport before scaling so small displays keep the
+    -- normal game font size. Only exceptionally small/narrow screens scale.
+    panel:SetSize(width, height)
+    if self.FitWindowToScreen then self:FitWindowToScreen(panel, width, height) end
+  end
 
   panel:ClearAllPoints()
 
@@ -1442,6 +1645,7 @@ function addon:LFGFilters_HookFrames()
     end
     if searchFrame == _G.LFGBrowseFrame then
       self:LFGFilters_HookForeverFrame(searchFrame)
+      if self.ForeverBrowse_InitNativeVisibility then self:ForeverBrowse_InitNativeVisibility(searchFrame) end
     end
 
     self._ggFilterVisibilityHooks = self._ggFilterVisibilityHooks or {}
@@ -1461,29 +1665,18 @@ function addon:LFGFilters_HookFrames()
         -- protected LFG frame tree, so it will not inherit LFGBrowseFrame
         -- visibility automatically. Hide it explicitly when Browse closes.
         if addon.lfgFilterButton then addon.lfgFilterButton:Hide() end
-        if searchFrame == _G.LFGBrowseFrame and addon.ForeverBrowse_Hide then addon:ForeverBrowse_Hide() end
+        if searchFrame == _G.LFGBrowseFrame and addon.ForeverBrowse_Hide then addon:ForeverBrowse_Hide("browse hidden") end
       end)
     end
   end
 
   -- Retail 12.x path.
-  if not self._ggModernFilterHooked and type(_G.LFGListSearchPanel_UpdateResultList) == "function" and type(hooksecurefunc) == "function" then
+  if not (self.IsForeverClient and self:IsForeverClient()) and not self._ggModernFilterHooked
+      and type(_G.LFGListSearchPanel_UpdateResultList) == "function" and type(hooksecurefunc) == "function" then
     local ok = pcall(hooksecurefunc, "LFGListSearchPanel_UpdateResultList", function(frame)
       if addon then addon:LFGFilters_FilterFrameResults(frame) end
     end)
     if ok then self._ggModernFilterHooked = true end
-  end
-
-  -- WoW Forever 1.60.x path. Blizzard_GroupFinder_VanillaStyle uses a
-  -- ScrollBox tree and LFGBrowseMixin:UpdateResults(). Observe the native
-  -- refresh, including searching/failure transitions, then update our own view.
-  if not self._ggForeverFrameFilterHooked and not self._ggForeverFilterHooked
-      and type(_G.LFGBrowseMixin) == "table" and type(_G.LFGBrowseMixin.UpdateResults) == "function"
-      and type(hooksecurefunc) == "function" then
-    local ok = pcall(hooksecurefunc, _G.LFGBrowseMixin, "UpdateResults", function(frame)
-      if addon then addon:LFGFilters_ScheduleForeverPresentation(frame) end
-    end)
-    if ok then self._ggForeverFilterHooked = true end
   end
 
 end
@@ -1494,25 +1687,104 @@ function addon:LFGFilters_DebugDump(limit)
   local total, results = nil, nil
   if C_LFGList and type(C_LFGList.GetFilteredSearchResults) == "function" then
     local ok, rawTotal, rawResults = pcall(C_LFGList.GetFilteredSearchResults)
-    if ok then total, results = rawTotal, rawResults end
+    if ok then
+      total = self:SafeNumber(rawTotal, nil)
+      if self:SafeCanAccessTable(rawResults) then results = rawResults end
+    end
   end
-  if type(results) ~= "table" and searchFrame and type(searchFrame.results) == "table" then
-    results = searchFrame.results
-    total = searchFrame.totalResults or #results
+  if type(results) ~= "table" and searchFrame then
+    local nativeResults = self:SafeObjectField(searchFrame, "results")
+    if self:SafeCanAccessTable(nativeResults) then
+      results = nativeResults
+      total = self:SafeNumber(self:SafeObjectField(searchFrame, "totalResults"), #results)
+    end
   end
 
-  print((self.printPrefix or "GroupGuard LFG:"), "LFG filter debug")
+  print((self.printPrefix or "GroupGuard LFG:"), "LFG filter debug", "version=", self.version or "unknown")
   print((self.printPrefix or "GroupGuard LFG:"), "forever=", tostring(self.IsForeverClient and self:IsForeverClient()),
-    "frameHook=", tostring(self._ggForeverFrameFilterHooked == true),
-    "mixinHook=", tostring(self._ggForeverFilterHooked == true),
     "active=", tostring(self:LFGFilters_HasActiveFilters()))
-  local shownCount = self._ggForeverVisibleResults
-  if shownCount == nil then shownCount = searchFrame and type(searchFrame.results) == "table" and #searchFrame.results or 0 end
+  print((self.printPrefix or "GroupGuard LFG:"), "eventDriven=", tostring(self._ggForeverBrowseEventDriven == true),
+    "providerObserver=", tostring(self._ggForeverProviderObserved == true),
+    "resultSource=", self._ggForeverResultSource or "none",
+    "unavailable=", tostring(self._ggForeverUnavailableResults or 0),
+    "listSuppressed=", tostring(self._ggForeverNativeSuppressed == true),
+    "visibilityDeferred=", tostring(self._ggForeverNativeVisibilityDeferred == true))
+  print((self.printPrefix or "GroupGuard LFG:"), "dataRetries=", tostring(self._ggForeverDataRetryCount or 0), "rowTemplates=", "native", "rowMenu=", "native", "filterScope=", "independent")
+  print((self.printPrefix or "GroupGuard LFG:"), "selection=", "native", "footer=", "native", "selectionError=", self._ggForeverNativeSelectionError or "none")
+  local client = self.Client
+  if client then print((self.printPrefix or "GroupGuard LFG:"), "client=", client.version or "unknown", "build=", tostring(client.build), "interface=", tostring(client.interfaceVersion)) end
+  print((self.printPrefix or "GroupGuard LFG:"), "enabled=", tostring(self.db and self.db.lfg_filters_enabled),
+    "ownView=", tostring(self._ggForeverBrowseView and SafeVisible(self._ggForeverBrowseView) or false),
+    "renderError=", self._ggForeverPresentationError or "none")
+  print((self.printPrefix or "GroupGuard LFG:"), "browseVisible=", tostring(SafeVisible(searchFrame)),
+    "searching=", tostring(searchFrame and self:SafeBool(self:SafeObjectField(searchFrame, "searching"), false)),
+    "searchFailed=", tostring(searchFrame and self:SafeBool(self:SafeObjectField(searchFrame, "searchFailed"), false)),
+    "pending=", tostring(self._ggForeverRefreshPending == true),
+    "hiddenReason=", self._ggForeverPresentationHiddenReason or "none")
+  local function layout(frame)
+    if not frame then return "unavailable" end
+    local function read(method)
+      local fn = self:SafeObjectMethod(frame, method)
+      if not fn then return nil end
+      local ok, value = pcall(fn, frame)
+      if ok then return value end
+    end
+    local strata = self:SafeText(read("GetFrameStrata"), "unreadable")
+    local level = self:SafeNumber(read("GetFrameLevel"), nil)
+    local width = self:SafeNumber(read("GetWidth"), nil)
+    local height = self:SafeNumber(read("GetHeight"), nil)
+    local alpha = self:SafeNumber(read("GetEffectiveAlpha"), nil)
+    if alpha == nil then alpha = self:SafeNumber(read("GetAlpha"), nil) end
+    return strata .. ":" .. tostring(level or "unreadable")
+        .. " size=" .. tostring(width or "unreadable") .. "x" .. tostring(height or "unreadable")
+        .. " alpha=" .. tostring(alpha or "unreadable")
+  end
+  local view = self._ggForeverBrowseView
+  print((self.printPrefix or "GroupGuard LFG:"), "viewLayout=", layout(view))
+  print((self.printPrefix or "GroupGuard LFG:"), "scrollLayout=", layout(view and view.ScrollBox))
+  print((self.printPrefix or "GroupGuard LFG:"), "nativeLayout=", layout(searchFrame and searchFrame.ScrollBox))
+  local groups, players = self:LFGFilters_GetActiveBlocks()
+  local function selected(set)
+    local keys = {}
+    for key, value in pairs(type(set) == "table" and set or {}) do
+      if value == true and type(key) == "string" then keys[#keys + 1] = key end
+    end
+    table_sort(keys)
+    return #keys > 0 and table.concat(keys, ",") or "none"
+  end
+  print((self.printPrefix or "GroupGuard LFG:"), "groups=", tostring(groups), "players=", tostring(players),
+    "needs=", selected(self.db and self.db.lfg_filter_group_roles), "has=", selected(self.db and self.db.lfg_filter_group_has_roles))
+  print((self.printPrefix or "GroupGuard LFG:"), "classes=", selected(self.db and self.db.lfg_filter_player_classes),
+    "roles=", selected(self.db and self.db.lfg_filter_player_roles),
+    "min=", tostring(self.db and self.db.lfg_filter_player_min_level), "max=", tostring(self.db and self.db.lfg_filter_player_max_level))
+  local shownCount, unsettledReason = self:LFGFilters_GetForeverVisibleCount()
   print((self.printPrefix or "GroupGuard LFG:"), "rawTotal=", tostring(total), "rawCount=", tostring(type(results) == "table" and #results or 0),
-    "shownCount=", tostring(shownCount))
+    "shownCount=", shownCount ~= nil and tostring(shownCount) or "unavailable",
+    "viewState=", unsettledReason or "current")
+  local ownView = self._ggForeverBrowseView
+  local renderedCount = 0
+  local acquiredCount, visibleFrames, firstFrame = 0, 0, nil
+  if ownView and ownView.ScrollBox then
+    ownView.ScrollBox:ForEachFrame(function(row)
+      acquiredCount = acquiredCount + 1
+      firstFrame = firstFrame or row
+      if SafeVisible(row) then visibleFrames = visibleFrames + 1 end
+      if row.resultID then renderedCount = renderedCount + 1 end
+    end)
+  end
+  print((self.printPrefix or "GroupGuard LFG:"), "renderedRows=", tostring(renderedCount),
+    "cachedCount=", tostring(self._ggForeverVisibleResults))
+  print((self.printPrefix or "GroupGuard LFG:"), "acquiredFrames=", tostring(acquiredCount),
+    "visibleFrames=", tostring(visibleFrames), "firstFrameLayout=", layout(firstFrame))
 
   if type(results) ~= "table" then return end
   if self.LFG_API_ClearCaches then self:LFG_API_ClearCaches("search") end
+  local matchingCount = 0
+  for i = 1, #results do
+    local id = self:SafeNumber(results[i], nil)
+    if id and self:LFGFilters_ResultMatches(id, searchFrame) then matchingCount = matchingCount + 1 end
+  end
+  print((self.printPrefix or "GroupGuard LFG:"), "matchingNow=", tostring(matchingCount))
   for i = 1, math.min(#results, limit) do
     local resultID = self:SafeNumber(results[i], nil)
     local info = resultID and self.LFG_API_GetSearchResultInfo and self:LFG_API_GetSearchResultInfo(resultID) or nil
@@ -1523,6 +1795,7 @@ function addon:LFGFilters_DebugDump(limit)
       "#" .. tostring(i), "id=" .. tostring(resultID),
       "members=" .. tostring(info and info.numMembers),
       "class=" .. tostring(player and player.classFilename),
+      "level=" .. tostring(player and player.level),
       "assigned=" .. tostring(player and player.assignedRole),
       "roles=" .. tostring(roles and roles.tank) .. "/" .. tostring(roles and roles.healer) .. "/" .. tostring(roles and roles.dps),
       "remaining=" .. tostring(counts and counts.TANK_REMAINING) .. "/" .. tostring(counts and counts.HEALER_REMAINING) .. "/" .. tostring(counts and counts.DAMAGER_REMAINING),
@@ -1542,4 +1815,9 @@ function addon:LFGFilters_Init()
     C_Timer.After(0.35, function() if addon then addon:LFGFilters_HookFrames() end end)
     C_Timer.After(1.00, function() if addon then addon:LFGFilters_HookFrames() end end)
   end
+end
+
+if type(SlashCmdList) == "table" then
+  SLASH_GROUPGUARDLFGFILTERS1 = "/ggfilters"
+  SlashCmdList.GROUPGUARDLFGFILTERS = function() addon:LFGFilters_DebugDump() end
 end

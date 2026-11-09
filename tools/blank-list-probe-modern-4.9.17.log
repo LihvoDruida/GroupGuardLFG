@@ -1,0 +1,83 @@
+{
+  "style": "modern",
+  "observations": [
+    "original ScrollBox.lua owns SetDataProvider and Update",
+    "group Needs Tank preserves unfiltered player category",
+    "resolved viewport has positive dimensions",
+    "original range/layout acquires real XML row templates",
+    "list rows remain above a raised native background",
+    "reproduces 4.9.16 layering failure despite nonzero provider",
+    "geometry synchronization repairs list layer",
+    "secret native layering cannot lower owned list",
+    "acquired row is visible and has XML height",
+    "acquired row is visible and has XML height",
+    "acquired row is visible and has XML height",
+    "acquired row is visible and has XML height",
+    "acquired row is visible and has XML height",
+    "hidden-to-shown layout retains a valid data range",
+    "standard bottom buttons and native provider remain intact",
+    "82 of 100 are filtered before native view virtualization",
+    "original ScrollBox creates viewport rows instead of 82 full rows",
+    "scrolling to the end acquires later rows",
+    "scrolling back restores the first category",
+    "initializer failures cannot be erased and shown as an empty success",
+    "successful refresh recovers after a render failure",
+    "nonempty data with zero acquired frames restores the native list",
+    "restored layout can show results again"
+  ],
+  "verified_sources": {
+    "Blizzard_LFGVanilla_Browse.lua": "b58eecd99247788c11552be5b5ff541830ea0ce677e98cf35e048b7481064658",
+    "CallbackRegistry.lua": "95ba8fb6cf3fe38864296703e4334247da5cb6207827d6bc617a621ad25aad01",
+    "DataProvider.lua": "4c806f09576b5237c1b91cfa8597ac80fdc65dcb32b1be959264e49651b8d975",
+    "Mixin.lua": "d699168b5b7dfe39e6f95498be4a5300fb2b3645acec53d13084e81809433b2e",
+    "TableUtil.lua": "ca81b07a301d360a54def50239aec4bb2e44e56a6fe89cfdcb7d36347df19489",
+    "TreeListDataProvider.lua": "b45c7cd3f87edca6b9151a3fcb767e972100944d3457884816658e2f72c9a4ef",
+    "EnumUtil.lua": "0f8f153466a02b23e4a3066f5dcfeeac8248428e1f28280f722d33a49e1845e6",
+    "Flags.lua": "e571923a7e282e7f191d2e56d18bc52290172d146fc9ecea8d224125cccf8f7c",
+    "ScrollUtil.lua": "e882167aed4516f4745e9f0c7de40712064e31177c8fe99d7b2323984c6a3968",
+    "ScrollBoxView.lua": "e724c0d6aa79eec39d999fe298430b9be404912254585a4ef674a37546ef139e",
+    "ScrollBoxListView.lua": "f25ff89c43600fa550b95af133460fec29226d335555df9e450f59d07b443ad9",
+    "ScrollBoxLinearView.lua": "e1e02fa86c805876bec4787393967df07d74faf90a32b5d60170f6e9c7dd393f",
+    "ScrollBoxTreeView.lua": "fa6ff59006df0f678f047bf1a7461c7c9ec958533dd3b2d06879ac68253ed705",
+    "FrameFactory.lua": "3f2867c272b16a464d00bb72830df30c799c63b39e2554ca158a73ec2dbc925f",
+    "ScrollController.lua": "4adea2fd63db2698c43a410d94401cd72bc46bfefac92a91a2986593174f2088",
+    "ScrollBoxStride.lua": "c90a42b2083c33818f07b78d1a03de4cacf9728cb71ac51a5011b62560d57098",
+    "ScrollBoxPadding.lua": "b7240a062929f264d424daca01ecc2511236934574b10ff536e6cbf94161d80f",
+    "TemplateInfoCache.lua": "706fd59331d168701ae850c3604a4d05998538fd4737871f4b72033bb8e4e142",
+    "SharedUIPanelTemplates.xml": "3ef3c573e14f073c779018da4ca92c06a21648081a1067f966e6b92688a53ff9",
+    "ScrollTemplates.xml": "a41109d4805af2d2311c04aea0223d8e73fa003d272b8c629d4f82c18b351c6b",
+    "MinimalScrollBar.xml": "a4a60eb4925c78b376e6db4dd0a5d568ff4a6f6389908dbe85e475cbe16aed29",
+    "Mainline-LFGVanilla_Browse.xml": "24dcd150b0b55d83fc45dfb4d1e5c2b54981a3e1b116dc3c0e0d203762060cfc",
+    "Classic-LFGVanilla_Browse.xml": "f589c780a5276378af5a3976365c0fb692274cc2f15d6862f7aad7a734f572b3",
+    "ScrollBox.xml": "6d85d0d3d50427d3caf86f1443460adc26a1f7190fba083992dc15af77dbb664",
+    "ScrollBox.lua": "407222661a1e194f2b0641befad24d9a5ccb83b0aac7a9a8fc79c4277e0843e9",
+    "ScrollBoxViewUtil.lua": "d99c46e87eccaec3aeee7b3da7607fb131887d9177f9aabacff579bbea449f8d",
+    "AnchorUtil.lua": "db276f479952a5d075b0862f4d578f87e6f0d64fdadef61389d055d4b8d0c86d"
+  },
+  "limits": "Original ScrollBox.lua drives range/layout/acquisition; C geometry, rendering and security are simulated. No historical suite ran."
+}
+SOURCE OK: original ScrollBox.lua owns SetDataProvider and Update
+SOURCE OK: group Needs Tank preserves unfiltered player category
+SOURCE OK: resolved viewport has positive dimensions
+SOURCE OK: original range/layout acquires real XML row templates
+SOURCE OK: list rows remain above a raised native background
+SOURCE OK: reproduces 4.9.16 layering failure despite nonzero provider
+SOURCE OK: geometry synchronization repairs list layer
+SOURCE OK: secret native layering cannot lower owned list
+SOURCE OK: acquired row is visible and has XML height
+SOURCE OK: acquired row is visible and has XML height
+SOURCE OK: acquired row is visible and has XML height
+SOURCE OK: acquired row is visible and has XML height
+SOURCE OK: acquired row is visible and has XML height
+SOURCE OK: hidden-to-shown layout retains a valid data range
+SOURCE OK: standard bottom buttons and native provider remain intact
+SOURCE OK: 82 of 100 are filtered before native view virtualization
+SOURCE OK: original ScrollBox creates viewport rows instead of 82 full rows
+SOURCE OK: scrolling to the end acquires later rows
+SOURCE OK: scrolling back restores the first category
+GroupGuard LFG:	LFG_FILTERS_RENDER_FAILED	...77b6dd/work/GroupGuardLFG/tools/blank_list_probe.lua:251: intentional row initialization failure
+SOURCE OK: initializer failures cannot be erased and shown as an empty success
+SOURCE OK: successful refresh recovers after a render failure
+GroupGuard LFG:	LFG_FILTERS_RENDER_FAILED	...atch/550d3c77b6dd/work/client-70862/FrameFactory.lua:51: stack overflow
+SOURCE OK: nonempty data with zero acquired frames restores the native list
+SOURCE OK: restored layout can show results again

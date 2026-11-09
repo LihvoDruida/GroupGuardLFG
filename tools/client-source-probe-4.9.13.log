@@ -1,0 +1,44 @@
+SOURCE OK: native Lua refresh and sort functions retain original identity
+SOURCE OK: original Browse event + original sort + original provider execute
+SOURCE OK: addon reads client-filtered API snapshot without rebuilding native provider
+SOURCE OK: original list and footer are actually hidden
+SOURCE OK: native OnShow cannot resurrect the unfiltered list
+SOURCE OK: another addon's native result changes do not erase our API candidates
+SOURCE OK: original client reproduces the expired-listing tooltip failure
+SOURCE OK: the expired native row cannot receive hover while its parent is suppressed
+SOURCE OK: native widgets restore when the addon releases presentation
+SOURCE OK: protected native visibility changes defer in combat
+SOURCE OK: deferred native suppression applies outside combat
+SOURCE OK: native restoration still runs after combat when addon features are disabled
+SOURCE OK: unreadable client data produces an explicit waiting state
+SOURCE OK: readable advertised healer roles recover after the client update
+SOURCE OK: original CallbackRegistry and TreeDataProvider dispatch together
+Original Blizzard Lua integration completed; C widgets/security/renderer are simulated.
+{
+  "original_client_sha256": {
+    "Mixin.lua": "d699168b5b7dfe39e6f95498be4a5300fb2b3645acec53d13084e81809433b2e",
+    "TableUtil.lua": "ca81b07a301d360a54def50239aec4bb2e44e56a6fe89cfdcb7d36347df19489",
+    "CallbackRegistry.lua": "95ba8fb6cf3fe38864296703e4334247da5cb6207827d6bc617a621ad25aad01",
+    "DataProvider.lua": "4c806f09576b5237c1b91cfa8597ac80fdc65dcb32b1be959264e49651b8d975",
+    "TreeListDataProvider.lua": "b45c7cd3f87edca6b9151a3fcb767e972100944d3457884816658e2f72c9a4ef",
+    "Blizzard_LFGVanilla_Browse.lua": "b58eecd99247788c11552be5b5ff541830ea0ce677e98cf35e048b7481064658"
+  },
+  "observations": [
+    "native Lua refresh and sort functions retain original identity",
+    "original Browse event + original sort + original provider execute",
+    "addon reads client-filtered API snapshot without rebuilding native provider",
+    "original list and footer are actually hidden",
+    "native OnShow cannot resurrect the unfiltered list",
+    "another addon's native result changes do not erase our API candidates",
+    "original client reproduces the expired-listing tooltip failure",
+    "the expired native row cannot receive hover while its parent is suppressed",
+    "native widgets restore when the addon releases presentation",
+    "protected native visibility changes defer in combat",
+    "deferred native suppression applies outside combat",
+    "native restoration still runs after combat when addon features are disabled",
+    "unreadable client data produces an explicit waiting state",
+    "readable advertised healer roles recover after the client update",
+    "original CallbackRegistry and TreeDataProvider dispatch together"
+  ],
+  "limits": "No real WoW renderer, security engine, server or existing test suite ran."
+}

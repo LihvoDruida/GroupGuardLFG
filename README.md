@@ -1,3 +1,59 @@
+### 4.9.18 — Відступ списку від стандартних кнопок
+
+Нижню межу власної області результатів піднято над нижньою панеллю LFG. У сучасному стилі список закінчується на 3 px вище штатного розділювача; до верхнього краю кнопок залишається 20 px. У класичному стилі до кнопок залишається 9 px. Смуга прокрутки та область обробки миші скорочуються разом зі списком, останній частково видимий рядок обрізається штатним ScrollBox.
+
+Збережені оригінальні шаблони, висота рядків, шрифти, позиції та обробники стандартних кнопок. Незалежні фільтри груп і гравців не змінювалися. Перевірено синтаксис 32 робочих Lua-файлів та відступи за оригінальними XML обох стилів; наявні тестові набори не запускалися. Візуальна перевірка у запущеному WoW ще потрібна. Див. `VALIDATION-4.9.18.txt`.
+
+### 4.9.17 — Відновлення видимого списку
+
+Виправлено регресію 4.9.16: власний список мав фіксований рівень на шарі основного вікна й міг опинитися під його фоном після підняття панелі грою. Область результатів знову використовує окремий шар DIALOG; дані про секретний шар/рівень стандартного вікна для цього не читаються. Шаблони рядків і прокрутки залишаються оригінальними, стандартні кнопки — на своїх місцях. Фільтри груп і гравців незалежні.
+
+Після показу виконується штатне розміщення ScrollBox. Помилки ініціалізації більше не стираються наступним кроком оновлення. Якщо дані непорожні, а ScrollBox не створив жодного фрейму, аддон повертає стандартний список і показує помилку замість удавано успішного порожнього результату. `/ggfilters` тепер розрізняє число збігів, створених і видимих фреймів.
+
+Новий вузький прогін `tools/blank_list_probe.py` виконує також оригінальні ScrollBox.lua, ScrollBoxViewUtil.lua та AnchorUtil.lua. Він відтворює збій старої версії на піднятому вікні, перевіряє 82/100, віртуалізацію, прокрутку, повторне відкриття й відновлення після помилки. Старі набори тестів не запускалися. C-геометрія, renderer і taint залишаються поза цією перевіркою; у запущеному WoW зміни ще не перевірені. Див. `FIX-4.9.17-UA.md` та `VALIDATION-4.9.17.txt`.
+
+### 4.9.16 — Штатне оформлення списку та незалежні фільтри
+
+Власне оформлення рядків 4.9.15 прибрано. Використовуються завантажені грою `LFGBrowseSearchEntryTemplate`, `LFGBrowseNestedSearchEntryTemplate`, `LFGBrowseSearchEntryGroupingTemplate`, стандартний `WowScrollBoxList` і смуга прокрутки відповідного стилю. Шрифти, висота рядків, п'ять місць групи, виділення та значки згортання беруться з клієнта. Суцільного фону й власних числових індикаторів складу немає. Збережені стандартні кнопки повідомлення й запрошення.
+
+Фільтри груп і соло-гравців працюють незалежно. Порожній блок залишає свою категорію без обмежень. Вибір «Потрібен танк» фільтрує групи, зберігаючи гравців; вибір класу/ролі/рівня гравця не відкидає групи. Обидва блоки можуть бути активними одночасно. Власне оголошення зберігається у штатній верхній позиції.
+
+Деталі й приклади: `NATIVE-UI-4.9.16-UA.md`. Новий прогін `tools/client_template_probe.py` перевіряє XML сучасного й класичного стилів та виконує 18 оригінальних Lua-файлів. Пройдено 46 перевірок для кожного стилю. Старі набори тестів не запускалися. Реальний renderer і taint у WoW цим не перевірені; піксельна перевірка в грі ще потрібна.
+
+### 4.9.15 — Аудит реалізацій LFG та синхронізація стандартного списку
+
+Виправлено оновлення після зміни стандартного провайдера без окремої події результатів, обробку невідомих ролей/рівня, розрахунок вільних місць у повній групі та застарілу дію стандартної кнопки запрошення. Порядок рядків і розділів береться зі стандартного провайдера; «Друзі й гільдія спочатку» змінює порядок лише всередині розділу.
+
+Керування залишається в області результатів. Стандартні кнопки повідомлення й запрошення, верхні селектори, вкладки та їхні обробники збережені. Контекстне меню рядка використовує прості фрейми аддона; закривається при оновленні списку, Escape, натисканні поза меню й початку бою. Тимчасово недоступні дані мають окремий лічильник і максимум три повторні читання.
+
+Повторно переглянуто 10 пов'язаних проєктів, включно з релізними архівами Eredol, Artefius і Werko. Порівняння, точні ревізії та рішення: `AUDIT-4.9.15-UA.md`. Чужий код та вихідні файли Blizzard до пакета не включені.
+
+Новий прогін виконує дев'ять оригінальних Lua-файлів Forever 1.60.1.70862: пройдено 51 перевірку. З 27 додаткових сценаріїв 19 не проходять на 4.9.14. Старі тести не запускалися. C-фрейми, сервер, renderer і механізм taint імітуються; перевірки в запущеному WoW не було. Див. `VALIDATION-4.9.15.txt`.
+
+### 4.9.9 — Show only results matching the selected Forever filter sections
+
+- Selecting dungeon Needs/Already has conditions now shows only matching dungeon groups and omits unfiltered solo-player listings.
+- Selecting player class/role/level conditions alone shows only matching solo players and omits unrelated groups.
+- When both sections have conditions, retain matching groups and matching players, each evaluated against its own section. Clear all conditions to restore all results.
+- Require every selected group Needs/Already has role (AND). Keep OR within player class/role sets and AND between class, role and level constraints.
+- Do not bypass category/condition checks for the player's own listing. Its social priority is retained when it matches.
+- Missing/secret required data is not a positive match. Re-evaluate streamed result updates so matching groups appear when data becomes readable, and disappear when a required slot fills.
+- Update Forever-specific panel help and include the actual selected filter sets in `/ggfilters` output. Preserve Mainline matching/help behavior.
+
+Validation: 326 assertions on Lua 5.1 and 326 on Lua 5.4; 44 Lua files compile on both. The 81-check browse integration suite also passes using the actual Forever TreeListDataProvider.lua supplied locally, with frame/UI APIs mocked. Tests cover real checkbox handlers, only-groups/only-players/both sections, AND conditions, filled/open slots and metadata arrival. In-game visual verification still requires WoW. See FIX-4.9.9-UA.md and VALIDATION-4.9.9.txt.
+
+### 4.9.8 — Restore filter-control application and results rendering
+
+- Replace the separate virtualized ScrollBox/FrameFactory list with an addon-owned plain ScrollFrame and reusable row pool, using the same base template as the working filter panel. Remove the new row XML template from both TOCs and the package.
+- Re-evaluate and render visible provider nodes on every filter change; keep category collapsing, selection, row actions, scroll offset, highlights and tooltips independent of native LFG state.
+- Resync the addon view's frame level when the native panel opens/raises, so the original rows cannot cover filtered results.
+- Explicit filter edits now enable a previously disabled saved master flag. Social-priority edits preserve that flag.
+- Show the rendered/native result count in the panel. Capture view-construction/provider errors, show a failure status and report details once instead of leaving an apparently active filter over unchanged native results.
+- Add `/ggfilters` diagnostics with sanitized metadata, master state, view visibility and the last rendering error.
+- Extend integration tests to click the actual class/role/composition checkboxes and commit level fields, drain scheduled updates and check the displayed row IDs. Test unchecking/restoration, scrolling, collapse, row-pool reuse, saved-disabled state, raised frames and failure recovery.
+
+Validation: 310 assertions on Lua 5.1 and 310 on Lua 5.4; 44 Lua files compile on both. The 72-check browse suite also passes with the actual Forever TreeListDataProvider.lua supplied locally, using mocked frame APIs. Both TOCs have no custom row XML dependency. The specific in-client initialization failure was not captured; real WoW rendering and final recovery still require a client test. See FIX-4.9.8-UA.md and VALIDATION-4.9.8.txt.
+
 ### 4.9.7 — Complete Forever row and tooltip isolation
 
 - Close the remaining 4.9.6 legacy paths that observed native ScrollBox rows, attached recycle hooks, tinted native ResultBG and refreshed Blizzard's native tooltip from addon code.
@@ -457,4 +513,44 @@ Use this before release:
 - Moved the PUG button below the full Leave Party / Leave Instance Group button block.
 - Matched the PUG button size and shape to the stock bottom raid-manager buttons.
 - Expanded the raid manager panel safely so the new button fits without overlapping Blizzard controls.
+
+### 4.9.10 — Recover hidden Forever results
+
+Search responses now refresh the independent addon view even if Blizzard's renderer aborts before its post-hook. Per-result updates also restore hidden or missing presentations. A completed search with no matches keeps the addon-owned empty list visible.
+
+`/ggfilters` now reports version, Browse visibility, search state, hide reason, current matches and player levels. A cached count from a hidden view is no longer presented as the number currently shown.
+
+Validation: 334 assertions pass on each of Lua 5.1 and 5.4, including recovery regressions that fail against 4.9.9. WoW UI APIs are mocked; live-client behavior still requires verification. See FIX-4.9.10-UA.md and VALIDATION-4.9.10.txt.
+
+### 4.9.11 — Show filtered Forever results above native rows
+
+Fix the case where the filter counter changed but Blizzard's original list remained on screen. The addon list now uses its own fixed foreground rendering layers and consumes mouse input over the native list. The filter panel stays above it. `/ggfilters` also reports layer, size and alpha information.
+
+Validation: 342 assertions pass on each of Lua 5.1 and 5.4. Rendering and mouse APIs are mocked; the final in-game result still requires verification. See FIX-4.9.11-UA.md and VALIDATION-4.9.11.txt.
+
+### 4.9.12 — Forever API and native UI behavior
+
+Fix solo-player role filtering when Forever's assigned role differs from the advertised roles. Improve row and tooltip recycling, preserve context-menu targets, and prefer the client's native invitation API.
+
+The independent list uses game artwork, role icons/counts and separate entry/category heights. The Forever filter panel shortens its scroll viewport on small displays, keeps normal text sizes where possible and defers protected layout changes during combat. Global HUD settings and Blizzard providers remain untouched.
+
+365 assertions pass on each of Lua 5.1 and Lua 5.4. UI APIs are mocked; in-game verification remains necessary. See FIX-4.9.12-UA.md and VALIDATION-4.9.12.txt.
+
+### 4.9.13 — Original client sources and event-driven browse ownership
+
+Remove Forever hooks on Blizzard's Lua browse refresh methods. Follow game events and frame scripts instead. While the addon view is active, hide the original list, scrollbar and footer controls, then restore them when releasing the view. Protected visibility changes wait until combat ends.
+
+Build the view from a sanitized `C_LFGList.GetFilteredSearchResults()` snapshot, preserving Blizzard's result table/provider and separating unavailable data from zero matches. Diagnostics include client build, event mode, snapshot source and native visibility state.
+
+Implementation reviewed against the original Forever 1.60.1.70862 UI and the MIT-licensed BetterGroupFinder and LFG Filter Forever sources. See SOURCES-4.9.13-UA.md for the comparison and precise revisions.
+
+At the user's request, historical test suites were not run for this release. The new `tools/client_source_probe.py` executes six checksum-verified ORIGINAL Blizzard Lua files with the production addon modules. C widget bindings are simulated: this does not certify in-game rendering, taint, server searches or invitations. See VALIDATION-4.9.13.txt.
+
+### 4.9.14 — Preserve standard LFG buttons and control only the results viewport
+
+Remove replacement message/invite buttons. Keep the original footer controls visible, with their original handlers, parent and anchors. Only the results list and its scrollbar are visually suppressed during filtered presentation.
+
+Selecting a filtered row selects the corresponding ORIGINAL node through Blizzard's SelectionBehavior API. The client updates and executes its own message/invite buttons. Filtered-out selections are cleared through that same controller. Entries not yet present in the standard provider wait for the client rather than receiving invented selection data.
+
+The source integration probe now loads nine original client files, including Flags, EnumUtil and ScrollUtil. It executes the original selection controller and the original message/invite handlers, and confirms no replacement footer widgets exist. Historical suites were not run. C widgets/security/renderer remain simulated; actual WoW verification is still required. See SCOPE-4.9.14-UA.md and VALIDATION-4.9.14.txt.
 

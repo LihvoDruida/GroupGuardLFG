@@ -3,9 +3,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.9.7
-## X-Codename: Forever native row and tooltip isolation
-## X-Prev-Codename: Forever browse taint isolation
+## Version: 4.9.18
+## X-Codename: Native list footer spacing
+## X-Prev-Codename: Native list visibility recovery
 ## OptionalDeps: Plumber, RaiderIO
 ## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg
@@ -28,7 +28,7 @@ UI\Notify.lua
 
 Modules\FrameMarkers.lua
 Modules\LFG.lua
-UI\ForeverBrowse.xml
+Modules\ForeverTooltip.lua
 Modules\ForeverBrowse.lua
 Modules\LFGFilters.lua
 Modules\ForeverSearch\Localization.lua

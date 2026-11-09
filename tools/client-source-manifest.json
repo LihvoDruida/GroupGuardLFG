@@ -1,0 +1,169 @@
+{
+  "repository": "https://github.com/Gethe/wow-ui-source",
+  "commit": "9dc84f0d3bbae1768ac3405b3716000bd93eda06",
+  "client_version": "1.60.1.70862",
+  "files": [
+    {
+      "name": "Blizzard_LFGVanilla_Browse.lua",
+      "path": "Interface/AddOns/Blizzard_GroupFinder_VanillaStyle/Blizzard_LFGVanilla_Browse.lua",
+      "git_blob_sha": "6a64d6e2f44f85ff05547297ed79e0e5ba950ece",
+      "sha256": "b58eecd99247788c11552be5b5ff541830ea0ce677e98cf35e048b7481064658"
+    },
+    {
+      "name": "CallbackRegistry.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/CallbackRegistry.lua",
+      "git_blob_sha": "3affcc7a159c9dbf49f301ddc63d94921c7455d5",
+      "sha256": "95ba8fb6cf3fe38864296703e4334247da5cb6207827d6bc617a621ad25aad01"
+    },
+    {
+      "name": "DataProvider.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/DataProvider.lua",
+      "git_blob_sha": "c388b2ea9a049cd300dfa5960c8de6668ccd8e02",
+      "sha256": "4c806f09576b5237c1b91cfa8597ac80fdc65dcb32b1be959264e49651b8d975"
+    },
+    {
+      "name": "Mixin.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/Mixin.lua",
+      "git_blob_sha": "46319f7846f8ac2b0b939583d3e0f9ddd1eb5da4",
+      "sha256": "d699168b5b7dfe39e6f95498be4a5300fb2b3645acec53d13084e81809433b2e"
+    },
+    {
+      "name": "TableUtil.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/TableUtil.lua",
+      "git_blob_sha": "1d4b26eff737e451a3dfc2f5d303a064265cb228",
+      "sha256": "ca81b07a301d360a54def50239aec4bb2e44e56a6fe89cfdcb7d36347df19489"
+    },
+    {
+      "name": "TreeListDataProvider.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/TreeListDataProvider.lua",
+      "git_blob_sha": "a3f84ad750ea8c075383e7271efa7cfef117754d",
+      "sha256": "b45c7cd3f87edca6b9151a3fcb767e972100944d3457884816658e2f72c9a4ef"
+    },
+    {
+      "name": "EnumUtil.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/EnumUtil.lua",
+      "git_blob_sha": "6aab676003ca855fc1276814367b53e3fc396350",
+      "sha256": "0f8f153466a02b23e4a3066f5dcfeeac8248428e1f28280f722d33a49e1845e6"
+    },
+    {
+      "name": "Flags.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/Flags.lua",
+      "git_blob_sha": "cf35aee4c42f05ebfbc4bbc662074fa5a405a7e7",
+      "sha256": "e571923a7e282e7f191d2e56d18bc52290172d146fc9ecea8d224125cccf8f7c"
+    },
+    {
+      "name": "ScrollUtil.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollUtil.lua",
+      "git_blob_sha": "3c814bbe83f355061d99ecd8ea455cdbf49bda4f",
+      "sha256": "e882167aed4516f4745e9f0c7de40712064e31177c8fe99d7b2323984c6a3968"
+    },
+    {
+      "name": "ScrollBoxView.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxView.lua",
+      "git_blob_sha": "4b7ce0c590c3f8bb4787996362fd2ee64fd92d4d",
+      "sha256": "e724c0d6aa79eec39d999fe298430b9be404912254585a4ef674a37546ef139e"
+    },
+    {
+      "name": "ScrollBoxListView.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxListView.lua",
+      "git_blob_sha": "e7301e25aaa36abf5f2ce19265a1f8b17f3269ae",
+      "sha256": "f25ff89c43600fa550b95af133460fec29226d335555df9e450f59d07b443ad9"
+    },
+    {
+      "name": "ScrollBoxLinearView.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxLinearView.lua",
+      "git_blob_sha": "42bace37b0a7f5170e626aebea5d8e0441c94a9d",
+      "sha256": "e1e02fa86c805876bec4787393967df07d74faf90a32b5d60170f6e9c7dd393f"
+    },
+    {
+      "name": "ScrollBoxTreeView.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxTreeView.lua",
+      "git_blob_sha": "a2831b10ada9b16e727c5e561bc387ec818d9c4e",
+      "sha256": "fa6ff59006df0f678f047bf1a7461c7c9ec958533dd3b2d06879ac68253ed705"
+    },
+    {
+      "name": "FrameFactory.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/FrameFactory.lua",
+      "git_blob_sha": "1ff6771bd6e383816164678e505c691a191a5e8e",
+      "sha256": "3f2867c272b16a464d00bb72830df30c799c63b39e2554ca158a73ec2dbc925f"
+    },
+    {
+      "name": "ScrollController.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollController.lua",
+      "git_blob_sha": "e570e6b794dd6dd492e22fa940322100be4c4e47",
+      "sha256": "4adea2fd63db2698c43a410d94401cd72bc46bfefac92a91a2986593174f2088"
+    },
+    {
+      "name": "ScrollBoxStride.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxStride.lua",
+      "git_blob_sha": "2124dcef3663b8f83c20d382f32bb3d7cdce8d4c",
+      "sha256": "c90a42b2083c33818f07b78d1a03de4cacf9728cb71ac51a5011b62560d57098"
+    },
+    {
+      "name": "ScrollBoxPadding.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxPadding.lua",
+      "git_blob_sha": "604608f391851daa530f2c4ee6e28b46b32e05f2",
+      "sha256": "b7240a062929f264d424daca01ecc2511236934574b10ff536e6cbf94161d80f"
+    },
+    {
+      "name": "TemplateInfoCache.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/TemplateInfoCache.lua",
+      "git_blob_sha": "f1421339594027a466b8566a418dce53ef6d5382",
+      "sha256": "706fd59331d168701ae850c3604a4d05998538fd4737871f4b72033bb8e4e142"
+    },
+    {
+      "name": "SharedUIPanelTemplates.xml",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Mainline/SharedUIPanelTemplates.xml",
+      "git_blob_sha": "a70ea7819c4ba0fa643b7b80877c675e91647e4e",
+      "sha256": "3ef3c573e14f073c779018da4ca92c06a21648081a1067f966e6b92688a53ff9"
+    },
+    {
+      "name": "ScrollTemplates.xml",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollTemplates.xml",
+      "git_blob_sha": "b0c87b9fa817681b71a9abf42fa312133738c107",
+      "sha256": "a41109d4805af2d2311c04aea0223d8e73fa003d272b8c629d4f82c18b351c6b"
+    },
+    {
+      "name": "MinimalScrollBar.xml",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/MinimalScrollBar.xml",
+      "git_blob_sha": "10ca46a1f94838c94f30d533e23301471e19ffc9",
+      "sha256": "a4a60eb4925c78b376e6db4dd0a5d568ff4a6f6389908dbe85e475cbe16aed29"
+    },
+    {
+      "name": "Mainline-LFGVanilla_Browse.xml",
+      "path": "Interface/AddOns/Blizzard_GroupFinder_VanillaStyle/Mainline/Blizzard_LFGVanilla_Browse.xml",
+      "git_blob_sha": "274d2f8e50347764244ce5f473cc8ffa2554b2de",
+      "sha256": "24dcd150b0b55d83fc45dfb4d1e5c2b54981a3e1b116dc3c0e0d203762060cfc"
+    },
+    {
+      "name": "Classic-LFGVanilla_Browse.xml",
+      "path": "Interface/AddOns/Blizzard_GroupFinder_VanillaStyle/Classic/Blizzard_LFGVanilla_Browse.xml",
+      "git_blob_sha": "8c957e9189640ed9ff594420a9f3d1f913f83e81",
+      "sha256": "f589c780a5276378af5a3976365c0fb692274cc2f15d6862f7aad7a734f572b3"
+    },
+    {
+      "name": "ScrollBox.xml",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBox.xml",
+      "git_blob_sha": "69a96ba1ad0087455b6ae7905a832e59c9dd7c63",
+      "sha256": "6d85d0d3d50427d3caf86f1443460adc26a1f7190fba083992dc15af77dbb664"
+    },
+    {
+      "name": "ScrollBox.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBox.lua",
+      "git_blob_sha": "8d7c3d1bac4eaab31606bccb25c10e0ea929a0fa",
+      "sha256": "407222661a1e194f2b0641befad24d9a5ccb83b0aac7a9a8fc79c4277e0843e9"
+    },
+    {
+      "name": "ScrollBoxViewUtil.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXML/Shared/Scroll/ScrollBoxViewUtil.lua",
+      "git_blob_sha": "7d9b036ca62eedd58b267b6e2d12605728458a1a",
+      "sha256": "d99c46e87eccaec3aeee7b3da7607fb131887d9177f9aabacff579bbea449f8d"
+    },
+    {
+      "name": "AnchorUtil.lua",
+      "path": "Interface/AddOns/Blizzard_SharedXMLBase/AnchorUtil.lua",
+      "git_blob_sha": "fff4435c032f3806f6e1fe4956ba84051c2a2efb",
+      "sha256": "db276f479952a5d075b0862f4d578f87e6f0d64fdadef61389d055d4b8d0c86d"
+    }
+  ]
+}

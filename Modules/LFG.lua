@@ -1123,7 +1123,7 @@ end
 
 function addon:LFG_HookSearchPanel()
   -- Observing the native provider/rows is unnecessary for our separate view.
-  -- LFGFilters observes only the frame's completed UpdateResults pass; row
+  -- LFGFilters follows game events and frame lifecycle scripts; row
   -- painting and tooltips must not run against Blizzard's recycled buttons.
   if self.IsForeverClient and self:IsForeverClient() then return end
   local sp = self.GetLFGSearchFrame and self:GetLFGSearchFrame() or (LFGListFrame and LFGListFrame.SearchPanel)

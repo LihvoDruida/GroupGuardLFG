@@ -35,6 +35,10 @@ SafeRegisterEvent("GROUP_JOINED")
 SafeRegisterEvent("PLAYER_ENTERING_WORLD")
 SafeRegisterEvent("PLAYER_REGEN_ENABLED")
 SafeRegisterEvent("PLAYER_REGEN_DISABLED")
+SafeRegisterEvent("UI_SCALE_CHANGED")
+SafeRegisterEvent("DISPLAY_SIZE_CHANGED")
+SafeRegisterEvent("LFG_LIST_AVAILABILITY_UPDATE")
+SafeRegisterEvent("CVAR_UPDATE")
 SafeRegisterEvent("LFG_LIST_APPLICANT_LIST_UPDATED")
 SafeRegisterEvent("LFG_LIST_APPLICANT_UPDATED")
 SafeRegisterEvent("LFG_LIST_APPLICATION_STATUS_UPDATED")
@@ -56,6 +60,7 @@ SafeRegisterEvent("PLAYER_FLAGS_CHANGED")
 SafeRegisterEvent("LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS")
 SafeRegisterEvent("LFG_LIST_ENTRY_EXPIRED_TIMEOUT")
 SafeRegisterEvent("LFG_LIST_SEARCH_RESULTS_RECEIVED")
+SafeRegisterEvent("LFG_LIST_SEARCH_FAILED")
 SafeRegisterEvent("LFG_LIST_SEARCH_RESULT_UPDATED")
 -- 12.1 (Curse of Ula'tek): censorship state of the player's own listing.
 -- Missing on older clients, which is why registration is wrapped in pcall.
@@ -300,6 +305,10 @@ local function OnEvent(self, event, arg1, ...)
   end
 
   if not addon.db then addon:EnsureDB() end
+  -- Restoring a native widget is cleanup, including when features are disabled.
+  if event == "PLAYER_REGEN_ENABLED" and addon.ForeverBrowse_ApplyDeferredVisibility then
+    addon:ForeverBrowse_ApplyDeferredVisibility()
+  end
 
   -- Unit events are global (including target, nameplates and unrelated pets).
   -- Only roster units can change the group scan or its social verdicts.
@@ -350,6 +359,10 @@ local function OnEvent(self, event, arg1, ...)
     if addon.PugWindow and addon.PugWindow:IsShown() and addon.RefreshPugWindow then addon:RefreshPugWindow() end
     if addon.ScheduleRaidAssist then addon:ScheduleRaidAssist(0.03, event) end
 
+  elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
+    if addon.LFGFilters_ApplyDeferredPanel then addon:LFGFilters_ApplyDeferredPanel() end
+    if addon.ForeverBrowse_SyncGeometry then addon:ForeverBrowse_SyncGeometry() end
+
   elseif event == "PLAYER_REGEN_DISABLED" then
     if addon.ClearFrameMarkers then addon:ClearFrameMarkers() end
     if addon.SuspendBannerForCombat then addon:SuspendBannerForCombat() end
@@ -385,11 +398,19 @@ local function OnEvent(self, event, arg1, ...)
     if addon.LFG_ForgetSearchResult then addon:LFG_ForgetSearchResult(arg1) end
     addon:RequestLFGRefresh(nil, false, true)
 
-  elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
+  elseif event == "LFG_LIST_AVAILABILITY_UPDATE" or (event == "CVAR_UPDATE" and arg1 == "disableSuggestedLevelActivityFilter") then
+    if addon.IsForeverClient and addon:IsForeverClient() and addon.LFGFilters_ScheduleForeverPresentation then
+      addon:LFGFilters_ScheduleForeverPresentation(_G.LFGBrowseFrame)
+    end
+
+  elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" or event == "LFG_LIST_SEARCH_FAILED" then
     if addon.LFG_ClearSearchCaches then addon:LFG_ClearSearchCaches() else addon._lfgResultFlagCache = {}; addon._lfgResultFlagReasons = {} end
-    -- Blizzard_GroupFinder_VanillaStyle handles this event itself and calls
-    -- UpdateResultList(). Our post-hook updates the independent addon view.
-    -- Never call Blizzard's UpdateResults from here.
+    -- Queue our own view independently; no native Lua refresh hook is used.
+    -- The next-frame callback runs after
+    -- Blizzard handles this event, without invoking its renderer ourselves.
+    if addon.IsForeverClient and addon:IsForeverClient() and addon.LFGFilters_ScheduleForeverPresentation then
+      addon:LFGFilters_ScheduleForeverPresentation(_G.LFGBrowseFrame)
+    end
     addon:RequestLFGRefresh(nil, false, false)
 
   elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then

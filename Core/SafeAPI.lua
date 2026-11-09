@@ -52,6 +52,12 @@ function addon:SafeBool(value)
   return value == true
 end
 
+-- Filtering must distinguish a known false from an unavailable secret flag.
+function addon:SafeOptionalBool(value)
+  if not self:SafeCanRead(value) or type(value) ~= "boolean" then return nil end
+  return value
+end
+
 -- Midnight 12.1 introduced object access constraints/forbidden aspects. Reading
 -- methods or fields from a restricted Blizzard object can itself raise a Lua
 -- error in a tainted execution path, so object access is checked before we
@@ -733,6 +739,7 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
     name = FirstSafeTableText(self, info, { "name" }),
     comment = FirstSafeTableText(self, info, { "comment" }),
     voiceChat = FirstSafeTableText(self, info, { "voiceChat" }),
+    voiceMode = FirstSafeTableNumber(self, info, { "voiceMode" }, nil),
     leaderName = (function()
       local value = FirstSafeTableText(self, info, { "leaderName" })
       return self.NormalizePlayerNameForClient and self:NormalizePlayerNameForClient(value) or value
@@ -747,8 +754,8 @@ function addon:LFG_API_GetSearchResultInfo(resultID)
     numCharFriends = FirstSafeTableNumber(self, info, { "numCharFriends" }, 0) or 0,
     numGuildMates = FirstSafeTableNumber(self, info, { "numGuildMates" }, 0) or 0,
     censored = self:SafeBool(SafeTableValue(self, info, "censored")),
-    hasSelf = self:SafeBool(SafeTableValue(self, info, "hasSelf")),
-    isDelisted = self:SafeBool(SafeTableValue(self, info, "isDelisted")),
+    hasSelf = self:SafeOptionalBool(SafeTableValue(self, info, "hasSelf")),
+    isDelisted = self:SafeOptionalBool(SafeTableValue(self, info, "isDelisted")),
     newPlayerFriendly = self:SafeBool(SafeTableValue(self, info, "newPlayerFriendly")),
     generalPlaystyle = FirstSafeTableNumber(self, info, { "generalPlaystyle" }, nil),
     areaName = FirstSafeTableText(self, info, { "areaName" }),
@@ -769,9 +776,9 @@ function addon:LFG_API_GetSearchResultPlayerInfo(resultID, memberIndex)
   local rawRoles = SafeTableValue(self, info, "lfgRoles")
   if self:SafeCanAccessTable(rawRoles) then
     lfgRoles = {
-      tank = self:SafeBool(SafeTableValue(self, rawRoles, "tank")),
-      healer = self:SafeBool(SafeTableValue(self, rawRoles, "healer")),
-      dps = self:SafeBool(SafeTableValue(self, rawRoles, "dps")),
+      tank = self:SafeOptionalBool(SafeTableValue(self, rawRoles, "tank")),
+      healer = self:SafeOptionalBool(SafeTableValue(self, rawRoles, "healer")),
+      dps = self:SafeOptionalBool(SafeTableValue(self, rawRoles, "dps")),
     }
   end
   return {
@@ -805,9 +812,9 @@ function addon:LFG_API_GetSearchResultLeaderInfo(resultID)
   local rawRoles = SafeTableValue(self, info, "lfgRoles")
   if self:SafeCanAccessTable(rawRoles) then
     lfgRoles = {
-      tank = self:SafeBool(SafeTableValue(self, rawRoles, "tank")),
-      healer = self:SafeBool(SafeTableValue(self, rawRoles, "healer")),
-      dps = self:SafeBool(SafeTableValue(self, rawRoles, "dps")),
+      tank = self:SafeOptionalBool(SafeTableValue(self, rawRoles, "tank")),
+      healer = self:SafeOptionalBool(SafeTableValue(self, rawRoles, "healer")),
+      dps = self:SafeOptionalBool(SafeTableValue(self, rawRoles, "dps")),
     }
   end
 
@@ -854,6 +861,22 @@ function addon:LFG_API_GetSearchResults()
   end
   total = self:SafeNumber(total, #results) or #results
   return results, total
+end
+
+-- Documented Forever contract: totalResultsFound, filteredResults. Keep this
+-- separate from GetSearchResults: the active category/activity selection is
+-- applied by the client, while addon role/class filters belong to our view.
+function addon:LFG_API_GetFilteredSearchResults()
+  local fn = C_LFGList and C_LFGList.GetFilteredSearchResults
+  if type(fn) ~= "function" then return nil, nil, false end
+  local ok, total, raw = pcall(fn)
+  if not ok or not self:SafeCanAccessTable(raw) then return nil, nil, false end
+  local results = {}
+  for index = 1, #raw do
+    local id = self:SafeNumber(SafeTableValue(self, raw, index), nil)
+    if id then results[#results + 1] = id end
+  end
+  return results, self:SafeNumber(total, #results), true
 end
 
 function addon:LFG_API_GetAvailableCategories()
@@ -912,10 +935,14 @@ function addon:LFG_API_GetSearchResultMemberCounts(resultID)
 
   local out = {}
   local numberKeys = {
-    "TANK", "HEALER", "DAMAGER",
+    "TANK", "HEALER", "DAMAGER", "NOROLE",
     "TANK_REMAINING", "HEALER_REMAINING", "DAMAGER_REMAINING",
   }
   for _, key in ipairs(numberKeys) do
+    local value = self:SafeNumber(SafeTableValue(self, counts, key), nil)
+    if value ~= nil then out[key] = value end
+  end
+  for _, key in ipairs(CLASS_SORT_ORDER or {}) do
     local value = self:SafeNumber(SafeTableValue(self, counts, key), nil)
     if value ~= nil then out[key] = value end
   end

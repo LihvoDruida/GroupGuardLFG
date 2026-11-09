@@ -1,0 +1,119 @@
+SOURCE OK: native Lua refresh and sort functions retain original identity
+SOURCE OK: original Browse event + original sort + original provider execute
+SOURCE OK: addon reads client-filtered API snapshot without rebuilding native provider
+SOURCE OK: only the list and its scrollbar are suppressed
+SOURCE OK: no replacement footer controls are created
+SOURCE OK: filtered group selection drives the original button state
+SOURCE OK: the original message button contacts the selected standard entry
+SOURCE OK: second click deselects through the native selection controller
+SOURCE OK: filtering out the selected entry clears native selection
+SOURCE OK: native OnShow cannot resurrect the unfiltered list
+SOURCE OK: another addon's native result changes do not erase our API candidates
+SOURCE OK: original client reproduces the expired-listing tooltip failure
+SOURCE OK: the expired native row cannot receive hover while its parent is suppressed
+SOURCE OK: native widgets restore when the addon releases presentation
+SOURCE OK: protected native visibility changes defer in combat
+SOURCE OK: deferred native suppression applies outside combat
+SOURCE OK: native restoration still runs after combat when addon features are disabled
+SOURCE OK: unreadable client data produces an explicit waiting state
+SOURCE OK: readable advertised healer roles recover after the client update
+SOURCE OK: solo selection enables both standard buttons
+SOURCE OK: the original invite handler uses the selected native entry
+SOURCE OK: standard button handlers, parents, anchors and visibility stay original
+SOURCE OK: original CallbackRegistry and TreeDataProvider dispatch together
+AUDIT OK: native provider reassignment refreshes the filtered view without a game event
+AUDIT OK: a secret advertised role stays unknown instead of becoming false
+AUDIT OK: an unavailable roles table never falls back to assigned damage
+AUDIT OK: a known selected role satisfies OR even when another role is secret
+AUDIT OK: an unreadable required level is reported as unavailable data
+AUDIT OK: full parties do not acquire imaginary open slots in the fallback
+AUDIT OK: a non-healer leader cannot prove that all teammates lack a healer
+AUDIT OK: a selected solo becoming a group disables the original invite action
+AUDIT OK: the original invite closure follows a changed selected leader
+AUDIT OK: expired cached rows cannot select a missing native result
+AUDIT OK: right-click uses a plain row menu without the protected MenuUtil path
+AUDIT OK: row menu actions remain bound to their original result
+AUDIT OK: a pending list refresh closes its context menu
+AUDIT OK: unknown self or delisted flags cannot enable standard actions
+AUDIT OK: late readable roles recover through bounded retries without a game event
+AUDIT OK: permanently unavailable data stops retrying after three attempts
+AUDIT OK: the filtered list preserves the original native sort within a category
+AUDIT OK: explicit friend priority overrides native order only when enabled
+AUDIT OK: class, advertised role and level bounds combine with AND
+AUDIT OK: group Needs and Already has conditions combine with AND
+AUDIT OK: only selected categories pass, and enabling both blocks retains both kinds
+AUDIT OK: Escape and an outside click close the row menu without a HUD catcher
+AUDIT OK: entering combat closes the plain row menu
+AUDIT OK: native footer stays visible when the addon releases the result list
+AUDIT OK: category order follows the original client when recruiting in a party
+AUDIT OK: an older metadata retry cannot overwrite a newer filter generation
+AUDIT OK: closing Browse cancels an outstanding metadata retry
+SOURCE OK: standard footer handlers remain original after all audit cases
+Original Blizzard Lua integration completed; C widgets/security/renderer are simulated.
+{
+  "original_client_sha256": {
+    "Mixin.lua": "d699168b5b7dfe39e6f95498be4a5300fb2b3645acec53d13084e81809433b2e",
+    "TableUtil.lua": "ca81b07a301d360a54def50239aec4bb2e44e56a6fe89cfdcb7d36347df19489",
+    "CallbackRegistry.lua": "95ba8fb6cf3fe38864296703e4334247da5cb6207827d6bc617a621ad25aad01",
+    "DataProvider.lua": "4c806f09576b5237c1b91cfa8597ac80fdc65dcb32b1be959264e49651b8d975",
+    "TreeListDataProvider.lua": "b45c7cd3f87edca6b9151a3fcb767e972100944d3457884816658e2f72c9a4ef",
+    "EnumUtil.lua": "0f8f153466a02b23e4a3066f5dcfeeac8248428e1f28280f722d33a49e1845e6",
+    "Flags.lua": "e571923a7e282e7f191d2e56d18bc52290172d146fc9ecea8d224125cccf8f7c",
+    "ScrollUtil.lua": "e882167aed4516f4745e9f0c7de40712064e31177c8fe99d7b2323984c6a3968",
+    "Blizzard_LFGVanilla_Browse.lua": "b58eecd99247788c11552be5b5ff541830ea0ce677e98cf35e048b7481064658"
+  },
+  "observations": [
+    "native Lua refresh and sort functions retain original identity",
+    "original Browse event + original sort + original provider execute",
+    "addon reads client-filtered API snapshot without rebuilding native provider",
+    "only the list and its scrollbar are suppressed",
+    "no replacement footer controls are created",
+    "filtered group selection drives the original button state",
+    "the original message button contacts the selected standard entry",
+    "second click deselects through the native selection controller",
+    "filtering out the selected entry clears native selection",
+    "native OnShow cannot resurrect the unfiltered list",
+    "another addon's native result changes do not erase our API candidates",
+    "original client reproduces the expired-listing tooltip failure",
+    "the expired native row cannot receive hover while its parent is suppressed",
+    "native widgets restore when the addon releases presentation",
+    "protected native visibility changes defer in combat",
+    "deferred native suppression applies outside combat",
+    "native restoration still runs after combat when addon features are disabled",
+    "unreadable client data produces an explicit waiting state",
+    "readable advertised healer roles recover after the client update",
+    "solo selection enables both standard buttons",
+    "the original invite handler uses the selected native entry",
+    "standard button handlers, parents, anchors and visibility stay original",
+    "original CallbackRegistry and TreeDataProvider dispatch together",
+    "PASS: native provider reassignment refreshes the filtered view without a game event",
+    "PASS: a secret advertised role stays unknown instead of becoming false",
+    "PASS: an unavailable roles table never falls back to assigned damage",
+    "PASS: a known selected role satisfies OR even when another role is secret",
+    "PASS: an unreadable required level is reported as unavailable data",
+    "PASS: full parties do not acquire imaginary open slots in the fallback",
+    "PASS: a non-healer leader cannot prove that all teammates lack a healer",
+    "PASS: a selected solo becoming a group disables the original invite action",
+    "PASS: the original invite closure follows a changed selected leader",
+    "PASS: expired cached rows cannot select a missing native result",
+    "PASS: right-click uses a plain row menu without the protected MenuUtil path",
+    "PASS: row menu actions remain bound to their original result",
+    "PASS: a pending list refresh closes its context menu",
+    "PASS: unknown self or delisted flags cannot enable standard actions",
+    "PASS: late readable roles recover through bounded retries without a game event",
+    "PASS: permanently unavailable data stops retrying after three attempts",
+    "PASS: the filtered list preserves the original native sort within a category",
+    "PASS: explicit friend priority overrides native order only when enabled",
+    "PASS: class, advertised role and level bounds combine with AND",
+    "PASS: group Needs and Already has conditions combine with AND",
+    "PASS: only selected categories pass, and enabling both blocks retains both kinds",
+    "PASS: Escape and an outside click close the row menu without a HUD catcher",
+    "PASS: entering combat closes the plain row menu",
+    "PASS: native footer stays visible when the addon releases the result list",
+    "PASS: category order follows the original client when recruiting in a party",
+    "PASS: an older metadata retry cannot overwrite a newer filter generation",
+    "PASS: closing Browse cancels an outstanding metadata retry",
+    "standard footer handlers remain original after all audit cases"
+  ],
+  "limits": "No real WoW renderer, security engine, server or existing test suite ran."
+}

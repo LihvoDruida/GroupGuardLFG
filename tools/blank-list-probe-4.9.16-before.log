@@ -1,0 +1,20 @@
+SOURCE OK: original ScrollBox.lua owns SetDataProvider and Update
+SOURCE OK: group Needs Tank preserves unfiltered player category
+SOURCE OK: resolved viewport has positive dimensions
+SOURCE OK: original range/layout acquires real XML row templates
+Traceback (most recent call last):
+  File "/workspace/scratch/550d3c77b6dd/work/GroupGuardLFG/tools/blank_list_probe.py", line 75, in <module>
+    result = lua.execute('return dofile(...)', str(root/'tools/blank_list_probe.lua'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "lupa/lua51.pyx", line 466, in lupa.lua51.LuaRuntime.execute
+  File "lupa/lua51.pyx", line 1897, in lupa.lua51.run_lua
+  File "lupa/lua51.pyx", line 1911, in lupa.lua51.call_lua
+  File "lupa/lua51.pyx", line 1938, in lupa.lua51.execute_lua_call
+  File "lupa/lua51.pyx", line 1819, in lupa.lua51.raise_lua_error
+lupa.lua51.LuaError: ...77b6dd/work/GroupGuardLFG/tools/blank_list_probe.lua:6: CLIENT SOURCE PROBE FAILED: list rows remain above a raised native background
+stack traceback:
+	[C]: in function 'assert'
+	...77b6dd/work/GroupGuardLFG/tools/blank_list_probe.lua:6: in function 'observe'
+	...77b6dd/work/GroupGuardLFG/tools/blank_list_probe.lua:217: in main chunk
+	[C]: in function 'dofile'
+	[string "<python>"]:1: in main chunk

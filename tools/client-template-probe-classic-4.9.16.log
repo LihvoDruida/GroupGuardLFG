@@ -1,0 +1,125 @@
+{
+  "style": "classic",
+  "observations": [
+    "group role filters leave both solo players unchanged",
+    "original provider and Lua methods are untouched",
+    "the standard ScrollBox template is used",
+    "the original scroll viewport retains clipping",
+    "the original scrollbar for the current style is used",
+    "group and player rows inherit the game's nested row template",
+    "row height is supplied by the original XML",
+    "native row fonts are inherited",
+    "no custom row background, numeric composition or replacement art exists",
+    "native leader icon and five-slot role display are retained",
+    "native solo level, class icon and advertised role display are retained",
+    "headers use native labels and plus/minus textures",
+    "standard footer buttons stay visible with original handlers",
+    "player class filters do not filter groups",
+    "player role filters do not filter groups",
+    "player level filters leave both groups visible",
+    "both active blocks independently filter their respective categories",
+    "clearing group conditions restores groups without changing player filters",
+    "clearing player conditions restores players without changing group filters",
+    "group role AND conditions never leak into the player category",
+    "Already has conditions affect groups only",
+    "the original own listing and native unlist visibility are retained",
+    "disabling categories restores the original flat row template and height",
+    "native collapse behavior hides groups without hiding players",
+    "native expand behavior restores the group rows",
+    "category collapse state survives an independent filter refresh",
+    "group selection drives the original message button",
+    "the original message handler contacts the selected group",
+    "solo selection drives the original invite handler",
+    "right click uses the standard menu without changing the selected row",
+    "the standard menu keeps the native message and invite action order",
+    "only the owned native menu is closed",
+    "the tooltip uses native backdrop and member templates",
+    "the game's global tooltip and function remain untouched",
+    "leaving the row hides only its tooltip",
+    "expired rows never invoke the unsafe native nil-result tooltip path",
+    "secret text metrics are guarded in row and tooltip layout",
+    "the native nested playstyle label is retained when provided by the style",
+    "the list follows the native window scale",
+    "the list uses the native window stratum instead of a forced overlay",
+    "unknown player roles wait without excluding groups",
+    "readable player data restores its row without altering groups",
+    "native provider replacement refreshes the independent list",
+    "Classic tooltip omits the modern-only voice row",
+    "the native empty label is never duplicated",
+    "releasing presentation restores the native list and footer"
+  ],
+  "verified_sources": {
+    "Blizzard_LFGVanilla_Browse.lua": "b58eecd99247788c11552be5b5ff541830ea0ce677e98cf35e048b7481064658",
+    "CallbackRegistry.lua": "95ba8fb6cf3fe38864296703e4334247da5cb6207827d6bc617a621ad25aad01",
+    "DataProvider.lua": "4c806f09576b5237c1b91cfa8597ac80fdc65dcb32b1be959264e49651b8d975",
+    "Mixin.lua": "d699168b5b7dfe39e6f95498be4a5300fb2b3645acec53d13084e81809433b2e",
+    "TableUtil.lua": "ca81b07a301d360a54def50239aec4bb2e44e56a6fe89cfdcb7d36347df19489",
+    "TreeListDataProvider.lua": "b45c7cd3f87edca6b9151a3fcb767e972100944d3457884816658e2f72c9a4ef",
+    "EnumUtil.lua": "0f8f153466a02b23e4a3066f5dcfeeac8248428e1f28280f722d33a49e1845e6",
+    "Flags.lua": "e571923a7e282e7f191d2e56d18bc52290172d146fc9ecea8d224125cccf8f7c",
+    "ScrollUtil.lua": "e882167aed4516f4745e9f0c7de40712064e31177c8fe99d7b2323984c6a3968",
+    "ScrollBoxView.lua": "e724c0d6aa79eec39d999fe298430b9be404912254585a4ef674a37546ef139e",
+    "ScrollBoxListView.lua": "f25ff89c43600fa550b95af133460fec29226d335555df9e450f59d07b443ad9",
+    "ScrollBoxLinearView.lua": "e1e02fa86c805876bec4787393967df07d74faf90a32b5d60170f6e9c7dd393f",
+    "ScrollBoxTreeView.lua": "fa6ff59006df0f678f047bf1a7461c7c9ec958533dd3b2d06879ac68253ed705",
+    "FrameFactory.lua": "3f2867c272b16a464d00bb72830df30c799c63b39e2554ca158a73ec2dbc925f",
+    "ScrollController.lua": "4adea2fd63db2698c43a410d94401cd72bc46bfefac92a91a2986593174f2088",
+    "ScrollBoxStride.lua": "c90a42b2083c33818f07b78d1a03de4cacf9728cb71ac51a5011b62560d57098",
+    "ScrollBoxPadding.lua": "b7240a062929f264d424daca01ecc2511236934574b10ff536e6cbf94161d80f",
+    "TemplateInfoCache.lua": "706fd59331d168701ae850c3604a4d05998538fd4737871f4b72033bb8e4e142",
+    "SharedUIPanelTemplates.xml": "3ef3c573e14f073c779018da4ca92c06a21648081a1067f966e6b92688a53ff9",
+    "ScrollTemplates.xml": "a41109d4805af2d2311c04aea0223d8e73fa003d272b8c629d4f82c18b351c6b",
+    "MinimalScrollBar.xml": "a4a60eb4925c78b376e6db4dd0a5d568ff4a6f6389908dbe85e475cbe16aed29",
+    "Mainline-LFGVanilla_Browse.xml": "24dcd150b0b55d83fc45dfb4d1e5c2b54981a3e1b116dc3c0e0d203762060cfc",
+    "Classic-LFGVanilla_Browse.xml": "f589c780a5276378af5a3976365c0fb692274cc2f15d6862f7aad7a734f572b3",
+    "ScrollBox.xml": "6d85d0d3d50427d3caf86f1443460adc26a1f7190fba083992dc15af77dbb664"
+  },
+  "limits": "C widgets, pools, rendering, timing and security are simulated; no historical suite ran."
+}
+SOURCE OK: group role filters leave both solo players unchanged
+SOURCE OK: original provider and Lua methods are untouched
+SOURCE OK: the standard ScrollBox template is used
+SOURCE OK: the original scroll viewport retains clipping
+SOURCE OK: the original scrollbar for the current style is used
+SOURCE OK: group and player rows inherit the game's nested row template
+SOURCE OK: row height is supplied by the original XML
+SOURCE OK: native row fonts are inherited
+SOURCE OK: no custom row background, numeric composition or replacement art exists
+SOURCE OK: native leader icon and five-slot role display are retained
+SOURCE OK: native solo level, class icon and advertised role display are retained
+SOURCE OK: headers use native labels and plus/minus textures
+SOURCE OK: standard footer buttons stay visible with original handlers
+SOURCE OK: player class filters do not filter groups
+SOURCE OK: player role filters do not filter groups
+SOURCE OK: player level filters leave both groups visible
+SOURCE OK: both active blocks independently filter their respective categories
+SOURCE OK: clearing group conditions restores groups without changing player filters
+SOURCE OK: clearing player conditions restores players without changing group filters
+SOURCE OK: group role AND conditions never leak into the player category
+SOURCE OK: Already has conditions affect groups only
+SOURCE OK: the original own listing and native unlist visibility are retained
+SOURCE OK: disabling categories restores the original flat row template and height
+SOURCE OK: native collapse behavior hides groups without hiding players
+SOURCE OK: native expand behavior restores the group rows
+SOURCE OK: category collapse state survives an independent filter refresh
+SOURCE OK: group selection drives the original message button
+SOURCE OK: the original message handler contacts the selected group
+SOURCE OK: solo selection drives the original invite handler
+SOURCE OK: right click uses the standard menu without changing the selected row
+SOURCE OK: the standard menu keeps the native message and invite action order
+SOURCE OK: only the owned native menu is closed
+SOURCE OK: the tooltip uses native backdrop and member templates
+SOURCE OK: the game's global tooltip and function remain untouched
+SOURCE OK: leaving the row hides only its tooltip
+SOURCE OK: expired rows never invoke the unsafe native nil-result tooltip path
+SOURCE OK: secret text metrics are guarded in row and tooltip layout
+SOURCE OK: the native nested playstyle label is retained when provided by the style
+SOURCE OK: the list follows the native window scale
+SOURCE OK: the list uses the native window stratum instead of a forced overlay
+SOURCE OK: unknown player roles wait without excluding groups
+SOURCE OK: readable player data restores its row without altering groups
+SOURCE OK: native provider replacement refreshes the independent list
+SOURCE OK: Classic tooltip omits the modern-only voice row
+SOURCE OK: the native empty label is never duplicated
+SOURCE OK: releasing presentation restores the native list and footer
+XML/Lua source probe complete. Native C rendering and security were not run.
