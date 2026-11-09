@@ -3,9 +3,9 @@
 ## Title: GroupGuard LFG
 ## Notes: Modern LFG tools for WoW 12.x and WoW Forever, safer applicant hints, and raid/PUG helpers
 ## Author: LihvoDruida
-## Version: 4.9.18
-## X-Codename: Native list footer spacing
-## X-Prev-Codename: Native list visibility recovery
+## Version: 4.9.19
+## X-Codename: Current Forever CI contracts
+## X-Prev-Codename: Native list footer spacing
 ## OptionalDeps: Plumber, RaiderIO
 ## X-Compat-Plumber: passive-hooks-only
 ## X-Website: https://www.curseforge.com/wow/addons/group-guard-lfg

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Optional portable audit runner: Python 3 + lupa (Lua 5.1 and 5.4).
-No dependency is loaded by the addon. Native Lua users can run check_all.sh.
+No dependency is loaded by the addon. Both entry points also run the current
+Forever XML/ScrollBox source contract, using the shared forever_checks runner.
 """
 from pathlib import Path
 import importlib
@@ -8,13 +9,13 @@ import json
 import os
 import subprocess
 import sys
+from forever_checks import run as run_forever_checks
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = (
     'tests.lua', 'tests_extra.lua', 'tests_lfgfilters_forever.lua',
     'tests_lfg_metadata.lua', 'tests_forever_languages.lua',
     'tests_runtime_audit.lua', 'tests_settings_ui.lua',
-    'tests_forever_browse.lua',
 )
 
 
@@ -69,6 +70,8 @@ def lua51_globals(blob):
 
 
 def suite(version, filename):
+    if filename not in SUITES:
+        raise ValueError('Use forever_source_probe.py for native XML/ScrollBox integration')
     os.chdir(ROOT / 'tools')
     runtime = importlib.import_module('lupa.lua' + version).LuaRuntime()
     runtime.execute('dofile(...)', filename)
@@ -113,6 +116,10 @@ def main():
         if leaks:
             failed=True; print('GLOBAL LEAK',path.relative_to(ROOT),leaks)
     (ROOT/'tools'/'api-global-audit.json').write_text(json.dumps(inventory,indent=2,ensure_ascii=False)+'\n')
+    # Source integration runs on the actual Forever Lua 5.1 contract. It must
+    # never fall back to the old ScrollFrame-only mock or be silently skipped.
+    if run_forever_checks():
+        failed = True
     print('TOC paths and accidental global writes: ' + ('FAIL' if failed else 'PASS'))
     return int(failed)
 

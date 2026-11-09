@@ -1,0 +1,39 @@
+[GroupGuardLFG] Forever filter regression harness 4.9.19
+
+--- Forever filters: independent group and player categories ---
+  ✓ Groups Tank+Healer uses AND when both remain
+  ✓ Groups rejects when one selected role is already filled
+  ✓ Groups Has Tank+Healer requires both roles already present
+  ✓ Groups Has Tank+Healer rejects when healer is absent
+  ✓ Players class+role matches same solo player
+  ✓ Players class mismatch rejects solo player
+  ✓ Players level range accepts an in-range solo player
+  ✓ Players minimum level rejects a lower solo player
+  ✓ Players normalize a reversed level range
+  ✓ group-only conditions preserve the Players category
+  ✓ player-only conditions preserve the Groups category
+  ✓ unavailable player data cannot pass active conditions
+  ✓ Forever healer flags override a default assigned damage role
+  ✓ Forever explicit healer choice is accepted
+  ✓ Forever unselected role flags do not fall back to assigned damage
+  ✓ Forever assigned role cannot replace unavailable advertised choices
+  ✓ Retail retains its assigned-role contract
+  ✓ both active blocks retain a matching result of each kind
+  ✓ unknown required composition is excluded until data arrives
+  ✓ unknown required level cannot pass the player block
+  ✓ dungeon composition preserves unrelated activity groups
+  ✓ Players two classes use OR inside class selection
+  ✓ Players two roles use OR inside role selection
+  ✓ Players class set still rejects an unselected class
+  ✓ secret advertised role waits with an explicit reason
+  ✓ readable advertised choice restores the player
+  ✓ secret required level waits with a reason
+  ✓ player metadata restrictions never exclude unfiltered groups
+  ✓ own listing remains pinned independently of player criteria
+  ✓ full group cannot need another tank in count fallback
+  ✓ five-player count fallback recognizes a remaining tank slot
+  ✓ empty player block restores players while group criteria stay active
+  ✓ disabled filtering leaves both categories unchanged
+  ✓ named preset saves every filter dimension
+  ✓ named preset restores all independent filter dimensions
+Forever filter contract 4.9.19: 35 passed, 0 failed

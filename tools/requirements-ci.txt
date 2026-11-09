@@ -1,0 +1,2 @@
+# Offline audit dependency only; never loaded by the addon.
+lupa==2.8

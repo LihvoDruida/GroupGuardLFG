@@ -1,5 +1,5 @@
 #!/bin/bash
-# Full addon verification: Lua syntax, accidental globals, tests.
+# Full addon verification: Lua syntax/globals, general suites, current Forever Lua/XML contract.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -10,7 +10,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   echo "HEAD: $(git rev-parse HEAD)"
 fi
 grep '^## Version:' GroupGuardLFG.toc GroupGuardLFG_Camelot.toc || true
-grep -n 'HARNESS_REVISION' tools/tests_lfgfilters_forever.lua || true
+grep -n 'HARNESS_REVISION' tools/tests_lfgfilters_forever.lua tools/tests_forever_browse.lua || true
 echo
 
 LUAC="${LUAC:-}"
@@ -29,6 +29,11 @@ fi
 
 if [ -z "$LUAC" ] || [ -z "$LUA" ]; then
   echo "Lua 5.1 runtime/compiler is required (lua5.1 + luac5.1)."
+  exit 2
+fi
+
+if ! python3 -c 'import lupa.lua51' >/dev/null 2>&1; then
+  echo "Install CI dependencies: python3 -m pip install -r tools/requirements-ci.txt"
   exit 2
 fi
 
@@ -81,10 +86,10 @@ rm -f luac.out
   "$LUA" tests_settings_ui.lua
 ) || fail=1
 
-(
-  cd tools || exit 1
-  "$LUA" tests_forever_browse.lua
-) || fail=1
+# tests_forever_browse.lua requires the actual XML and ScrollBox Lua sources.
+# The shared runner fetches the pinned, hash-verified files outside the addon,
+# or verifies GROUPGUARD_CLIENT_SOURCE when a local cache is supplied.
+python3 tools/forever_checks.py || fail=1
 
 [ "$fail" -eq 0 ] && echo "✓ all checks passed" || echo "✗ checks failed"
 exit "$fail"
