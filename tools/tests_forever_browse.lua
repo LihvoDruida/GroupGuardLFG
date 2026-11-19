@@ -173,7 +173,7 @@ function native.ScrollBox:GetDataProvider() return self.provider end
 function native.ScrollBox:HasDataProvider() return self.provider~=nil end
 function native.ScrollBox:EnumerateDataProviderEntireRange() return self.provider:EnumerateEntireRange() end
 function native.ScrollBox:FindFrame() return nil end -- C list virtualization is outside this probe
-function native.ScrollBox:HasScrollableExtent() return true end
+function native.ScrollBox:HasScrollableExtent() NATIVE_SCROLLBOX_MEASURED=true; error("addon code measured the native ScrollBox") end
 native.selectionBehavior=ScrollUtil.AddSelectionBehavior(native.ScrollBox,SelectionBehaviorFlags.Deselectable)
 native.selectionBehavior:RegisterCallback(SelectionBehaviorMixin.Event.OnSelectionChanged,function(owner) owner:UpdateButtonState() end,native)
 native.SendMessageButton:SetScript("OnClick",LFGBrowseSendMessageButtonMixin.OnClick)
@@ -336,6 +336,7 @@ addon:ForeverBrowse_Hide('probe reopen')
 apply()
 observe("hidden-to-shown layout retains a valid data range",scroll:IsVisible() and scroll:GetFrameCount()>0 and not addon._ggForeverPresentationError)
 observe("standard bottom buttons and native provider remain intact",native.SendMessageButton:IsShown() and native.GroupInviteButton:IsShown() and nativeProviderWrites==1 and native.ScrollBox:GetDataProvider()~=scroll:GetDataProvider())
+observe("addon code never measures the native ScrollBox",NATIVE_SCROLLBOX_MEASURED==nil)
 native.scale=1.25;addon:ForeverBrowse_SyncGeometry()
 observe("viewport scale follows the native panel",view.scale==1.25)
 native.scale=1;addon:ForeverBrowse_SyncGeometry()
