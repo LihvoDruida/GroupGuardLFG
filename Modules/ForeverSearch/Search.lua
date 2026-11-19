@@ -116,60 +116,45 @@ local function Finish(status, reason)
     end
 end
 
-local function MatchesRequest(run, category, filter, preferred, languages, crossFaction, advanced, activities)
-    if not addon:CanAccessValue(category) or category ~= run.categoryID then return false end
-    if not addon:CanAccessValue(filter) or not addon:CanAccessValue(preferred) or not addon:CanAccessValue(crossFaction) then return false end
-    if filter ~= 0 or preferred ~= 0 or crossFaction ~= false or advanced ~= nil then return false end
-    if run.languages == nil then
-        if languages ~= nil then return false end
-    else
-        if not addon:CanAccessValue(languages) or type(languages) ~= "table" then return false end
-        for code, selected in pairs(run.languages) do
-            local actual = languages[code]
-            if actual ~= nil and not addon:CanAccessValue(actual) then return false end
-            if (actual == true) ~= selected then return false end
+-- Global the secure macro writes after C_LFGList.Search returns. It is the
+-- only thing the macro touches besides the native API; addon Lua reads it in
+-- PostClick to confirm the click actually dispatched the request.
+local DISPATCH_MARKER = "GroupGuardLFG_SearchDispatch"
+
+-- Observe native Browse searches through Blizzard's Lua entry point instead of
+-- hooking C_LFGList.Search itself. Hooking the protected C function puts an
+-- addon-installed wrapper on Blizzard's own call path: when Blizzard searches
+-- without a hardware event (LFG_LIST_ACTIVE_ENTRY_UPDATE after creating a
+-- listing -> LFGParentFrame_SearchActiveEntry -> LFGBrowse_DoSearch), the call
+-- was blocked as ADDON_ACTION_BLOCKED "UNKNOWN()" and blamed on GroupGuardLFG.
+local function OnNativeSearch()
+    -- LFGBrowse_DoSearch is a no-op when a search is already running or no
+    -- category is selected; only a call that set the native flag searched.
+    if not NativeSearching() or externalPending then return end
+    lastSearch = GetTime()
+    viewGeneration = viewGeneration + 1
+    NS.resultCounts = nil
+    externalPending = { requestID = NS.NextRequestID(), mode = "native/other", started = GetTime() }
+    externalID = externalID + 1
+    local token = externalID
+    if pending then
+        uncertain = true
+        Finish("superseded", "The response cannot be attributed to the selected language")
+    end
+    local requestID = externalPending.requestID
+    NS.SetStatus("NATIVE_SEARCHING", "#" .. requestID .. " native browse search")
+    C_Timer.After(30, function()
+        if token == externalID and externalPending then
+            externalPending, uncertain = nil, true
+            NS.SetStatus("NO_RESPONSE", "#" .. requestID .. " native/other: timeout after 30 s; a late response may change the shared list.", "error")
         end
-    end
-    if run.activityIDs == nil then return activities == nil end
-    if not addon:CanAccessValue(activities) or type(activities) ~= "table" or #activities ~= #run.activityIDs then return false end
-    for i, id in ipairs(run.activityIDs) do
-        if not addon:CanAccessValue(activities[i]) or activities[i] ~= id then return false end
-    end
-    return true
+    end)
 end
 
 local function EnsureHook()
     if hooked then return true end
-    local ok = pcall(hooksecurefunc, C_LFGList, "Search", function(category, filter, preferred, languages, crossFaction, advanced, activities)
-        lastSearch = GetTime()
-        if issuing and clickRun and MatchesRequest(clickRun, category, filter, preferred, languages, crossFaction, advanced, activities) then
-            clickRun.dispatched, clickRun.dispatchTime = true, GetTime()
-            NS.Log("Dispatch", "#" .. clickRun.requestID .. "; API invocation observed; "
-                .. NS.SearchParameters(category, filter, preferred, languages, crossFaction, advanced, activities), false, clickRun)
-            return
-        end
-        viewGeneration = viewGeneration + 1
-        NS.resultCounts = nil
-        if externalPending then
-            NS.Log("Search", "#" .. externalPending.requestID .. " replaced by another external request; response attribution is uncertain")
-            uncertain = true
-        end
-        externalPending = { requestID = NS.NextRequestID(), mode = "native/other", started = GetTime() }
-        externalID = externalID + 1
-        local token = externalID
-        if pending then
-            uncertain = true
-            Finish("superseded", "The response cannot be attributed to the selected language")
-        end
-        local requestID = externalPending.requestID
-        NS.SetStatus("NATIVE_SEARCHING", "#" .. requestID .. " native/other: " .. NS.SearchParameters(category, filter, preferred, languages, crossFaction, advanced, activities))
-        C_Timer.After(30, function()
-            if token == externalID and externalPending then
-                externalPending, uncertain = nil, true
-                NS.SetStatus("NO_RESPONSE", "#" .. requestID .. " native/other: timeout after 30 s; a late response may change the shared list.", "error")
-            end
-        end)
-    end)
+    if type(_G.LFGBrowse_DoSearch) ~= "function" then return false end
+    local ok = pcall(hooksecurefunc, "LFGBrowse_DoSearch", OnNativeSearch)
     hooked = ok
     return ok
 end
@@ -210,7 +195,8 @@ BuildRequest = function(mode, wide, diagnostic, source)
 end
 
 -- The macro contains only validated literals: it never reads addon globals or calls
--- addon Lua. Forever's native SecureActionButton handler executes it on a click.
+-- addon Lua; it only records its request ID in DISPATCH_MARKER once Search returned.
+-- Forever's native SecureActionButton handler executes it on a click.
 local function SearchMacro(run)
     local languages = "nil"
     if run.languages then
@@ -236,8 +222,10 @@ local function SearchMacro(run)
         activities = "{" .. table.concat(ids, ",") .. "}"
     end
     if run.categoryID ~= math.floor(run.categoryID) or run.categoryID == math.huge then return nil end
+    if run.requestID ~= math.floor(run.requestID) or run.requestID == math.huge then return nil end
     local text = "/run if not InCombatLockdown() then C_LFGList.Search(" .. string.format("%.0f", run.categoryID)
-        .. ",0,0," .. languages .. ",false,nil," .. activities .. ") end"
+        .. ",0,0," .. languages .. ",false,nil," .. activities .. ") " .. DISPATCH_MARKER .. "="
+        .. string.format("%.0f", run.requestID) .. " end"
     -- Reject overlong macros instead of truncating a request or dropping filters.
     if #text > 1023 then return nil end
     return text
@@ -270,6 +258,8 @@ function NS.Request(mode, wide, diagnostic, source, button)
         if not C_LFGList or type(C_LFGList[name]) ~= "function" then NS.SetStatus("SEARCH_UNAVAILABLE", "Missing C_LFGList." .. name, "error"); return false end
     end
     if not C_Macro or type(C_Macro.RunMacroText) ~= "function" then NS.SetStatus("SEARCH_UNAVAILABLE", "Secure macro API unavailable", "error"); return false end
+    -- Validate with a worst-case ID length before consuming a real request ID.
+    run.requestID = 999999999
     local macro = SearchMacro(run)
     if not macro then NS.SetStatus("SEARCH_UNAVAILABLE", "Filters cannot be represented safely within the macro limit", "validation"); return false end
     if not EnsureHook() then NS.SetStatus("SEARCH_UNAVAILABLE", "Could not install the search observer", "error"); return false end
@@ -279,6 +269,9 @@ function NS.Request(mode, wide, diagnostic, source, button)
         return false
     end
     run.requestID = NS.NextRequestID()
+    macro = SearchMacro(run)
+    if not macro then NS.SetStatus("SEARCH_UNAVAILABLE", "Filters cannot be represented safely within the macro limit", "validation"); return false end
+    _G[DISPATCH_MARKER] = nil
     run.context, run.timestamp, run.started = Context(), time(), GetTime()
     run.attributionUncertain = uncertain or nil
     run.availableLanguages = ReadOptional("GetAvailableLanguageSearchFilter")
@@ -300,6 +293,13 @@ end
 function NS.EndClick(button)
     local run = clickRun
     issuing, clickRun = false, nil
+    if run and _G[DISPATCH_MARKER] == run.requestID then
+        _G[DISPATCH_MARKER] = nil
+        lastSearch = GetTime()
+        run.dispatched, run.dispatchTime = true, GetTime()
+        NS.Log("Dispatch", "#" .. run.requestID .. "; API invocation observed; "
+            .. NS.SearchParameters(run.categoryID, 0, 0, run.languages, false, nil, run.activityIDs), false, run)
+    end
     if not InCombatLockdown() then
         button:SetAttribute("type", nil)
         button:SetAttribute("macrotext", nil)
@@ -356,8 +356,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if ... == addonName then
             NS.InitializeLog()
             NS.Log("Session", Describe(Context()) .. "; selected language=" .. NS.Mode())
-            if C_LFGList and type(C_LFGList.Search) == "function" then EnsureHook() end
         end
+        EnsureHook()
     elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
         RecordBlocked(event, ...)
     elseif event == "LFG_LIST_SEARCH_FAILED" or event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then

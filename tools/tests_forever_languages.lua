@@ -100,8 +100,16 @@ local function setup(retail, withUI)
     }
     C_Macro={RunMacroText=function() error("addon must not call macro API directly") end}
     hooksecurefunc=function(tbl,key,callback)
+        if type(tbl)=="string" then tbl,key,callback=_G,tbl,key end
         local native=tbl[key]
         tbl[key]=function(...) native(...); callback(...) end
+    end
+    -- Blizzard's Lua entry point for native Browse searches (Blizzard_LFGVanilla_Browse.lua).
+    LFGBrowse_DoSearch=function()
+        if not LFGBrowseFrame.searching then
+            C_LFGList.Search(2,0,0,nil,false,nil,{111})
+            LFGBrowseFrame.searching=true
+        end
     end
     MenuResponse={Refresh=1}
     local menuRoot
@@ -161,7 +169,7 @@ local function setup(retail, withUI)
     end
     return { addon=addon, ns=addon.ForeverSearch, calls=calls, frames=frames, event=event, advance=advance,
         combat=function(v) combat=v end, secret=secret, infos=resultInfo, raw=rawResults,
-        menu=function() return menuRoot end, available=available, widget=widget, click=click, rawRequest=rawRequest, macroErrors=macroErrors }
+        menu=function() return menuRoot end, available=available, nativeSearch=C_LFGList.Search, widget=widget, click=click, rawRequest=rawRequest, macroErrors=macroErrors }
 end
 
 print("--- Forever multilingual search ---")
@@ -211,11 +219,13 @@ check("timeout does not retry", #t.calls==3)
 
 local v=setup(false); ns=v.ns
 v.event("ADDON_LOADED","GroupGuardLFG")
-C_LFGList.Search(2,0,0,nil,false,nil,{111})
+LFGBrowse_DoSearch()
 check("external native search is observed", ns.IsPending() and ns.Request()==false and #v.calls==1)
-v.event("LFG_LIST_SEARCH_RESULTS_RECEIVED"); v.advance(5)
+LFGBrowse_DoSearch()
+check("no-op native DoSearch while searching is not a second request", ns.IsPending() and #v.calls==1)
+v.event("LFG_LIST_SEARCH_RESULTS_RECEIVED"); LFGBrowseFrame.searching=false; v.advance(5)
 check("can manually search after native response and cooldown", ns.Request())
-C_LFGList.Search(2,0,0,nil,false,nil,{111})
+LFGBrowse_DoSearch()
 check("native search supersedes addon request without false success", ns.IsPending() and ns.statusKey=="NATIVE_SEARCHING")
 v.event("LFG_LIST_SEARCH_RESULTS_RECEIVED")
 check("superseded native results do not claim selected languages", ns.statusKey=="NATIVE_COMPLETE")
@@ -379,7 +389,8 @@ local secureButton=CreateFrame("Button",nil,UIParent,"SecureActionButtonTemplate
 ns.PanelControls={Search=secureButton}
 check("PreClick only arms a macro, without calling Search", v.rawRequest(nil,nil,false,"filter-panel",secureButton) and #v.calls==0 and secureButton:GetAttribute("type")=="macro")
 local macro=secureButton:GetAttribute("macrotext")
-check("macro uses only native API and literals", macro:find("C_LFGList.Search",1,true) and not macro:find("GroupGuard",1,true) and not macro:find("pcall",1,true) and #macro<=1023)
+check("macro uses only native API and literals", macro:find("C_LFGList.Search",1,true) and not macro:gsub("GroupGuardLFG_SearchDispatch=%d+ end$",""):find("GroupGuard",1,true) and not macro:find("pcall",1,true) and #macro<=1023)
+check("Search itself is never wrapped by an addon hook", C_LFGList.Search==v.nativeSearch)
 secureButton.scripts.OnClick(secureButton)
 ns.EndClick(secureButton)
 check("secure engine action preserves all seven search arguments", #v.calls==1 and v.calls[1].secure and v.calls[1].n==7 and v.calls[1][4].enUS and v.calls[1][6]==nil and v.calls[1][7][1]==111)
