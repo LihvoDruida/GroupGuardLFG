@@ -150,7 +150,7 @@ function native.ScrollBox:GetDataProvider() return self.provider end
 function native.ScrollBox:HasDataProvider() return self.provider~=nil end
 function native.ScrollBox:EnumerateDataProviderEntireRange() return self.provider:EnumerateEntireRange() end
 function native.ScrollBox:FindFrame() return nil end -- C list virtualization is outside this probe
-function native.ScrollBox:HasScrollableExtent() return true end
+function native.ScrollBox:HasScrollableExtent() NATIVE_SCROLLBOX_MEASURED=true; error("addon code measured the native ScrollBox") end
 native.selectionBehavior=ScrollUtil.AddSelectionBehavior(native.ScrollBox,SelectionBehaviorFlags.Deselectable)
 native.selectionBehavior:RegisterCallback(SelectionBehaviorMixin.Event.OnSelectionChanged,function(owner) owner:UpdateButtonState() end,native)
 native.SendMessageButton:SetScript("OnClick",LFGBrowseSendMessageButtonMixin.OnClick)
@@ -211,6 +211,7 @@ local nativeRow=CreateFrame("Button",nil,native.ScrollBox); nativeRow.resultID=9
 observe("the expired native row cannot receive hover while its parent is suppressed",not nativeRow:IsVisible())
 addon:ForeverBrowse_Hide("probe restore")
 observe("native widgets restore when the addon releases presentation",native.ScrollBox:IsShown() and native.ScrollBar:IsShown() and native.SendMessageButton:IsShown())
+observe("addon code never measures the native ScrollBox",NATIVE_SCROLLBOX_MEASURED==nil)
 native.ScrollBox.protected=true; combat=true
 addon:ForeverBrowse_SetNativeSuppressed(true)
 observe("protected native visibility changes defer in combat",native.ScrollBox:IsShown() and addon._ggForeverNativeVisibilityDeferred==true)

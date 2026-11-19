@@ -97,13 +97,15 @@ function addon:ForeverBrowse_SetNativeSuppressed(suppressed)
     if suppressed then
       if not SetNativeShown(frame, false) then deferred = true end
     elseif record.restoreShown then
-      local restore = true
-      if record.kind == "bar" then
-        local browse = _G.LFGBrowseFrame
-        local scrollBox = browse and browse.ScrollBox
-        if scrollBox and ReadFrameBoolean(scrollBox, "HasScrollableExtent") == false then restore = false end
-      end
-      if not restore or SetNativeShown(frame, true) then record.restoreShown = nil else deferred = true end
+      -- Never call ScrollBox Lua or measurement methods (HasScrollableExtent ->
+      -- GetHeight) on the native list from addon code: measuring can dispatch
+      -- OnSizeChanged synchronously, so the native ScrollBox lays out and
+      -- acquires its rows under GroupGuardLFG taint. Those rows' initializers
+      -- then run tainted on every later native update and hit secret
+      -- numMembers (Blizzard_LFGVanilla_Browse.lua:373). Restore the recorded
+      -- state; Blizzard's managed scrollbar visibility re-evaluates the bar on
+      -- its next secure layout.
+      if SetNativeShown(frame, true) then record.restoreShown = nil else deferred = true end
     end
   end
   self._ggForeverNativeVisibilityDeferred = deferred

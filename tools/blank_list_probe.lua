@@ -169,7 +169,7 @@ function native.ScrollBox:GetDataProvider() return self.provider end
 function native.ScrollBox:HasDataProvider() return self.provider~=nil end
 function native.ScrollBox:EnumerateDataProviderEntireRange() return self.provider:EnumerateEntireRange() end
 function native.ScrollBox:FindFrame() return nil end -- C list virtualization is outside this probe
-function native.ScrollBox:HasScrollableExtent() return true end
+function native.ScrollBox:HasScrollableExtent() error("addon code measured the native ScrollBox") end
 native.selectionBehavior=ScrollUtil.AddSelectionBehavior(native.ScrollBox,SelectionBehaviorFlags.Deselectable)
 native.selectionBehavior:RegisterCallback(SelectionBehaviorMixin.Event.OnSelectionChanged,function(owner) owner:UpdateButtonState() end,native)
 native.SendMessageButton:SetScript("OnClick",LFGBrowseSendMessageButtonMixin.OnClick)
