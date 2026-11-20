@@ -70,6 +70,10 @@ rm -f luac.out
   cd tools || exit 1
   "$LUA" tests_lfg_metadata.lua
 ) || fail=1
+(
+  cd tools || exit 1
+  "$LUA" tests_retail_filters.lua
+) || fail=1
 
 (
   cd tools || exit 1
