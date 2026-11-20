@@ -81,8 +81,44 @@ local function CopyArray(source)
   return out
 end
 
+-- Retail filters run through Blizzard's own dungeon advanced filter
+-- (C_LFGList.SaveAdvancedFilter), never by rewriting LFGListFrame.SearchPanel
+-- results: rebuilding the native list from addon code taints its rows, and
+-- tainted rows hit secret values (and blocked calls) in 12.x. The native filter
+-- has no "has damage" flag and no per-player class/role/level filters.
+local ADVANCED_FILTER_FIELDS = {
+  { field = "needsTank", set = "lfg_filter_group_roles", role = "TANK" },
+  { field = "needsHealer", set = "lfg_filter_group_roles", role = "HEALER" },
+  { field = "needsDamage", set = "lfg_filter_group_roles", role = "DAMAGER" },
+  { field = "hasTank", set = "lfg_filter_group_has_roles", role = "TANK" },
+  { field = "hasHealer", set = "lfg_filter_group_has_roles", role = "HEALER" },
+}
+
+function addon:LFGFilters_UsesNativeAdvancedFilter()
+  if self.IsForeverClient and self:IsForeverClient() then return false end
+  return self.HasClientCapability and self:HasClientCapability("lfgAdvancedFilter") or false
+end
+
+local function RetailSupportsFilter(set, role)
+  if set == "lfg_filter_group_roles" then return true end
+  if set == "lfg_filter_group_has_roles" then return role == "TANK" or role == "HEALER" end
+  return false
+end
+
+local function CountSupportedRetail(db)
+  local count = 0
+  for _, entry in ipairs(ADVANCED_FILTER_FIELDS) do
+    local values = db and db[entry.set]
+    if type(values) == "table" and values[entry.role] == true then count = count + 1 end
+  end
+  return count
+end
+
 function addon:LFGFilters_GetActiveBlocks()
   if not self.db or self.db.lfg_filters_enabled == false then return false, false end
+  if not (self.IsForeverClient and self:IsForeverClient()) then
+    return CountSupportedRetail(self.db) > 0, false
+  end
   local groups = HasAnySelected(self.db.lfg_filter_group_roles) or HasAnySelected(self.db.lfg_filter_group_has_roles)
   local players = HasAnySelected(self.db.lfg_filter_player_roles)
       or HasAnySelected(self.db.lfg_filter_player_classes)
@@ -708,6 +744,43 @@ function addon:LFGFilters_HandleForeverResultUpdated(resultID)
   return true
 end
 
+-- Push GroupGuard's role selections into the native dungeon filter. Only
+-- flags GroupGuard turned on are ever turned off again, so choices the player
+-- made in Blizzard's own Filter menu survive. Takes effect on the next search,
+-- exactly like changing Blizzard's Filter menu.
+function addon:LFGFilters_SyncAdvancedFilter()
+  if not self.db or not self:LFGFilters_UsesNativeAdvancedFilter() then return false end
+  local okGet, filter = pcall(C_LFGList.GetAdvancedFilter)
+  if not okGet or not self:SafeCanAccessTable(filter) then return false end
+  local enabled = self.db.lfg_filters_enabled ~= false
+  local owned = type(self.db.lfg_advanced_filter_owned) == "table" and self.db.lfg_advanced_filter_owned or {}
+  local changed = false
+  for _, entry in ipairs(ADVANCED_FILTER_FIELDS) do
+    local values = self.db[entry.set]
+    local want = enabled and type(values) == "table" and values[entry.role] == true
+    local current = self:SafeBool(self:SafeTableField(filter, entry.field), false) == true
+    if want then
+      if not current then
+        filter[entry.field] = true
+        owned[entry.field] = true
+        changed = true
+      end
+    elseif current and owned[entry.field] then
+      filter[entry.field] = false
+      owned[entry.field] = nil
+      changed = true
+    elseif not current then
+      owned[entry.field] = nil
+    end
+  end
+  self.db.lfg_advanced_filter_owned = owned
+  if changed then
+    local okSave = pcall(C_LFGList.SaveAdvancedFilter, filter)
+    if not okSave then return false end
+  end
+  return changed
+end
+
 function addon:LFGFilters_FilterFrameResults(searchFrame)
   if self._lfgFilterApplying then return end
   if not searchFrame then return end
@@ -718,6 +791,10 @@ function addon:LFGFilters_FilterFrameResults(searchFrame)
     self:LFGFilters_ScheduleForeverPresentation(searchFrame)
     return
   end
+
+  -- Retail: the native advanced filter does the work server-side. Never write
+  -- SearchPanel.results/totalResults or call LFGListSearchPanel_UpdateResults.
+  if self:LFGFilters_UsesNativeAdvancedFilter() then return end
 
   if type(searchFrame.results) ~= "table" then return end
   if not self:LFGFilters_HasActiveFilters() then return end
@@ -793,10 +870,10 @@ function addon:LFGFilters_RefreshCurrentResults()
     return
   end
 
-  -- Retail can safely refetch its normal result list before applying the local
-  -- filter so unchecking a filter restores rows without a server-side search.
-  if _G.LFGListFrame and searchFrame == _G.LFGListFrame.SearchPanel and type(_G.LFGListSearchPanel_UpdateResultList) == "function" then
-    pcall(_G.LFGListSearchPanel_UpdateResultList, searchFrame)
+  -- Retail: update Blizzard's own dungeon filter. Never rebuild the native
+  -- result list from addon code; the change applies on the next search.
+  if self:LFGFilters_UsesNativeAdvancedFilter() then
+    self:LFGFilters_SyncAdvancedFilter()
   end
 end
 
@@ -965,6 +1042,11 @@ function addon:LFGFilters_UpdateStatusText()
     return
   end
   local active = self:LFGFilters_HasActiveFilters()
+  if self:LFGFilters_UsesNativeAdvancedFilter() then
+    local supported = CountSupportedRetail(self.db)
+    panel.ggStatus:SetText(active and (self:Tr("LFG_FILTERS_ACTIVE") .. " (" .. supported .. ")\n" .. self:Tr("LFG_FILTERS_NEXT_SEARCH")) or self:Tr("LFG_FILTERS_INACTIVE"))
+    return
+  end
   local count = CountSelected(self.db and self.db.lfg_filter_group_roles)
       + CountSelected(self.db and self.db.lfg_filter_group_has_roles)
       + CountSelected(self.db and self.db.lfg_filter_player_roles)
@@ -1244,7 +1326,8 @@ function addon:LFGFilters_RebuildPanelContents()
 
   Divider(-76)
   Text("GameFontNormal", self:Tr("LFG_FILTERS_GROUP_TITLE"), 8, -88, 294)
-  Text("GameFontHighlightSmall", self:Tr(forever and "LFG_FILTERS_GROUP_HELP_FOREVER" or "LFG_FILTERS_GROUP_HELP"), 8, -108, 294)
+  local nativeFilter = self:LFGFilters_UsesNativeAdvancedFilter()
+  Text("GameFontHighlightSmall", self:Tr(forever and "LFG_FILTERS_GROUP_HELP_FOREVER" or (nativeFilter and "LFG_FILTERS_GROUP_HELP_RETAIL" or "LFG_FILTERS_GROUP_HELP")), 8, -108, 294)
 
   if groupAvailable then
     Text("GameFontNormalSmall", self:Tr("LFG_FILTERS_NEEDS"), 8, -139, 80)
@@ -1263,6 +1346,10 @@ function addon:LFGFilters_RebuildPanelContents()
     x = 26
     for _, role in ipairs(ROLE_ORDER) do
       local roleKey = role
+      if nativeFilter and not RetailSupportsFilter("lfg_filter_group_has_roles", role) then
+        -- Blizzard's dungeon filter has no "has damage" condition.
+        break
+      end
       local cb = KeepChild(CreateCheck(content, x, -197, self:Tr(ROLE_TEXT_KEY[role]), self.db.lfg_filter_group_has_roles[role] == true, function(value)
         addon.db.lfg_filter_group_has_roles[roleKey] = value
         addon:LFGFilters_OnChanged()
@@ -1279,7 +1366,9 @@ function addon:LFGFilters_RebuildPanelContents()
   Text("GameFontHighlightSmall", self:Tr(forever and "LFG_FILTERS_PLAYER_HELP_FOREVER" or "LFG_FILTERS_PLAYER_HELP"), 8, -262, 294)
 
   local contentHeight = 340
-  if playerAvailable then
+  if nativeFilter then
+    Text("GameFontDisableSmall", self:Tr("LFG_FILTERS_PLAYER_RETAIL_UNAVAILABLE"), 8, -294, 294)
+  elseif playerAvailable then
     Text("GameFontNormalSmall", self:Tr("LFG_FILTERS_ROLES"), 8, -294, 294)
     local x = 26
     for _, role in ipairs(ROLE_ORDER) do
@@ -1670,13 +1759,11 @@ function addon:LFGFilters_HookFrames()
     end
   end
 
-  -- Retail 12.x path.
-  if not (self.IsForeverClient and self:IsForeverClient()) and not self._ggModernFilterHooked
-      and type(_G.LFGListSearchPanel_UpdateResultList) == "function" and type(hooksecurefunc) == "function" then
-    local ok = pcall(hooksecurefunc, "LFGListSearchPanel_UpdateResultList", function(frame)
-      if addon then addon:LFGFilters_FilterFrameResults(frame) end
-    end)
-    if ok then self._ggModernFilterHooked = true end
+  -- Retail 12.x path: no hook on the native result list. Reconcile the native
+  -- dungeon filter with the saved GroupGuard selection once.
+  if not (self.IsForeverClient and self:IsForeverClient()) and not self._ggModernFilterSynced then
+    self._ggModernFilterSynced = true
+    self:LFGFilters_SyncAdvancedFilter()
   end
 
 end
