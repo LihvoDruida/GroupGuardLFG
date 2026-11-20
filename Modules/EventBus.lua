@@ -35,6 +35,8 @@ SafeRegisterEvent("GROUP_JOINED")
 SafeRegisterEvent("PLAYER_ENTERING_WORLD")
 SafeRegisterEvent("PLAYER_REGEN_ENABLED")
 SafeRegisterEvent("PLAYER_REGEN_DISABLED")
+-- 12.x / Forever: encounter, Mythic+, PvP and map restrictions on group actions.
+SafeRegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
 SafeRegisterEvent("UI_SCALE_CHANGED")
 SafeRegisterEvent("DISPLAY_SIZE_CHANGED")
 SafeRegisterEvent("LFG_LIST_AVAILABILITY_UPDATE")
@@ -362,6 +364,22 @@ local function OnEvent(self, event, arg1, ...)
   elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
     if addon.LFGFilters_ApplyDeferredPanel then addon:LFGFilters_ApplyDeferredPanel() end
     if addon.ForeverBrowse_SyncGeometry then addon:ForeverBrowse_SyncGeometry() end
+
+  elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
+    -- IsAddOnRestrictionActive always reports false while this event is being
+    -- dispatched, so re-evaluate on the next frame. Deferred work re-checks the
+    -- restriction itself and simply stays queued while one is still active.
+    local function afterRestrictionChange()
+      local Safe = addon.Safe
+      if Safe and Safe.ActiveActionRestriction and Safe.ActiveActionRestriction() then return end
+      if addon.ProcessKickQueue then addon:ProcessKickQueue() end
+      if addon._raidAssistQueued and addon.ScheduleRaidAssist then
+        addon._raidAssistQueued = false
+        addon:ScheduleRaidAssist(0, "restriction_end")
+      end
+      if addon.LFG_ScanApplicants then addon:LFG_ScanApplicants() end
+    end
+    if C_Timer and C_Timer.After then C_Timer.After(0.1, afterRestrictionChange) else afterRestrictionChange() end
 
   elseif event == "PLAYER_REGEN_DISABLED" then
     if addon.ClearFrameMarkers then addon:ClearFrameMarkers() end

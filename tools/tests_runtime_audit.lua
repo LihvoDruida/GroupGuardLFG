@@ -122,6 +122,24 @@ InCombatLockdown=function() return true end
 partyOK=addon.Safe.PartyCall("PromoteToAssistant",oldPromote,"Name",true)
 check("party dispatcher blocks actions during combat",partyOK==false and legacy==1)
 InCombatLockdown=function() return false end
+-- 12.x addon restriction states (encounter, Mythic+, PvP, map).
+local savedEnum=Enum
+Enum=Enum or {}
+Enum.AddOnRestrictionType={Combat=0,Encounter=1,ChallengeMode=2,PvPMatch=3,Map=4,Chat=5}
+local activeRestriction=nil
+C_RestrictedActions={IsAddOnRestrictionActive=function(t) return t==activeRestriction end}
+check("no active restriction allows group actions",addon.Safe.ActiveActionRestriction()==nil)
+activeRestriction=2
+local why
+partyOK,why=addon.Safe.PartyCall("PromoteToAssistant",oldPromote,"Name",true)
+check("Mythic+ restriction blocks party actions before the API",partyOK==false and legacy==1 and why=="addon_restriction_ChallengeMode")
+activeRestriction=5
+check("chat-only restriction does not block group actions",addon.Safe.ActiveActionRestriction()==nil)
+C_RestrictedActions.IsAddOnRestrictionActive=function() error("unavailable") end
+check("failing restriction API fails closed",addon.Safe.ActiveActionRestriction()~=nil)
+C_RestrictedActions=nil
+check("clients without restriction API fall back to combat only",addon.Safe.ActiveActionRestriction()==nil)
+Enum=savedEnum
 addon:LFG_API_ClearCaches()
 C_LFGList.GetSearchResultInfo=function(id) return { name="Group"..id, numMembers=1 } end
 for id=1,2000 do addon:LFG_API_GetSearchResultInfo(id) end
