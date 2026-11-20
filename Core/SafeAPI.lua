@@ -199,11 +199,41 @@ function SafeNS.InCombatLockdown()
   return value == true
 end
 
+-- 12.x / Forever addon restriction states (C_RestrictedActions). Group actions
+-- such as UninviteUnit and PromoteToAssistant are documented HasRestrictions:
+-- besides combat they are blocked during boss encounters, active Mythic+ keys,
+-- PvP matches and on restricted maps. Calling them then only produces
+-- ADDON_ACTION_BLOCKED, so check first. Returns the restriction key or nil.
+local ACTION_RESTRICTION_TYPES = { "Combat", "Encounter", "ChallengeMode", "PvPMatch", "Map" }
+function SafeNS.ActiveActionRestriction()
+  if SafeNS.InCombatLockdown() then return "Combat" end
+  local api = type(C_RestrictedActions) == "table" and C_RestrictedActions.IsAddOnRestrictionActive
+  local types = type(Enum) == "table" and Enum.AddOnRestrictionType
+  if type(api) ~= "function" or type(types) ~= "table" then return nil end
+  for _, key in ipairs(ACTION_RESTRICTION_TYPES) do
+    local value = types[key]
+    if value ~= nil then
+      local ok, active = pcall(api, value)
+      -- An unreadable answer must never authorize a restricted action.
+      if not ok or not addon:SafeCanRead(active) then return key end
+      if active == true then return key end
+    end
+  end
+  return nil
+end
+
+function SafeNS.ActionRestrictionLabel(key)
+  if not key then return "" end
+  return addon:Tr("ACTION_RESTRICTION_" .. string.upper(key))
+end
+
 -- Compatibility dispatch does not grant secure/hardware-event privileges.
 -- Callers must retain the client's click requirements; never retry a protected
 -- failure through a legacy global to try to bypass those requirements.
 function SafeNS.PartyCall(method, legacy, ...)
   if SafeNS.InCombatLockdown() then return false, "combat_lockdown" end
+  local restriction = SafeNS.ActiveActionRestriction()
+  if restriction then return false, "addon_restriction_" .. restriction end
   local fn = type(C_PartyInfo) == "table" and C_PartyInfo[method]
   if type(fn) ~= "function" then fn = legacy end
   if type(fn) ~= "function" then return false, "missing_" .. tostring(method) end

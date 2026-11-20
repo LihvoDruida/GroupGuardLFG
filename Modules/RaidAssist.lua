@@ -74,6 +74,12 @@ function addon:ApplyRaidAssistNow(reason)
     self._raidAssistQueued = true
     return 0
   end
+  -- PromoteToAssistant is restricted during encounters, Mythic+, PvP matches
+  -- and on restricted maps; retry after ADDON_RESTRICTION_STATE_CHANGED.
+  if Safe and Safe.ActiveActionRestriction and Safe.ActiveActionRestriction() then
+    self._raidAssistQueued = true
+    return 0
+  end
 
   local inGuild = Safe and Safe.IsInGuild and Safe.IsInGuild() or false
   if inGuild and addon.Safe and addon.Safe.RequestGuildRoster then addon.Safe.RequestGuildRoster() end

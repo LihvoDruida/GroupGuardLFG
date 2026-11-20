@@ -1253,6 +1253,17 @@ function addon:LFG_DeclineApplicants(appIDs, source)
   if not self:LFG_CanManageApplicants() then return 0 end
 
   source = source or "manual"
+  -- Never fire applicant actions into an active Blizzard addon restriction
+  -- (combat, encounter, Mythic+, PvP, restricted map); auto-decline retries on
+  -- the next applicant scan after ADDON_RESTRICTION_STATE_CHANGED.
+  local Safe = self.Safe
+  local restriction = Safe and Safe.ActiveActionRestriction and Safe.ActiveActionRestriction()
+  if restriction then
+    if source ~= "auto" then
+      print((self.printPrefix or "GroupGuard LFG:"), self:Tr("ACTION_RESTRICTED_FMT", Safe.ActionRestrictionLabel(restriction)))
+    end
+    return 0
+  end
   self._lfgAutoDeclined = self._lfgAutoDeclined or {}
   self._lfgManualDeclined = self._lfgManualDeclined or {}
   self._lfgDeclineInFlight = self._lfgDeclineInFlight or {}
@@ -1362,6 +1373,9 @@ function addon:LFG_DeclineApplicants(appIDs, source)
         if not addon or not C_LFGList or not C_LFGList.DeclineApplicant then unmarkLocal(id); failed = failed + 1; return end
         if not (addon.db and addon.db.lfg_auto_decline) then unmarkLocal(id); return end
         if addon.LFG_CanManageApplicants and not addon:LFG_CanManageApplicants() then unmarkLocal(id); failed = failed + 1; return end
+        -- A restriction can begin between scheduled steps; leave the rest for the next scan.
+        local safe = addon.Safe
+        if safe and safe.ActiveActionRestriction and safe.ActiveActionRestriction() then unmarkLocal(id); return end
         local ok = pcall(C_LFGList.DeclineApplicant, id)
         if ok then
           declined = declined + 1

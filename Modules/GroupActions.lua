@@ -271,6 +271,17 @@ function addon:KickNamesSequential(targets, delayStep)
     return
   end
 
+  -- Encounter / Mythic+ / PvP / map restrictions block UninviteUnit just like
+  -- combat; queue instead of producing ADDON_ACTION_BLOCKED per target.
+  local restriction = Safe and Safe.ActiveActionRestriction and Safe.ActiveActionRestriction()
+  if restriction then
+    self._kickQueue = self._kickQueue or {}
+    for _, n in ipairs(targets) do table.insert(self._kickQueue, n) end
+    self._kickQueueNeedsClick = true
+    print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_RESTRICTED", Safe.ActionRestrictionLabel(restriction)))
+    return
+  end
+
   if not PlayerCanManageGroup() then
     print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("NO_REMOVE_RIGHTS"))
     return
@@ -346,6 +357,7 @@ function addon:ProcessKickQueue()
   if not self._kickQueue or #self._kickQueue == 0 then return end
   local Safe = addon and addon.Safe
   if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then return end
+  if Safe and Safe.ActiveActionRestriction and Safe.ActiveActionRestriction() then return end
   self._kickQueueNeedsClick = true
   local now = GetTime and GetTime() or 0
   if (self._lastKickQueueNoticeAt or 0) + 4 <= now then
@@ -359,6 +371,12 @@ function addon:RunQueuedKicksFromUserAction()
   local Safe = addon and addon.Safe
   if Safe and Safe.UnitAffectingCombat and Safe.UnitAffectingCombat("player") then
     print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_COMBAT"))
+    return false
+  end
+  local restriction = Safe and Safe.ActiveActionRestriction and Safe.ActiveActionRestriction()
+  if restriction then
+    -- Keep the queue intact; it can run once the restriction ends.
+    print((addon.printPrefix or "GroupGuard LFG:"), addon:Tr("REMOVE_QUEUE_RESTRICTED", Safe.ActionRestrictionLabel(restriction)))
     return false
   end
   if not PlayerCanManageGroup() then
