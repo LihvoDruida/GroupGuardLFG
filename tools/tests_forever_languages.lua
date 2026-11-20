@@ -486,5 +486,19 @@ check("synchronous response survives post-hook dispatch observation", ns.Request
 v.advance(60)
 check("synchronous completion never starts a timeout or retry", ns.statusKey=="SEARCH_COMPLETE" and #v.calls==1)
 
+v=setup(false); ns=v.ns
+C_LFGList.Search=function() v.event("MACRO_ACTION_BLOCKED","C_LFGList.Search()") end
+check("macro-attributed block disables Search without a false dispatch", ns.Request()==false and ns.blocked and not ns.IsPending())
+local dispatchLogged=false
+for _,entry in ipairs(ns.Database().journal) do if entry.kind=="Dispatch" then dispatchLogged=true end end
+check("blocked macro is never journaled as dispatched", not dispatchLogged)
+v=setup(false); ns=v.ns
+v.event("MACRO_ACTION_BLOCKED","C_LFGList.Search()")
+check("a macro block outside our click is not attributed to us", not ns.blocked)
+v=setup(false); ns=v.ns
+C_LFGList.Search=function(...) v.calls[#v.calls+1]={...}; v.event("LFG_LIST_SEARCH_RESULTS_RECEIVED") end
+ns.Request()
+check("synchronous response still starts the search cooldown", ns.Request()==false and #v.calls==1)
+
 print(string.format("Multilingual search: %d passed, %d failed", passed, failed))
 if failed>0 then os.exit(1) end
