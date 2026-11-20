@@ -152,9 +152,15 @@ function addon:RebuildFriendCache(force)
     end
   end
 
-  local hasModernBNet = C_BattleNet and type(C_BattleNet.GetFriendNumGameAccounts) == "function" and type(C_BattleNet.GetFriendGameAccountInfo) == "function" and type(C_BattleNet.GetNumFriends) == "function"
+  -- The friend count is still the global BNGetNumFriends() on 12.x and Forever;
+  -- C_BattleNet.GetNumFriends does not exist on any current client. Requiring
+  -- it disabled this branch, and the legacy BNGetFriendGameAccountInfo branch
+  -- below was removed in 8.x, so Battle.net friends were never collected.
+  local getNumBNetFriends = (C_BattleNet and type(C_BattleNet.GetNumFriends) == "function" and C_BattleNet.GetNumFriends)
+    or (type(BNGetNumFriends) == "function" and BNGetNumFriends) or nil
+  local hasModernBNet = C_BattleNet and type(C_BattleNet.GetFriendNumGameAccounts) == "function" and type(C_BattleNet.GetFriendGameAccountInfo) == "function" and getNumBNetFriends ~= nil
   if battleNetEnabled and hasModernBNet then
-    local okN, n = pcall(C_BattleNet.GetNumFriends)
+    local okN, n = pcall(getNumBNetFriends)
     n = okN and self:SafeNumber(n, 0) or 0
     for i = 1, n do
       local okG, gameAccounts = pcall(C_BattleNet.GetFriendNumGameAccounts, i)
@@ -162,7 +168,22 @@ function addon:RebuildFriendCache(force)
       for j = 1, gameAccounts do
         local ok, info = pcall(C_BattleNet.GetFriendGameAccountInfo, i, j)
         if ok and self:SafeCanAccessTable(info) then
-          AddFriendName(cache, self:SafeText(self:SafeTableField(info, "characterName")))
+          -- Only WoW characters on this same game project: a friend's Classic
+          -- or other-game character must not whitelist a same-named stranger.
+          local program = self:SafeText(self:SafeTableField(info, "clientProgram"))
+          local project = self:SafeNumber(self:SafeTableField(info, "wowProjectID"), nil)
+          local wowClient = (type(BNET_CLIENT_WOW) == "string" and BNET_CLIENT_WOW) or "WoW"
+          local ourProject = self:SafeNumber(WOW_PROJECT_ID, nil)
+          if (program == nil or program == wowClient) and (project == nil or ourProject == nil or project == ourProject) then
+            local character = self:SafeText(self:SafeTableField(info, "characterName"))
+            local realm = self:SafeText(self:SafeTableField(info, "realmName"))
+            if character and realm and self.UsesRealmQualifiedPlayerNames and self:UsesRealmQualifiedPlayerNames() then
+              -- Normalized realm names drop spaces and hyphens ("Azjol-Nerub" -> "AzjolNerub").
+              AddFriendName(cache, character .. "-" .. (realm:gsub("[%s%-]", "")))
+            else
+              AddFriendName(cache, character)
+            end
+          end
         end
       end
     end

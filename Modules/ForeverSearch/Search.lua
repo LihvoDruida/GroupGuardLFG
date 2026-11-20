@@ -293,8 +293,12 @@ end
 function NS.EndClick(button)
     local run = clickRun
     issuing, clickRun = false, nil
-    if run and _G[DISPATCH_MARKER] == run.requestID then
-        _G[DISPATCH_MARKER] = nil
+    local marked = run and _G[DISPATCH_MARKER] == run.requestID
+    _G[DISPATCH_MARKER] = nil
+    -- A blocked click already finished the run as "blocked"; never log that as
+    -- dispatched. A synchronous response may also have finished it, and that
+    -- request did go out, so it still counts for the cooldown.
+    if marked and run.status ~= "blocked" then
         lastSearch = GetTime()
         run.dispatched, run.dispatchTime = true, GetTime()
         NS.Log("Dispatch", "#" .. run.requestID .. "; API invocation observed; "
@@ -348,6 +352,10 @@ frame:RegisterEvent("LFG_LIST_SEARCH_RESULTS_RECEIVED")
 frame:RegisterEvent("LFG_LIST_SEARCH_FAILED")
 frame:RegisterEvent("ADDON_ACTION_BLOCKED")
 frame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+-- The search runs as /run macro text, so a block can be reported as a macro
+-- action (payload: function name only) rather than an addon action.
+pcall(frame.RegisterEvent, frame, "MACRO_ACTION_BLOCKED")
+pcall(frame.RegisterEvent, frame, "MACRO_ACTION_FORBIDDEN")
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_REGEN_ENABLED" then
         if addon.LFGFilters_ApplyDeferredPanel then addon:LFGFilters_ApplyDeferredPanel() end
@@ -360,6 +368,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
         EnsureHook()
     elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
         RecordBlocked(event, ...)
+    elseif event == "MACRO_ACTION_BLOCKED" or event == "MACRO_ACTION_FORBIDDEN" then
+        -- Only attribute it to us while our own secure click is executing.
+        if issuing then RecordBlocked(event, addonName, ...) end
     elseif event == "LFG_LIST_SEARCH_FAILED" or event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
         local external = externalPending
         local responseUncertain = uncertain

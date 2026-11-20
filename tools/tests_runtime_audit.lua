@@ -211,6 +211,22 @@ check("modern friends do not duplicate legacy enumeration",friendCalls==1 and ol
 C_FriendList.IsLegacyFriendSystemEnabled=function() return false end
 addon:RebuildFriendCache(true)
 check("disabled legacy friend list is not enumerated",friendCalls==1 and oldFriendCalls==0)
+-- Battle.net friends: the live count API is the global BNGetNumFriends().
+C_FriendList.GetNumFriends=function() return 0 end
+WOW_PROJECT_ID=1; BNET_CLIENT_WOW="WoW"
+BNGetNumFriends=function() return 2 end
+C_BattleNet={
+ IsBattleNetFriendsListEnabled=function() return true end,
+ GetFriendNumGameAccounts=function(i) return 1 end,
+ GetFriendGameAccountInfo=function(i)
+  if i==1 then return {clientProgram="WoW",wowProjectID=1,characterName="Bnetpal",realmName="Azjol-Nerub"} end
+  return {clientProgram="WoW",wowProjectID=2,characterName="Classicpal",realmName="Azjol-Nerub"}
+ end,
+}
+addon:RebuildFriendCache(true)
+check("Battle.net friends are collected via BNGetNumFriends",addon:IsFriendName("Bnetpal-AzjolNerub"))
+check("Battle.net characters on another WoW project are ignored",not addon:IsFriendName("Classicpal-AzjolNerub"))
+C_BattleNet=nil; BNGetNumFriends=nil
 local guildCalls,oldGuildCalls=0,0
 C_GuildInfo={GuildRoster=function() guildCalls=guildCalls+1 end}
 GuildRoster=function() oldGuildCalls=oldGuildCalls+1 end
