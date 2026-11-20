@@ -426,14 +426,8 @@ function addon:SafeObserveScrollBox(scrollBox, key, onFramesChanged, onScroll)
     callFrames()
   end
 
-  if ScrollBoxUtil then
-    if type(ScrollBoxUtil.OnViewFramesChanged) == "function" then
-      pcall(ScrollBoxUtil.OnViewFramesChanged, scrollBox, function(frames) if type(onFramesChanged) == "function" then pcall(onFramesChanged, frames or {}, scrollBox) end end)
-    end
-    if type(ScrollBoxUtil.OnViewScrollChanged) == "function" then
-      pcall(ScrollBoxUtil.OnViewScrollChanged, scrollBox, callScroll)
-    end
-  end
+  -- ScrollBoxUtil no longer exists on 12.x or Forever; the Update/FullUpdate
+  -- secure hooks below are the observation points.
 
   local hookScript = self:SafeObjectMethod(scrollBox, "HookScript")
   if hookScript then
@@ -683,28 +677,6 @@ function addon:LFG_API_GetActivityInfoTable(activityID)
         isRatedPvpActivity = self:SafeBool(SafeTableValue(self, info, "isRatedPvpActivity")),
         isCurrentRaidActivity = self:SafeBool(SafeTableValue(self, info, "isCurrentRaidActivity")),
         useDungeonRoleExpectations = self:SafeBool(SafeTableValue(self, info, "useDungeonRoleExpectations")),
-      }
-    end
-  end
-  if C_LFGList and type(C_LFGList.GetActivityInfo) == "function" then
-    local values = { pcall(C_LFGList.GetActivityInfo, activityID) }
-    if values[1] then
-      return {
-        fullName = self:SafeText(values[2]),
-        shortName = self:SafeText(values[3]),
-        categoryID = self:SafeNumber(values[4], nil),
-        groupID = self:SafeNumber(values[5], nil),
-        itemLevel = self:SafeNumber(values[6], nil),
-        filters = self:SafeNumber(values[7], nil),
-        minLevel = self:SafeNumber(values[8], nil),
-        maxPlayers = self:SafeNumber(values[9], nil),
-        displayType = self:SafeNumber(values[10], nil),
-        orderIndex = self:SafeNumber(values[11], nil),
-        useHonorLevel = self:SafeBool(values[12]),
-        showQuickJoinToast = self:SafeBool(values[13]),
-        isMythicPlusActivity = self:SafeBool(values[14]),
-        isRatedPvpActivity = self:SafeBool(values[15]),
-        isCurrentRaidActivity = self:SafeBool(values[16]),
       }
     end
   end
@@ -1303,13 +1275,19 @@ addon.LFG.RevealSearchResult = function(resultID) return addon:LFG_RevealSearchR
 function addon:LFG_InstallCensorHooks()
   if self._lfgCensorHooksInstalled then return end
   if not self:LFG_IsCensorshipSupported() then return end
-  if type(hooksecurefunc) ~= "function" then return end
-  local ok = pcall(hooksecurefunc, C_LFGList, "RevealCensoredSearchResult", self:WrapHookCallback(function(resultID)
+  if type(hooksecurefunc) ~= "function" or type(LFGListSearchEntry_Update) ~= "function" then return end
+  -- Never wrap C_LFGList functions themselves: an addon-installed wrapper sits
+  -- on Blizzard's own call path (see the C_LFGList.Search ADDON_ACTION_BLOCKED).
+  -- Blizzard's row click reveals the listing and then calls the Lua function
+  -- LFGListSearchEntry_Update(row); drop the cached censored copy there.
+  local ok = pcall(hooksecurefunc, "LFGListSearchEntry_Update", self:WrapHookCallback(function(row)
+    local resultID = addon:SafeNumber(addon:SafeObjectField(row, "resultID"), nil)
+    if not resultID or not addon:LFG_IsSearchResultCensored(resultID) then return end
     addon:LFG_ForgetSearchResult(resultID)
-    if addon.LFG_RetryHighlightSearchResults then
+    if not addon:LFG_IsSearchResultCensored(resultID) and addon.LFG_RetryHighlightSearchResults then
       addon:LFG_RetryHighlightSearchResults(true)
     end
-  end, "RevealCensoredSearchResult"))
+  end, "LFGListSearchEntry_Update:censor"))
   self._lfgCensorHooksInstalled = ok and true or false
 end
 

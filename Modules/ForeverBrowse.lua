@@ -117,7 +117,7 @@ function addon:ForeverBrowse_ApplyDeferredVisibility()
 end
 
 local function InviteAPI()
-  return (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteToGroup or InviteUnit
+  return (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
 end
 
 local function CanInvite(info)
