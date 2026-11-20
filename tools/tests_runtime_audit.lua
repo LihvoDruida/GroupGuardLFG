@@ -140,6 +140,33 @@ check("failing restriction API fails closed",addon.Safe.ActiveActionRestriction(
 C_RestrictedActions=nil
 check("clients without restriction API fall back to combat only",addon.Safe.ActiveActionRestriction()==nil)
 Enum=savedEnum
+-- Censored listings: never wrap C_LFGList functions; hook Blizzard's Lua row update.
+do
+  local hooks={}
+  local savedHook=hooksecurefunc
+  hooksecurefunc=function(a,b,c) hooks[#hooks+1]={a,b,c} end
+  local savedUpdate=LFGListSearchEntry_Update
+  LFGListSearchEntry_Update=function() end
+  C_LFGList.RevealCensoredSearchResult=function() end
+  addon._lfgCensorHooksInstalled=nil
+  addon:LFG_InstallCensorHooks()
+  local wrapsCTable=false
+  for _,h in ipairs(hooks) do if h[1]==C_LFGList then wrapsCTable=true end end
+  check("censor tracking never wraps a C_LFGList function",not wrapsCTable)
+  check("censor tracking hooks the Lua row update",#hooks==1 and hooks[1][1]=="LFGListSearchEntry_Update")
+  local censored=true
+  local savedInfo=C_LFGList.GetSearchResultInfo
+  C_LFGList.GetSearchResultInfo=function(id) return {censored=censored,numMembers=2} end
+  addon:LFG_API_ClearCaches()
+  addon:LFG_API_GetSearchResultInfo(77)
+  censored=false
+  if #hooks==1 then hooks[1][2]({resultID=77}) end
+  check("revealed row drops the cached censored copy",addon:LFG_IsSearchResultCensored(77)==false)
+  C_LFGList.GetSearchResultInfo=savedInfo
+  C_LFGList.RevealCensoredSearchResult=nil
+  LFGListSearchEntry_Update=savedUpdate
+  hooksecurefunc=savedHook
+end
 addon:LFG_API_ClearCaches()
 C_LFGList.GetSearchResultInfo=function(id) return { name="Group"..id, numMembers=1 } end
 for id=1,2000 do addon:LFG_API_GetSearchResultInfo(id) end
